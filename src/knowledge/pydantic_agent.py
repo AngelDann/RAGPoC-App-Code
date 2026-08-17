@@ -14,6 +14,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from knowledge.settings_store import get_effective_settings as get_settings
 from ragpoc.config import Settings
+from ragpoc.http import new_async_client
 from ragpoc.retrieval import Retriever
 
 
@@ -58,6 +59,7 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
     client = AsyncOpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=settings.openrouter_api_key or "sk-dummy",
+        http_client=new_async_client(),
     )
     model = OpenAIChatModel(
         settings.chat_model,

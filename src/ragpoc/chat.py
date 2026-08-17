@@ -27,11 +27,11 @@ class OpenRouterChatProvider:
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         import json
 
-        import httpx
+        from ragpoc.http import new_async_client
 
         headers = {"Authorization": f"Bearer {self.api_key}"}
         payload = {"model": self.model, "messages": messages, "stream": True, "temperature": 0.2}
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with new_async_client(timeout=120) as client:
             async with client.stream(
                 "POST", self.endpoint, headers=headers, json=payload
             ) as response:

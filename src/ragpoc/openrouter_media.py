@@ -7,6 +7,7 @@ import random
 import httpx
 
 from ragpoc.config import Settings
+from ragpoc.http import new_async_client
 
 
 class MediaGenerationError(RuntimeError):
@@ -48,7 +49,7 @@ async def generate_image(
         "prompt": prompt,
         "aspect_ratio": aspect_ratio,
     }
-    async with httpx.AsyncClient(timeout=120) as client:
+    async with new_async_client(timeout=120) as client:
         response = await _post_with_retry(client, _IMAGES_ENDPOINT, headers=headers, json_body=payload)
         if response.is_error:
             raise MediaGenerationError(f"OpenRouter image request failed ({response.status_code}): {response.text[:500]}")
@@ -85,7 +86,7 @@ async def synthesize_speech(
         "voice": voice,
         "response_format": audio_format,
     }
-    async with httpx.AsyncClient(timeout=120) as client:
+    async with new_async_client(timeout=120) as client:
         response = await _post_with_retry(client, _SPEECH_ENDPOINT, headers=headers, json_body=payload)
         if response.is_error:
             raise MediaGenerationError(f"OpenRouter TTS request failed ({response.status_code}): {response.text[:500]}")

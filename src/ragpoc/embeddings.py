@@ -11,6 +11,7 @@ from typing import Protocol
 import httpx
 
 from ragpoc.config import Settings
+from ragpoc.http import new_async_client
 
 UsageHook = Callable[[dict], Awaitable[None]]
 
@@ -56,7 +57,7 @@ class OpenRouterEmbeddingProvider:
             raise EmbeddingError("Configura tu OpenRouter API key en Ajustes o en OPENROUTER_API_KEY.")
         headers = {"Authorization": f"Bearer {self.settings.openrouter_api_key}"}
         own_client = self.client is None
-        client = self.client or httpx.AsyncClient(timeout=90)
+        client = self.client or new_async_client(timeout=90)
         started = time.perf_counter()
         try:
             for attempt in range(4):

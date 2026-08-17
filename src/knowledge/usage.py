@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import time
 
-import httpx
 from django.db.models import Count, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 
 from knowledge.models import ApiUsageLog
 from ragpoc.config import Settings
+from ragpoc.http import get as http_get
 
 
 def record_usage(
@@ -113,7 +113,7 @@ def fetch_openrouter_key_status(settings: Settings, force: bool = False) -> dict
         return cached["data"]
 
     try:
-        response = httpx.get(
+        response = http_get(
             "https://openrouter.ai/api/v1/auth/key",
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=10,
