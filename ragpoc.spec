@@ -15,6 +15,7 @@ if str(ROOT / 'src') not in sys.path:
 datas = [
     (str(ROOT / 'src/ragpoc/templates'), 'ragpoc/templates'),
     (str(ROOT / '.env.example'), '.'),
+    (str(ROOT / 'assets'), 'assets'),
 ]
 
 # Include sqlite-vec extension binaries if present
@@ -118,4 +119,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(ROOT / 'assets' / 'ragpoc.ico'),
 )

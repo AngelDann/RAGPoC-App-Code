@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,20 @@ from ragpoc.updater import UpdateError, apply_update, check_for_update
 
 def console_view(request: HttpRequest) -> HttpResponse:
     return render(request, "console.html")
+
+
+def favicon_view(request: HttpRequest) -> HttpResponse:
+    # Try project root assets, then frozen PyInstaller assets
+    base_dirs = [
+        Path(__file__).resolve().parent.parent.parent / "assets",
+        Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve().parent / "assets",
+    ]
+    for bdir in base_dirs:
+        fav = bdir / "favicon.ico"
+        if fav.exists():
+            with open(fav, "rb") as f:
+                return HttpResponse(f.read(), content_type="image/x-icon")
+    return HttpResponse(status=404)
 
 
 def health_view(request: HttpRequest) -> JsonResponse:
@@ -1536,7 +1551,7 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"detail": "La pregunta no puede estar vacía."}, status=422)
 
     scope = body.get("scope", "workspace")
-    if scope not in {"page", "notebook", "workspace"}:
+    if scope not in {"notebook", "workspace"}:
         return JsonResponse({"detail": "Invalid scope."}, status=422)
 
     page_id = body.get("page_id")
@@ -1545,20 +1560,14 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
     thread_id = body.get("thread_id")
     attachments = body.get("attachments") or []  # List of {id, name, url, text}
 
-    # Sources only ever live at notebook level now, so every chat scope bottoms out at one or
-    # more notebook_ids: "page" resolves to its own notebook, "notebook" is direct, "workspace"
-    # searches across every notebook in that workspace (an empty list here is intentionally
-    # falsy — it falls through to Retriever.search()'s unrestricted global search, same as when
-    # workspace_id was omitted before this scope model existed).
+    # Sources only ever live at notebook level, so every chat scope bottoms out at one or more
+    # notebook_ids: "notebook" is direct, "workspace" searches across every notebook in that
+    # workspace (an empty list here is intentionally falsy — it falls through to
+    # Retriever.search()'s unrestricted global search, same as when workspace_id was omitted
+    # before this scope model existed). page_id, if present, is only used below to fold the
+    # active page's own text into context — it no longer restricts the search scope itself.
     selected: dict[str, str | list[str]]
-    if scope == "page":
-        if not page_id:
-            return JsonResponse({"detail": "page_id is required for this scope."}, status=422)
-        p = Page.objects.filter(id=page_id).first()
-        if not p:
-            return JsonResponse({"detail": "Page not found."}, status=404)
-        selected = {"notebook_id": p.notebook_id}
-    elif scope == "notebook":
+    if scope == "notebook":
         if not notebook_id:
             return JsonResponse({"detail": "notebook_id is required for this scope."}, status=422)
         selected = {"notebook_id": notebook_id}
@@ -1602,13 +1611,22 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
 
         q = queue.Queue()
 
-        # 1. Fetch direct attachments and text from the active page if scope is 'page'
+        # 1. Fold in what the user is actually looking at right now: the open page's own text
+        # (independent of chat scope — this fires whenever a page happens to be open), plus
+        # whatever's selected in the editor or, failing that, the text immediately around the
+        # cursor, so the agent knows what part of a possibly-long page the question is about.
         page_direct_text = ""
+        selected_text = (body.get("selected_text") or "").strip()
+        cursor_text = (body.get("cursor_text") or "").strip()
         if page_id:
             try:
-                p = Page.objects.get(id=page_id)
+                p = Page.objects.select_related("notebook").get(id=page_id)
                 if p.plain_text:
-                    page_direct_text = f"\n[TEXTO DE LA NOTA ACTUAL (Título: {p.title})]:\n{p.plain_text}\n"
+                    page_direct_text = f"\n[TEXTO DE LA NOTA ACTUAL (Título: {p.title}, Cuaderno: {p.notebook.name})]:\n{p.plain_text}\n"
+                if selected_text:
+                    page_direct_text += f"\n[TEXTO SELECCIONADO POR EL USUARIO EN EL EDITOR AHORA MISMO]:\n{selected_text}\n"
+                elif cursor_text:
+                    page_direct_text += f"\n[CONTEXTO ALREDEDOR DEL CURSOR DEL USUARIO EN EL EDITOR]:\n…{cursor_text}…\n"
             except Exception:
                 pass
 

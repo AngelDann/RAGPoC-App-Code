@@ -6,6 +6,7 @@
   <meta name="viewport"
     content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>RAGPoC · Knowledge Studio</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
 
   <!-- Bootstrap 5 CSS & Icons CDN -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -368,10 +369,18 @@
       width: 28px;
       height: 28px;
       border-radius: 7px;
-      background: var(--text-main);
-      color: #f9f8f5;
-      font-weight: 800;
-      font-size: 13.5px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      border: 1px solid var(--border-warm);
+      flex-shrink: 0;
+      background: var(--card-bg);
+    }
+
+    .brand-logo-badge img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
     }
 
     .workspace-pill {
@@ -861,7 +870,7 @@
 
     .editor-body hr {
       border: none;
-      border-top: 1px solid var(--border-warm);
+      border-top: 3px solid #000;
       margin: 1.6em 0;
     }
 
@@ -2068,7 +2077,9 @@
       <span>Notas</span>
     </button>
     <div class="d-flex align-items-center gap-2">
-      <div class="brand-logo-badge">R</div>
+      <div class="brand-logo-badge">
+        <img src="/favicon.ico" alt="RAGPoC">
+      </div>
       <span id="mobile-page-title" class="fw-bold"
         style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">RAGPoC</span>
     </div>
@@ -2971,15 +2982,14 @@
       </div>
       <div class="sidebar-header d-flex justify-content-between align-items-center">
         <div class="d-flex align-items-center gap-2">
-          <div class="brand-logo-badge">R</div>
+          <div class="brand-logo-badge">
+            <img src="/favicon.ico" alt="RAGPoC">
+          </div>
           <span class="fw-bold fs-6">RAGPoC Studio</span>
         </div>
         <div class="d-flex align-items-center gap-1">
           <button class="btn-craft btn-craft-icon btn-sm" id="open-omni-btn" title="Buscar (Ctrl+K)">
             <i class="bi bi-search"></i>
-          </button>
-          <button class="btn-craft btn-craft-icon btn-sm" id="new-workspace" title="Crear Espacio">
-            <i class="bi bi-plus-lg"></i>
           </button>
           <button class="btn-craft btn-craft-icon btn-sm panel-collapse-btn" id="btn-collapse-sidebar"
             title="Colapsar panel">
@@ -2995,6 +3005,9 @@
             <div class="fw-bold fs-6 text-truncate" id="workspace-name" style="flex:1;">Cargando espacio…</div>
             <button class="action-mini-btn" id="btn-rename-workspace" title="Renombrar espacio de trabajo">
               <i class="bi bi-pencil" style="font-size:11px;"></i>
+            </button>
+            <button class="action-mini-btn" id="new-workspace" title="Crear nuevo espacio de trabajo">
+              <i class="bi bi-plus-lg" style="font-size:11px;"></i>
             </button>
           </div>
           <div class="d-flex gap-1">
@@ -3076,7 +3089,6 @@
                 <i class="bi bi-plus-circle"></i> Nuevo
               </button>
               <select id="chat-scope" class="form-select-craft">
-                <option value="page">Esta página</option>
                 <option value="notebook">Este cuaderno</option>
                 <option value="workspace">Todo el espacio</option>
               </select>
@@ -6039,6 +6051,16 @@
     $('#close-action-modal').onclick = closeActionModal;
     $('#btn-cancel-action-modal').onclick = closeActionModal;
 
+    // Enter should submit the form like clicking "Crear" does. A text input inside a <form>
+    // normally does this natively, but explicit is more robust than relying on default browser
+    // behavior inside the webview shell.
+    $('#action-modal-input-name').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        $('#action-modal-form').requestSubmit();
+      }
+    });
+
     $('#action-modal-form').onsubmit = async e => {
       e.preventDefault();
       let type = $('#action-modal-type').value;
@@ -6591,9 +6613,7 @@
       // regardless of what's picked in #chat-scope.
       let scope = $('#chat-scope').value;
       let url = '/api/threads?';
-      if (scope === 'page' && currentPage) {
-        url += `page_id=${currentPage.id}`;
-      } else if (scope === 'notebook') {
+      if (scope === 'notebook') {
         let nbId = await getTargetNotebookId();
         if (nbId) url += `notebook_id=${nbId}`;
       } else if (workspace) {
@@ -7667,12 +7687,28 @@
       let asstHeader = asstMsg.querySelector('#asst-header-row');
 
       try {
-        // "page" scope needs an open page; "notebook" needs a resolvable notebook. Neither is
-        // guaranteed (e.g. chatting from the workspace root with nothing open yet), so fall back
-        // to "workspace" instead of letting the request 422 on a scope the UI can't satisfy.
+        // "notebook" scope needs a resolvable notebook, which isn't guaranteed (e.g. chatting
+        // from the workspace root with nothing open yet), so fall back to "workspace" instead of
+        // letting the request 422 on a scope the UI can't satisfy.
         let effectiveScope = $('#chat-scope').value;
-        if (effectiveScope === 'page' && !currentPage?.id) effectiveScope = 'workspace';
         if (effectiveScope === 'notebook' && !(await getTargetNotebookId())) effectiveScope = 'workspace';
+
+        // Give the agent a sense of what the user is actually looking at in the editor right
+        // now: an explicit text selection takes priority; otherwise a window of text around the
+        // cursor, so a question like "explica esto" resolves against the right part of the page.
+        let selectedText = '';
+        let cursorText = '';
+        if (editor && currentPage) {
+          let { from, to } = editor.state.selection;
+          if (from !== to) {
+            selectedText = editor.state.doc.textBetween(from, to, '\n', ' ');
+          } else {
+            let docSize = editor.state.doc.content.size;
+            let start = Math.max(0, from - 400);
+            let end = Math.min(docSize, from + 400);
+            cursorText = editor.state.doc.textBetween(start, end, '\n', ' ');
+          }
+        }
 
         let r = await fetch('/chat/stream', {
           method: 'POST',
@@ -7685,6 +7721,8 @@
             workspace_id: workspace?.id || null,
             thread_id: currentThreadId,
             attachments: attsToSend,
+            selected_text: selectedText,
+            cursor_text: cursorText,
           })
         });
 
