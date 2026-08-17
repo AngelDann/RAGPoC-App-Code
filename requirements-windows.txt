@@ -129,8 +129,6 @@ python-json-logger==4.1.0
 python-multipart==0.0.32
 pywebview==6.2.1
 PyYAML==6.0.3
-# Editable Git install with no remote (ragpoc==0.1.0)
--e /root/.hermes/cache/documents/proyectos/RAGPoC
 redis==8.1.0
 referencing==0.37.0
 regex==2026.7.19
