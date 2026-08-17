@@ -1,0 +1,21 @@
+.venv/
+.env
+data/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+src/*.egg-info/
+*.py[cod]
+.DS_Store
+build/
+dist/
+.playwright-mcp/
+.hermes/
+.claude/scheduled_tasks.lock
+
+# Keep empty data directory structure in the repository.
+!data/.gitkeep
+!data/uploads/.gitkeep
+!data/renders/.gitkeep
+!data/derived/.gitkeep
+!data/derived/video_frames/.gitkeep
