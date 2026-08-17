@@ -7414,6 +7414,11 @@
           })
         });
 
+        if (!r.ok) {
+          let errBody = await r.json().catch(() => ({}));
+          throw new Error(errBody.detail || `Error ${r.status}: ${r.statusText}`);
+        }
+
         let reader = r.body.getReader();
         let dec = new TextDecoder();
         let buf = '';
