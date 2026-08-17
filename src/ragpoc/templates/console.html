@@ -2460,6 +2460,9 @@
           </div>
         </div>
         <div class="d-flex align-items-center gap-2">
+          <button class="btn-craft btn-craft-icon" id="btn-art-viewer-rename" title="Renombrar artefacto">
+            <i class="bi bi-pencil"></i>
+          </button>
           <button class="btn-craft btn-sm" id="btn-art-viewer-insert">
             <i class="bi bi-pin-angle-fill text-primary"></i> Insertar en Nota
           </button>
@@ -2973,7 +2976,12 @@
       <div class="nav-section">
         <div class="workspace-pill" id="ws-banner">
           <div class="section-tag"><i class="bi bi-folder2-open"></i> Espacio de trabajo</div>
-          <div class="fw-bold fs-6 text-truncate mb-2" id="workspace-name">Cargando espacio…</div>
+          <div class="d-flex align-items-center gap-1 mb-2">
+            <div class="fw-bold fs-6 text-truncate" id="workspace-name" style="flex:1;">Cargando espacio…</div>
+            <button class="action-mini-btn" id="btn-rename-workspace" title="Renombrar espacio de trabajo">
+              <i class="bi bi-pencil" style="font-size:11px;"></i>
+            </button>
+          </div>
           <div class="d-flex gap-1">
             <button class="btn-craft flex-1 btn-sm" id="new-notebook">
               <i class="bi bi-journal-plus"></i> Crear cuaderno
@@ -3058,9 +3066,17 @@
               </select>
             </div>
           </div>
-          <select id="thread-selector" class="form-select-craft w-100">
-            <option value="">Conversación actual</option>
-          </select>
+          <div class="d-flex align-items-center gap-1">
+            <select id="thread-selector" class="form-select-craft w-100">
+              <option value="">Conversación actual</option>
+            </select>
+            <button class="action-mini-btn" id="btn-rename-thread" title="Renombrar conversación">
+              <i class="bi bi-pencil" style="font-size:11px;"></i>
+            </button>
+            <button class="action-mini-btn danger" id="btn-delete-thread" title="Eliminar conversación">
+              <i class="bi bi-trash3" style="font-size:11px;"></i>
+            </button>
+          </div>
         </div>
 
         <!-- Studio Controls Sub-Header -->
@@ -5367,6 +5383,29 @@
       };
     }
 
+    if ($('#btn-art-viewer-rename')) {
+      $('#btn-art-viewer-rename').onclick = async () => {
+        if (!currentViewingArtifact) return;
+        let currentTitle = currentViewingArtifact.title || '';
+        let newTitle = await openInputModal('Renombrar Artefacto', currentTitle, 'Nuevo título');
+        if (newTitle && newTitle !== currentTitle) {
+          try {
+            await api(`/api/artifacts/${currentViewingArtifact.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title: newTitle })
+            });
+            currentViewingArtifact.title = newTitle;
+            artViewerTitle.textContent = newTitle;
+            await loadSideStudioGallery();
+            if (artifactsModal?.classList.contains('active')) loadNotebookArtifactsGallery();
+          } catch (err) {
+            showToast('Error al renombrar: ' + err.message, 'error');
+          }
+        }
+      };
+    }
+
     if ($('#btn-art-viewer-insert')) {
       $('#btn-art-viewer-insert').onclick = async () => {
         if (!currentViewingArtifact) return;
@@ -6113,6 +6152,24 @@
     if ($('#btn-add-source-from-panel')) {
       $('#btn-add-source-from-panel').onclick = () => window.openSourcesModal();
     }
+    if ($('#btn-rename-workspace')) {
+      $('#btn-rename-workspace').onclick = async () => {
+        if (!workspace) return;
+        let newName = await openInputModal('Renombrar Espacio de Trabajo', workspace.name, 'Nuevo nombre');
+        if (newName && newName !== workspace.name) {
+          try {
+            await api(`/api/workspaces/${workspace.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: newName })
+            });
+            await refresh();
+          } catch (err) {
+            showToast('Error al renombrar: ' + err.message, 'error');
+          }
+        }
+      };
+    }
     $('#close-sources-modal').onclick = () => {
       sourcesModal.classList.remove('active');
     };
@@ -6482,6 +6539,40 @@
       await loadThreadHistory(currentThreadId);
     };
 
+    $('#btn-rename-thread').onclick = async () => {
+      if (!currentThreadId) return showToast('Selecciona una conversación guardada primero.', 'warning');
+      let option = $('#thread-selector').selectedOptions[0];
+      let currentTitle = option ? option.textContent.replace(/\s*\(\d{1,2}\/\d{1,2}\/\d{2,4}\)\s*$/, '') : '';
+      let newTitle = await openInputModal('Renombrar Conversación', currentTitle, 'Nuevo título');
+      if (newTitle && newTitle !== currentTitle) {
+        try {
+          await api(`/api/threads/${currentThreadId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: newTitle })
+          });
+          await loadThreadsForScope();
+        } catch (err) {
+          showToast('Error al renombrar: ' + err.message, 'error');
+        }
+      }
+    };
+
+    $('#btn-delete-thread').onclick = () => {
+      if (!currentThreadId) return showToast('Selecciona una conversación guardada primero.', 'warning');
+      let tId = currentThreadId;
+      openDeleteModal(
+        'Eliminar Conversación',
+        '¿Estás seguro de que deseas eliminar esta conversación y todos sus mensajes?',
+        async () => {
+          await api(`/api/threads/${tId}`, { method: 'DELETE' });
+          currentThreadId = null;
+          $('#chat-log').innerHTML = `<div class="chat-welcome-box"><div class="fw-bold mb-1 text-dark"><i class="bi bi-stars text-amber"></i> Asistente de Conocimiento</div>Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.</div>`;
+          await loadThreadsForScope();
+        }
+      );
+    };
+
     $('#new-thread-btn').onclick = () => {
       currentThreadId = null;
       $('#thread-selector').value = '';
@@ -6684,6 +6775,9 @@
                 <button class="action-mini-btn" data-add-page="${n.id}" title="Crear nueva página en este cuaderno">
                   <i class="bi bi-plus-lg"></i>
                 </button>
+                <button class="action-mini-btn" data-rename-notebook="${n.id}" data-notebook-name="${esc(n.name)}" title="Renombrar cuaderno">
+                  <i class="bi bi-pencil"></i>
+                </button>
                 <button class="action-mini-btn danger" data-delete-notebook="${n.id}" data-notebook-name="${esc(n.name)}" title="Eliminar cuaderno">
                   <i class="bi bi-trash3"></i>
                 </button>
@@ -6753,6 +6847,28 @@
         btn.onclick = e => {
           e.stopPropagation();
           openActionModal('page', btn.dataset.addPage);
+        };
+      });
+
+      // Bind Rename Notebook
+      document.querySelectorAll('[data-rename-notebook]').forEach(btn => {
+        btn.onclick = async e => {
+          e.stopPropagation();
+          let nbId = btn.dataset.renameNotebook;
+          let currentName = btn.dataset.notebookName;
+          let newName = await openInputModal('Renombrar Cuaderno', currentName, 'Nuevo nombre');
+          if (newName && newName !== currentName) {
+            try {
+              await api(`/api/notebooks/${nbId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newName })
+              });
+              await refresh();
+            } catch (err) {
+              showToast('Error al renombrar: ' + err.message, 'error');
+            }
+          }
         };
       });
 
@@ -7213,6 +7329,9 @@
             <button type="button" class="action-mini-btn" data-insert-doc-btn="${d.id}" data-doc-url="/api/documents/${d.id}/file" data-doc-type="${d.media_type}" data-doc-name="${esc(d.filename)}" data-doc-size="${d.byte_size}" title="Incrustar en el editor de la nota" style="width:22px; height:22px;">
               <i class="bi bi-plus-lg" style="font-size:12px;"></i>
             </button>
+            <button type="button" class="action-mini-btn" data-rename-page-attachment="${d.id}" data-att-name="${esc(d.filename)}" style="width:20px; height:20px;" title="Renombrar adjunto">
+              <i class="bi bi-pencil" style="font-size:10px;"></i>
+            </button>
             <button type="button" class="action-mini-btn danger" data-delete-page-attachment="${d.id}" data-att-name="${esc(d.filename)}" style="width:20px; height:20px;" title="Eliminar adjunto">
               <i class="bi bi-x" style="font-size:14px;"></i>
             </button>
@@ -7286,6 +7405,27 @@
               if (currentPage) openPage(currentPage.id);
             }
           );
+        };
+      });
+
+      container.querySelectorAll('[data-rename-page-attachment]').forEach(btn => {
+        btn.onclick = async e => {
+          e.stopPropagation();
+          let dId = btn.dataset.renamePageAttachment;
+          let currentName = btn.dataset.attName;
+          let newName = await openInputModal('Renombrar Adjunto', currentName, 'Nuevo nombre');
+          if (newName && newName !== currentName) {
+            try {
+              await api(`/api/documents/${dId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: newName })
+              });
+              if (currentPage) await loadAttachmentsPanel();
+            } catch (err) {
+              showToast('Error al renombrar: ' + err.message, 'error');
+            }
+          }
         };
       });
     }

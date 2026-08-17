@@ -32,6 +32,7 @@ urlpatterns = [
     path("api/skills", views.list_or_create_skills_view, name="list_or_create_skills_view"),
     path("api/skills/<str:skill_id>", views.delete_skill_view, name="delete_skill_view"),
     path("api/threads", views.list_or_create_threads, name="list_or_create_threads"),
+    path("api/threads/<str:thread_id>", views.thread_detail_dispatch, name="thread_detail_dispatch"),
     path("api/threads/<str:thread_id>/messages", views.get_thread_messages, name="get_thread_messages"),
     path("ingest", views.ingest_file, name="ingest"),
     path("search", views.search_view, name="search"),

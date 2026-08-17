@@ -212,7 +212,26 @@ def notebook_detail_dispatch(request: HttpRequest, notebook_id: str) -> JsonResp
     except Notebook.DoesNotExist:
         return JsonResponse({"detail": "Notebook not found."}, status=404)
 
-    if request.method == "DELETE":
+    if request.method in ("PUT", "PATCH"):
+        try:
+            body = json.loads(request.body.decode("utf-8"))
+        except Exception:
+            return JsonResponse({"detail": "Invalid JSON"}, status=400)
+        name = (body.get("name") or "").strip()
+        if not name:
+            return JsonResponse({"detail": "El nombre no puede estar vacío."}, status=422)
+        notebook.name = name
+        if "description" in body:
+            notebook.description = body.get("description") or ""
+        notebook.save()
+        return JsonResponse({
+            "id": notebook.id,
+            "workspace_id": notebook.workspace_id,
+            "name": notebook.name,
+            "description": notebook.description,
+            "updated_at": notebook.updated_at.isoformat(),
+        })
+    elif request.method == "DELETE":
         notebook.delete()
         return JsonResponse({"status": "deleted", "id": notebook_id})
     return JsonResponse({"detail": "Method not allowed"}, status=405)
@@ -225,7 +244,22 @@ def workspace_detail_dispatch(request: HttpRequest, workspace_id: str) -> JsonRe
     except Workspace.DoesNotExist:
         return JsonResponse({"detail": "Workspace not found."}, status=404)
 
-    if request.method == "DELETE":
+    if request.method in ("PUT", "PATCH"):
+        try:
+            body = json.loads(request.body.decode("utf-8"))
+        except Exception:
+            return JsonResponse({"detail": "Invalid JSON"}, status=400)
+        name = (body.get("name") or "").strip()
+        if not name:
+            return JsonResponse({"detail": "El nombre no puede estar vacío."}, status=422)
+        workspace.name = name
+        workspace.save()
+        return JsonResponse({
+            "id": workspace.id,
+            "name": workspace.name,
+            "updated_at": workspace.updated_at.isoformat(),
+        })
+    elif request.method == "DELETE":
         workspace.delete()
         return JsonResponse({"status": "deleted", "id": workspace_id})
     return JsonResponse({"detail": "Method not allowed"}, status=405)
@@ -904,7 +938,18 @@ def delete_notebook_artifact_view(request: HttpRequest, artifact_id: str) -> Jso
     except NotebookArtifact.DoesNotExist:
         return JsonResponse({"detail": "Artifact not found."}, status=404)
 
-    if request.method == "DELETE":
+    if request.method in ("PUT", "PATCH"):
+        try:
+            body = json.loads(request.body.decode("utf-8"))
+        except Exception:
+            return JsonResponse({"detail": "Invalid JSON"}, status=400)
+        title = (body.get("title") or "").strip()
+        if not title:
+            return JsonResponse({"detail": "El título no puede estar vacío."}, status=422)
+        artifact.title = title
+        artifact.save()
+        return JsonResponse({"id": artifact.id, "title": artifact.title})
+    elif request.method == "DELETE":
         artifact.delete()
         return JsonResponse({"status": "deleted", "id": artifact_id})
     return JsonResponse({"detail": "Method not allowed"}, status=405)
@@ -1417,6 +1462,30 @@ def get_thread_messages(request: HttpRequest, thread_id: str) -> JsonResponse:
         },
         "messages": messages,
     })
+
+
+@csrf_exempt
+def thread_detail_dispatch(request: HttpRequest, thread_id: str) -> JsonResponse:
+    try:
+        thread = ChatThread.objects.get(id=thread_id)
+    except ChatThread.DoesNotExist:
+        return JsonResponse({"detail": "Thread not found."}, status=404)
+
+    if request.method in ("PUT", "PATCH"):
+        try:
+            body = json.loads(request.body.decode("utf-8"))
+        except Exception:
+            return JsonResponse({"detail": "Invalid JSON"}, status=400)
+        title = (body.get("title") or "").strip()
+        if not title:
+            return JsonResponse({"detail": "El título no puede estar vacío."}, status=422)
+        thread.title = title
+        thread.save()
+        return JsonResponse({"id": thread.id, "title": thread.title})
+    elif request.method == "DELETE":
+        thread.delete()
+        return JsonResponse({"status": "deleted", "id": thread_id})
+    return JsonResponse({"detail": "Method not allowed"}, status=405)
 
 
 @csrf_exempt
