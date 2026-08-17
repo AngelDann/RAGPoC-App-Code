@@ -72,6 +72,7 @@ hiddenimports = own_packages + [
     'pydantic_ai.models.openai',
     'openai',
     'ddgs',
+    'truststore',
     'asgiref',
     'webview',
     'webview.platforms.winforms',
