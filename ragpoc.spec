@@ -6,6 +6,12 @@ block_cipher = None
 
 ROOT = Path.cwd()
 
+# collect_submodules() below imports our own packages to enumerate their
+# submodules; they live under src/, so it has to be on sys.path before
+# those calls run (pathex on Analysis() only takes effect later).
+if str(ROOT / 'src') not in sys.path:
+    sys.path.insert(0, str(ROOT / 'src'))
+
 datas = [
     (str(ROOT / 'src/ragpoc/templates'), 'ragpoc/templates'),
     (str(ROOT / '.env.example'), '.'),
