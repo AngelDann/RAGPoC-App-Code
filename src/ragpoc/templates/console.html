@@ -3927,6 +3927,7 @@
 
     let workspace = null;
     let currentPage = null;
+    let unsavedChanges = false;
     // Tracks which notebook the sidebar/Studio panel is scoped to, independent of currentPage —
     // set explicitly by clicking a notebook row, or implicitly whenever a page is opened. Without
     // this, artifact galleries had no notion of "the notebook you're looking at" and always fell
@@ -7012,6 +7013,7 @@
         extensions: PAGE_EDITOR_EXTENSIONS,
         content: currentPage.content_json,
         onUpdate: () => {
+          unsavedChanges = true;
           $('#save-status').textContent = 'Sin guardar';
           $('#save-dot').className = 'status-bulb unsaved';
 
@@ -7049,6 +7051,7 @@
           updateTableToolbar();
         },
       });
+      unsavedChanges = false;
 
       // Notion-style "+" gutter button: hover a top-level block to reveal a button that
       // inserts a new empty paragraph right after it and focuses it — lets you add content
@@ -7473,6 +7476,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, content_json: content, plain_text: text })
       });
+      unsavedChanges = false;
       $('#mobile-page-title').textContent = title || 'RAGPoC';
       $('#save-status').textContent = 'Guardado';
       let dot = $('#save-dot');
@@ -7480,6 +7484,48 @@
       dot.addEventListener('animationend', () => dot.classList.remove('just-saved'), { once: true });
       await refresh();
     }
+
+    // Autosave: a lighter version of savePage() that skips the sidebar refresh() (title/position
+    // rarely change mid-typing, and re-rendering the whole tree every tick would just churn the
+    // DOM under the user). Runs on a fixed interval instead of debouncing off onUpdate, so a page
+    // left open and edited in bursts still gets saved even if the user never pauses long enough
+    // for a debounce to fire.
+    const AUTOSAVE_INTERVAL_MS = 30000;
+
+    async function autoSavePage() {
+      if (!currentPage || !unsavedChanges || !editor) return;
+      try {
+        let title = $('#page-title').value;
+        let content = editor.getJSON();
+        let text = editor.getText();
+        currentPage = await api('/api/pages/' + currentPage.id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, content_json: content, plain_text: text })
+        });
+        unsavedChanges = false;
+        $('#mobile-page-title').textContent = title || 'RAGPoC';
+        $('#save-status').textContent = 'Guardado automáticamente';
+        let dot = $('#save-dot');
+        dot.className = 'status-bulb just-saved';
+        dot.addEventListener('animationend', () => dot.classList.remove('just-saved'), { once: true });
+      } catch (err) {
+        console.error('Autoguardado falló:', err);
+      }
+    }
+
+    setInterval(autoSavePage, AUTOSAVE_INTERVAL_MS);
+
+    // Best-effort save on the way out — covers closing the window/tab with unsaved edits still
+    // pending (the 30s interval may not have ticked yet). Not guaranteed to complete (browsers
+    // don't await async work here), just a last-ditch attempt.
+    window.addEventListener('beforeunload', e => {
+      if (unsavedChanges && currentPage) {
+        autoSavePage();
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
 
     $('#new-workspace').onclick = () => {
       openActionModal('workspace');
