@@ -7400,12 +7400,19 @@
       let asstHeader = asstMsg.querySelector('#asst-header-row');
 
       try {
+        // "page" scope needs an open page; "notebook" needs a resolvable notebook. Neither is
+        // guaranteed (e.g. chatting from the workspace root with nothing open yet), so fall back
+        // to "workspace" instead of letting the request 422 on a scope the UI can't satisfy.
+        let effectiveScope = $('#chat-scope').value;
+        if (effectiveScope === 'page' && !currentPage?.id) effectiveScope = 'workspace';
+        if (effectiveScope === 'notebook' && !(await getTargetNotebookId())) effectiveScope = 'workspace';
+
         let r = await fetch('/chat/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             question: q,
-            scope: $('#chat-scope').value,
+            scope: effectiveScope,
             page_id: currentPage?.id || null,
             notebook_id: await getTargetNotebookId(),
             workspace_id: workspace?.id || null,
