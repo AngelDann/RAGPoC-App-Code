@@ -7,11 +7,12 @@ echo ===================================================
 if not exist ".venv" (
     echo Creando entorno virtual local...
     python -m venv .venv
-    call .venv\Scripts\activate.bat
-    pip install -r requirements-windows.txt
-) else (
-    call .venv\Scripts\activate.bat
 )
+
+call .venv\Scripts\activate.bat
+
+echo Instalando dependencias...
+pip install -r requirements-windows.txt
 
 echo Instalando PyInstaller...
 pip install pyinstaller
