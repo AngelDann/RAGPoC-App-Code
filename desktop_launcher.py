@@ -16,6 +16,16 @@ from pathlib import Path
 
 import uvicorn
 
+# A windowed (console=False) PyInstaller build has no console, so sys.stdout/
+# stderr are None -- every bare print() below (and uvicorn's own logging)
+# would crash with AttributeError on first use. Redirect them to a log file
+# next to the executable instead, which also gives us something to inspect
+# if desktop startup fails with no window ever appearing.
+if sys.stdout is None or sys.stderr is None:
+    log_dir = Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve().parent
+    log_file = open(log_dir / "ragpoc.log", "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stderr = log_file
+
 # Windows consoles default to the system codepage (e.g. cp1252), not UTF-8,
 # so printing emoji below would otherwise crash with UnicodeEncodeError.
 if sys.platform == "win32":
