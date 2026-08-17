@@ -10,6 +10,7 @@ sqlite-vec>=0.1.6,<1
 fastmcp>=2.0,<3
 python-dotenv>=1.0,<2
 truststore>=0.9,<1
+packaging>=23,<27
 
 # `google/gemini-embedding-2-preview` is called through OpenRouter's
 # OpenAI-compatible POST /api/v1/embeddings endpoint via httpx.

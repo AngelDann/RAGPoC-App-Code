@@ -1,0 +1,48 @@
+name: Build and Release Windows EXE
+
+# Push a version tag to publish a new update, e.g.:
+#   git tag v1.2.3
+#   git push origin v1.2.3
+# The app's in-app updater (Ajustes > Actualizaciones) checks GitHub Releases for a newer
+# tag than its own compiled-in version and offers to download+install this asset.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # The compiled build always reports whatever version the pushed tag says, regardless of
+      # what's committed in src/ragpoc/__init__.py -- avoids a manual "bump the version file
+      # first" step that could drift out of sync with the tag and confuse the updater.
+      - name: Stamp version from tag into ragpoc/__init__.py
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          (Get-Content src/ragpoc/__init__.py) -replace '__version__ = ".*"', "__version__ = `"$version`"" | Set-Content src/ragpoc/__init__.py
+          Write-Host "Building version $version"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-windows.txt
+
+      - name: Build EXE
+        run: pyinstaller ragpoc.spec --clean --noconfirm
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/RAGPoC.exe
+          generate_release_notes: true

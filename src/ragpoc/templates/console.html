@@ -2634,6 +2634,21 @@
           </div>
         </div>
 
+        <div class="craft-card p-3">
+          <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
+            <i class="bi bi-arrow-repeat text-dark"></i> Actualizaciones
+          </div>
+          <div id="update-status" class="text-muted mb-2" style="font-size:11px;">Comprobando versión…</div>
+          <div class="d-flex justify-content-end gap-2">
+            <button class="btn-craft" id="btn-check-update">
+              <i class="bi bi-search"></i> Buscar actualizaciones
+            </button>
+            <button class="btn-craft btn-craft-primary" id="btn-apply-update" style="display:none;">
+              <i class="bi bi-cloud-download"></i> Actualizar y reiniciar
+            </button>
+          </div>
+        </div>
+
         <div class="d-flex justify-content-end gap-2">
           <button class="btn-craft btn-craft-primary" id="btn-save-settings-key">
             <i class="bi bi-save2"></i> Guardar Cambios
@@ -3008,8 +3023,9 @@
         <button class="btn-craft w-100" id="open-usage-modal">
           <i class="bi bi-speedometer2 text-dark"></i> Uso & Monitoreo
         </button>
-        <button class="btn-craft w-100" id="open-settings-modal">
+        <button class="btn-craft w-100 position-relative" id="open-settings-modal">
           <i class="bi bi-gear-fill text-dark"></i> Ajustes
+          <span id="update-available-badge" class="status-bulb unsaved" style="display:none; position:absolute; top:4px; right:8px; width:8px; height:8px;" title="Hay una actualización disponible"></span>
         </button>
       </div>
     </aside>
@@ -5693,6 +5709,71 @@
         showToast('Error al guardar: ' + e.message, 'error');
       }
     };
+
+    // --- Auto-update: checks GitHub Releases for a newer build ---
+    // Only meaningful for the compiled .exe (apply_update() on the backend rejects it
+    // otherwise), but the check itself is harmless to run from source too.
+    let updateInfo = null;
+    const UPDATE_CHECK_HOUR = 9; // wall-clock hour (local time) for the once-a-day check
+
+    async function checkForUpdate() {
+      let statusEl = $('#update-status');
+      let applyBtn = $('#btn-apply-update');
+      try {
+        updateInfo = await api('/api/updates/check');
+        let badge = $('#update-available-badge');
+        if (updateInfo.update_available) {
+          badge.style.display = 'block';
+          applyBtn.style.display = '';
+          if (statusEl) statusEl.innerHTML = `<i class="bi bi-stars text-warning"></i> Versión ${esc(updateInfo.latest_version)} disponible (tienes ${esc(updateInfo.current_version)}).`;
+        } else {
+          badge.style.display = 'none';
+          applyBtn.style.display = 'none';
+          if (statusEl) statusEl.innerHTML = `<i class="bi bi-check-circle-fill text-success"></i> Estás usando la última versión (${esc(updateInfo.current_version)}).`;
+        }
+      } catch (e) {
+        if (statusEl) statusEl.textContent = 'No se pudo verificar actualizaciones: ' + e.message;
+      }
+      localStorage.setItem('ragpoc_last_update_check_date', new Date().toDateString());
+    }
+
+    if ($('#btn-check-update')) {
+      $('#btn-check-update').onclick = () => {
+        $('#update-status').textContent = 'Comprobando versión…';
+        checkForUpdate();
+      };
+    }
+
+    if ($('#btn-apply-update')) {
+      $('#btn-apply-update').onclick = async () => {
+        if (!updateInfo?.download_url) return;
+        $('#btn-apply-update').disabled = true;
+        $('#update-status').textContent = 'Descargando actualización…';
+        try {
+          await api('/api/updates/apply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ download_url: updateInfo.download_url })
+          });
+          $('#update-status').textContent = 'Actualizando y reiniciando…';
+        } catch (e) {
+          // A failed fetch here can also just mean the backend process already exited
+          // mid-response once the update kicked off successfully — not necessarily an error.
+          $('#update-status').textContent = 'Actualizando y reiniciando… (si la ventana no se reabre sola en unos segundos, ábrela manualmente)';
+        }
+      };
+    }
+
+    // Startup check, plus a once-a-day check at UPDATE_CHECK_HOUR local time for whenever the
+    // app is left running across days (checked every 30 min; localStorage dedupes to one
+    // check per calendar day so it doesn't re-fire every tick during that hour).
+    checkForUpdate();
+    setInterval(() => {
+      let today = new Date().toDateString();
+      if (new Date().getHours() === UPDATE_CHECK_HOUR && localStorage.getItem('ragpoc_last_update_check_date') !== today) {
+        checkForUpdate();
+      }
+    }, 30 * 60 * 1000);
 
     $('#btn-clear-settings-key').onclick = async () => {
       try {

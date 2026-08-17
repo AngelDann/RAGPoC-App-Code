@@ -41,4 +41,6 @@ urlpatterns = [
     path("api/documents/<str:document_id>/file", views.serve_document_file, name="serve_document_file"),
     path("api/usage/summary", views.usage_summary_view, name="usage_summary_view"),
     path("api/usage/logs", views.usage_logs_view, name="usage_logs_view"),
+    path("api/updates/check", views.check_update_view, name="check_update_view"),
+    path("api/updates/apply", views.apply_update_view, name="apply_update_view"),
 ]

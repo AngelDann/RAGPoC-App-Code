@@ -40,6 +40,7 @@ from knowledge.settings_store import (
 from knowledge.settings_store import get_effective_settings as get_settings
 from knowledge.usage import fetch_openrouter_key_status, record_usage, usage_summary
 from ragpoc.artifact_pdf import render_artifact_pdf, render_page_pdf
+from ragpoc.updater import UpdateError, apply_update, check_for_update
 
 
 def console_view(request: HttpRequest) -> HttpResponse:
@@ -54,6 +55,39 @@ def health_view(request: HttpRequest) -> JsonResponse:
         "embedding_model": settings.embedding_model,
         "chat_model": settings.chat_model,
     })
+
+
+def check_update_view(request: HttpRequest) -> JsonResponse:
+    try:
+        info = check_for_update()
+    except Exception as e:
+        return JsonResponse({"detail": f"No se pudo verificar actualizaciones: {e}"}, status=502)
+    return JsonResponse(info)
+
+
+@csrf_exempt
+def apply_update_view(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"detail": "Invalid JSON"}, status=400)
+
+    download_url = body.get("download_url")
+    if not download_url:
+        return JsonResponse({"detail": "download_url is required."}, status=422)
+
+    try:
+        apply_update(download_url)
+    except UpdateError as e:
+        return JsonResponse({"detail": str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({"detail": f"Error al descargar la actualización: {e}"}, status=502)
+
+    # apply_update() only schedules the process exit ~1.5s from now (see its docstring), so this
+    # response still has time to reach the client before the connection drops out from under it.
+    return JsonResponse({"status": "restarting"})
 
 
 @csrf_exempt
