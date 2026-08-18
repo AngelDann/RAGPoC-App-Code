@@ -1,6 +1,8 @@
+import subprocess
 import sys
 from pathlib import Path
 
+from ragpoc import updater
 from ragpoc.chunking import ApproximateTokenCounter, chunk_text
 from ragpoc.config import BASE_DIR, Settings
 from ragpoc.db import configured_dimension, initialize_database, persist_dimension
@@ -64,6 +66,75 @@ def test_updater_script_renames_old_exe_out_of_the_way_before_placing_the_new_on
         assert f'start "" "{current_exe}"' in content
     finally:
         script_path.unlink(missing_ok=True)
+
+
+def test_updater_script_avoids_commands_that_need_a_console():
+    # This script runs under a windowless cmd.exe, where two constructs are fatal or useless:
+    # a `|` pipeline (cmd re-launches itself per stage and dies if it can't -- the old
+    # `tasklist | find` wait loop killed the script on line one, so no swap ever happened and a
+    # stray _new.exe was left behind every time), and `timeout` (needs a console stdin, exits
+    # instantly otherwise, making every retry pause a busy spin).
+    script_path = _write_updater_script(
+        pid=4242,
+        current_exe=Path("C:/apps/RAGPoC/RAGPoC.exe"),
+        new_exe=Path("C:/apps/RAGPoC/RAGPoC_new.exe"),
+    )
+    try:
+        content = script_path.read_text(encoding="utf-8")
+        assert "|" not in content
+        assert "timeout" not in content
+        assert "ping -n 2 127.0.0.1" in content
+        # An early death must still leave a trace, which the old script couldn't do: every one of
+        # its log lines sat downstream of the pipeline that was killing it.
+        assert "swap script started" in content.split(":wait")[0]
+    finally:
+        script_path.unlink(missing_ok=True)
+
+
+def test_apply_update_launches_swap_script_with_a_console(monkeypatch, tmp_path):
+    # DETACHED_PROCESS leaves cmd.exe with no console at all, which is what broke the swap
+    # script's pipelines; CREATE_NO_WINDOW keeps the updater invisible while still giving it one.
+    # The std handles must be pinned to DEVNULL too -- a windowed build's own handles are invalid
+    # and children inherit them by default.
+    fake_exe = tmp_path / "RAGPoC.exe"
+    fake_exe.write_text("fake")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(fake_exe))
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def raise_for_status(self):
+            pass
+
+        def iter_bytes(self):
+            yield b"new exe payload"
+
+    monkeypatch.setattr(updater.httpx, "stream", lambda *a, **kw: _FakeResponse())
+    monkeypatch.setattr(updater.threading, "Timer", lambda *a, **kw: type("T", (), {"start": lambda self: None})())
+
+    captured = {}
+
+    def fake_popen(args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return None
+
+    monkeypatch.setattr(updater.subprocess, "Popen", fake_popen)
+
+    updater.apply_update("https://github.com/AngelDann/RAGPoC-App-Code/releases/download/v9/RAGPoC.exe")
+
+    flags = captured["kwargs"]["creationflags"]
+    assert flags & subprocess.CREATE_NO_WINDOW
+    assert not flags & subprocess.DETACHED_PROCESS
+    assert captured["kwargs"]["stdin"] == subprocess.DEVNULL
+    assert captured["kwargs"]["stdout"] == subprocess.DEVNULL
+    assert captured["kwargs"]["stderr"] == subprocess.DEVNULL
+    Path(captured["args"][2]).unlink(missing_ok=True)
 
 
 def test_cleanup_stale_update_files_removes_leftover_old_exe(tmp_path, monkeypatch):

@@ -65,9 +65,19 @@ def apply_update(download_url: str) -> None:
                 f.write(chunk)
 
     script_path = _write_updater_script(os.getpid(), current_exe, new_exe)
+    # CREATE_NO_WINDOW, not DETACHED_PROCESS: detached gives cmd.exe no console at all, and cmd
+    # runs every `|` pipeline stage by re-launching itself, which fails without one -- cmd died
+    # on the swap script's very first pipeline and nothing after it ever ran (silently, since the
+    # failure log line was itself past that point). CREATE_NO_WINDOW still shows no window but
+    # gives the child its own console, and an explicitly-detached parent isn't needed for it to
+    # outlive us. The DEVNULL handles matter too: a windowed build's own std handles are invalid,
+    # and children inherit them by default.
     subprocess.Popen(
         ["cmd", "/c", str(script_path)],
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         close_fds=True,
     )
     # Give the current HTTP response time to flush back to the browser/webview before this
@@ -95,17 +105,41 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
     # step still fails because of a lingering handle, main() sweeps up any leftover *.exe.old
     # (or, if the second move exhausts its retries, *_new.exe) on the next app start (see
     # cleanup_stale_update_files), once that lock is long gone.
+    #
+    # Two commands are deliberately avoided throughout the script because they need a console,
+    # which a background-launched updater can easily end up without (see apply_update):
+    #   - `a | b` pipelines: cmd runs each stage by re-launching itself, and dies outright if it
+    #     can't. The old `tasklist | find` wait loop killed the script on its first line, which is
+    #     why every swap silently no-op'd and left a stray _new.exe behind -- redirect to a temp
+    #     file and `find` in that file instead.
+    #   - `timeout`: exits immediately with "input redirection is not supported" when stdin isn't
+    #     a console, turning every retry pause into a busy spin -- `ping -n 2 127.0.0.1` sleeps
+    #     ~1s with no such requirement.
+    # Both loops re-expand %attempts% correctly despite being inside parenthesised blocks: `goto`
+    # makes cmd re-read and re-parse from the label each pass, so the value is never stale.
     log_path = current_exe.with_name("ragpoc.log")
     old_backup = current_exe.with_suffix(current_exe.suffix + ".old")
+    pid_probe = Path(tempfile.gettempdir()) / "ragpoc_update_pid.txt"
     script_path = Path(tempfile.gettempdir()) / "ragpoc_update.bat"
     script_path.write_text(
         "@echo off\r\n"
+        # Logged before anything can go wrong, so a swap that dies early leaves a trace instead of
+        # looking like the updater was never invoked at all.
+        f'echo [%date% %time%] Update: swap script started, waiting for pid {pid} to exit >> "{log_path}"\r\n'
+        "set attempts=0\r\n"
         ":wait\r\n"
-        f'tasklist /fi "PID eq {pid}" | find "{pid}" >nul\r\n'
+        f'tasklist /nh /fo csv /fi "PID eq {pid}" > "{pid_probe}" 2>nul\r\n'
+        f'find "{pid}" "{pid_probe}" >nul 2>&1\r\n'
         "if not errorlevel 1 (\r\n"
-        "  timeout /t 1 /nobreak >nul\r\n"
-        "  goto wait\r\n"
+        "  set /a attempts+=1\r\n"
+        "  if %attempts% LSS 60 (\r\n"
+        "    ping -n 2 127.0.0.1 >nul 2>&1\r\n"
+        "    goto wait\r\n"
+        "  )\r\n"
+        f'  echo [%date% %time%] Update failed: pid {pid} still running after 60s, aborting swap >> "{log_path}"\r\n'
+        "  goto cleanup\r\n"
         ")\r\n"
+        f'del /f /q "{pid_probe}" >nul 2>&1\r\n'
         f'if exist "{old_backup}" del /f /q "{old_backup}" >nul 2>&1\r\n'
         "set attempts=0\r\n"
         ":rename_retry\r\n"
@@ -113,7 +147,7 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
         "if errorlevel 1 (\r\n"
         "  set /a attempts+=1\r\n"
         "  if %attempts% LSS 15 (\r\n"
-        "    timeout /t 1 /nobreak >nul\r\n"
+        "    ping -n 2 127.0.0.1 >nul 2>&1\r\n"
         "    goto rename_retry\r\n"
         "  )\r\n"
         f'  echo [%date% %time%] Update failed: could not rename "{current_exe}" out of the way after 15 attempts >> "{log_path}"\r\n'
@@ -125,7 +159,7 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
         "if errorlevel 1 (\r\n"
         "  set /a attempts+=1\r\n"
         "  if %attempts% LSS 15 (\r\n"
-        "    timeout /t 1 /nobreak >nul\r\n"
+        "    ping -n 2 127.0.0.1 >nul 2>&1\r\n"
         "    goto install_retry\r\n"
         "  )\r\n"
         f'  echo [%date% %time%] Update failed: could not move new exe into place after 15 attempts, restoring previous version >> "{log_path}"\r\n'
@@ -133,8 +167,11 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
         "  goto relaunch\r\n"
         ")\r\n"
         f'del /f /q "{old_backup}" >nul 2>&1\r\n'
+        f'echo [%date% %time%] Update: new exe installed successfully >> "{log_path}"\r\n'
         ":relaunch\r\n"
         f'start "" "{current_exe}"\r\n'
+        ":cleanup\r\n"
+        f'del /f /q "{pid_probe}" >nul 2>&1\r\n'
         f'del "%~f0"\r\n',
         encoding="utf-8",
     )
