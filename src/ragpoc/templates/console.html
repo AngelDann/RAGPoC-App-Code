@@ -6322,12 +6322,12 @@
 
       try {
         if (type === 'workspace') {
-          workspace = await api('/api/workspaces', {
+          let created = await api('/api/workspaces', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name })
           });
-          await refresh();
+          await window.setWorkspace(created);
         } else if (type === 'notebook') {
           let wsId = parentId || workspace?.id;
           let n = await api('/api/notebooks', {
@@ -6534,6 +6534,7 @@
 
     window.setWorkspace = async function (ws) {
       workspace = ws;
+      if (ws?.id) localStorage.setItem('ragpocWorkspaceId', ws.id);
       await refresh();
     };
 
@@ -7155,30 +7156,44 @@
     }
 
     async function initWorkspace() {
+      // Try the last workspace this browser profile actually opened first — reliable, no
+      // guessing. "ws-demo-01" below only ever matches a workspace someone created by hand
+      // with that literal id, so it's a harmless legacy probe, not a real seed value: on a
+      // real install this almost always falls through to listing every workspace and taking
+      // the first one, which is why remembering the id going forward matters.
+      let candidateIds = [localStorage.getItem('ragpocWorkspaceId'), 'ws-demo-01'].filter(Boolean);
+
+      for (let id of candidateIds) {
+        try {
+          let tree = await api('/api/workspaces/' + id + '/tree');
+          if (tree && tree.id) {
+            workspace = { id: tree.id, name: tree.name };
+            localStorage.setItem('ragpocWorkspaceId', tree.id);
+            await refresh();
+            if (tree.notebooks.length && tree.notebooks[0].pages.length) {
+              await openPage(tree.notebooks[0].pages[0].id);
+            }
+            return;
+          }
+        } catch (e) {
+          // try the next candidate
+        }
+      }
+
+      // Fallback: list every workspace and open the first one
       try {
-        let tree = await api('/api/workspaces/ws-demo-01/tree');
-        if (tree && tree.id) {
+        let wsList = await api('/api/workspaces');
+        if (wsList && wsList.length) {
+          let tree = await api('/api/workspaces/' + wsList[0].id + '/tree');
           workspace = { id: tree.id, name: tree.name };
+          localStorage.setItem('ragpocWorkspaceId', tree.id);
           await refresh();
           if (tree.notebooks.length && tree.notebooks[0].pages.length) {
             await openPage(tree.notebooks[0].pages[0].id);
           }
         }
-      } catch (e) {
-        // Fallback: try finding first workspace
-        try {
-          let wsList = await api('/api/workspaces');
-          if (wsList && wsList.length) {
-            let tree = await api('/api/workspaces/' + wsList[0].id + '/tree');
-            workspace = { id: tree.id, name: tree.name };
-            await refresh();
-            if (tree.notebooks.length && tree.notebooks[0].pages.length) {
-              await openPage(tree.notebooks[0].pages[0].id);
-            }
-          }
-        } catch (err2) {
-          console.error('No workspace found:', err2);
-        }
+      } catch (err2) {
+        console.error('No workspace found:', err2);
       }
     }
 

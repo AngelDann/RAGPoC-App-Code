@@ -128,6 +128,22 @@ def app_settings_view(request: HttpRequest) -> JsonResponse:
 
 @csrf_exempt
 def create_workspace(request: HttpRequest) -> JsonResponse:
+    if request.method == "GET":
+        # The frontend's initWorkspace() falls back here when it doesn't already know a
+        # workspace id (e.g. first launch after the browser/webview profile's localStorage
+        # was reset) -- without this, a user with real data but no remembered workspace id
+        # had no way to ever discover it again, and the app would look permanently empty.
+        workspaces = Workspace.objects.all().order_by("created_at")
+        return JsonResponse([
+            {
+                "id": ws.id,
+                "name": ws.name,
+                "created_at": ws.created_at.isoformat(),
+                "updated_at": ws.updated_at.isoformat(),
+            }
+            for ws in workspaces
+        ], safe=False)
+
     if request.method != "POST":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
     try:

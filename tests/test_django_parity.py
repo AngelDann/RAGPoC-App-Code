@@ -120,6 +120,31 @@ def test_django_workspace_notebook_and_page_crud():
 
 
 @pytest.mark.django_db
+def test_django_list_workspaces():
+    # This is the fallback the frontend's initWorkspace() relies on when it doesn't already
+    # know a workspace id (e.g. a fresh browser/webview profile) -- it must return every
+    # workspace, not 405, or a user with real data but no remembered id can never find it again.
+    client = Client()
+    resp = client.get("/api/workspaces", **auth_header())
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+    created = client.post(
+        "/api/workspaces",
+        data=json.dumps({"name": "Personal"}),
+        content_type="application/json",
+        **auth_header(),
+    ).json()
+
+    resp = client.get("/api/workspaces", **auth_header())
+    assert resp.status_code == 200
+    listing = resp.json()
+    assert len(listing) == 1
+    assert listing[0]["id"] == created["id"]
+    assert listing[0]["name"] == "Personal"
+
+
+@pytest.mark.django_db
 def test_django_page_content_update_with_plain_text():
     client = Client()
     ws = client.post("/api/workspaces", data=json.dumps({"name": "Personal"}), content_type="application/json", **auth_header()).json()
