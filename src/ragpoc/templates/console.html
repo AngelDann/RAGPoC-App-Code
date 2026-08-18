@@ -2879,6 +2879,13 @@
         <div class="text-muted" style="font-size:10.5px;">Subtítulo mediano</div>
       </div>
     </div>
+    <div class="slash-item" data-slash-cmd="h3" data-slash-kw="h3 heading3 subencabezado3 subheading3">
+      <div class="slash-icon text-dark"><i class="bi bi-type-h3"></i></div>
+      <div>
+        <div class="fw-bold small">Encabezado 3</div>
+        <div class="text-muted" style="font-size:10.5px;">Subtítulo pequeño</div>
+      </div>
+    </div>
     <div class="slash-item" data-slash-cmd="bullet" data-slash-kw="lista vinetas viñetas bullet bulletlist ul">
       <div class="slash-icon text-dark"><i class="bi bi-list-ul"></i></div>
       <div>
@@ -2886,11 +2893,25 @@
         <div class="text-muted" style="font-size:10.5px;">Crea una lista simple</div>
       </div>
     </div>
+    <div class="slash-item" data-slash-cmd="ordered" data-slash-kw="lista numerada numeros números ordered orderedlist ol">
+      <div class="slash-icon text-dark"><i class="bi bi-list-ol"></i></div>
+      <div>
+        <div class="fw-bold small">Lista numerada</div>
+        <div class="text-muted" style="font-size:10.5px;">Crea una lista con números</div>
+      </div>
+    </div>
     <div class="slash-item" data-slash-cmd="quote" data-slash-kw="cita quote blockquote">
       <div class="slash-icon text-dark"><i class="bi bi-quote"></i></div>
       <div>
         <div class="fw-bold small">Cita</div>
         <div class="text-muted" style="font-size:10.5px;">Bloque de cita editorial</div>
+      </div>
+    </div>
+    <div class="slash-item" data-slash-cmd="divider" data-slash-kw="linea línea divisoria divisor separador hr horizontal rule">
+      <div class="slash-icon text-dark"><i class="bi bi-hr"></i></div>
+      <div>
+        <div class="fw-bold small">Línea divisoria</div>
+        <div class="text-muted" style="font-size:10.5px;">Separa secciones de la página</div>
       </div>
     </div>
     <div class="slash-item" data-slash-cmd="codeblock" data-slash-kw="codigo code codeblock json python markdown sql bash">
@@ -2912,6 +2933,13 @@
       <div>
         <div class="fw-bold small">Embed</div>
         <div class="text-muted" style="font-size:10.5px;">Incrusta un sitio web por URL</div>
+      </div>
+    </div>
+    <div class="slash-item" data-slash-cmd="media" data-slash-kw="imagen video audio archivo documento media upload subir file image">
+      <div class="slash-icon text-dark"><i class="bi bi-plus-square"></i></div>
+      <div>
+        <div class="fw-bold small">Imagen, Video, Audio o Documento</div>
+        <div class="text-muted" style="font-size:10.5px;">Sube y adjunta un archivo</div>
       </div>
     </div>
     <div class="text-muted small p-3 text-center" id="slash-menu-empty" style="display:none;">Sin resultados</div>
@@ -4458,10 +4486,16 @@
         editor.chain().focus().toggleHeading({ level: 1 }).run();
       } else if (cmd === 'h2') {
         editor.chain().focus().toggleHeading({ level: 2 }).run();
+      } else if (cmd === 'h3') {
+        editor.chain().focus().toggleHeading({ level: 3 }).run();
       } else if (cmd === 'bullet') {
         editor.chain().focus().toggleBulletList().run();
+      } else if (cmd === 'ordered') {
+        editor.chain().focus().toggleOrderedList().run();
       } else if (cmd === 'quote') {
         editor.chain().focus().toggleBlockquote().run();
+      } else if (cmd === 'divider') {
+        editor.chain().focus().setHorizontalRule().run();
       } else if (cmd === 'codeblock') {
         editor.chain().focus().toggleCodeBlock().run();
       } else if (cmd === 'table') {
@@ -4469,6 +4503,8 @@
       } else if (cmd === 'embed') {
         let url = await openInputModal('Insertar Sitio Web', 'https://', 'URL a embeber', { type: 'url', placeholder: 'https://ejemplo.com' });
         if (url) editor.chain().focus().insertContent([{ type: 'embedBlock', attrs: { url: normalizeEmbedUrl(url) } }]).run();
+      } else if (cmd === 'media') {
+        $('#inline-media-file').click();
       }
     }
 
