@@ -49,11 +49,12 @@ def console_view(request: HttpRequest) -> HttpResponse:
 
 
 def favicon_view(request: HttpRequest) -> HttpResponse:
-    # Try project root assets, then frozen PyInstaller assets
-    base_dirs = [
-        Path(__file__).resolve().parent.parent.parent / "assets",
-        Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve().parent / "assets",
-    ]
+    # Dev/source mode: assets/ lives at the repo root. Frozen PyInstaller build: the assets/
+    # datas entry in ragpoc.spec gets extracted to sys._MEIPASS at runtime, not next to the .exe
+    # itself and not one level above _MEIPASS -- those would silently 404 here.
+    base_dirs = [Path(__file__).resolve().parent.parent.parent / "assets"]
+    if getattr(sys, "frozen", False):
+        base_dirs.append(Path(sys._MEIPASS) / "assets")
     for bdir in base_dirs:
         fav = bdir / "favicon.ico"
         if fav.exists():
