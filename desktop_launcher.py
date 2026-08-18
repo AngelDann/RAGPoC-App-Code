@@ -74,6 +74,11 @@ def main():
     from django.core.management import call_command
 
     from ragpoc.config import get_settings
+    from ragpoc.updater import cleanup_stale_update_files
+
+    # Sweeps any *.exe.old left behind by a self-update whose final cleanup step lost a file
+    # lock race (see ragpoc.updater._write_updater_script) — by now that lock is long gone.
+    cleanup_stale_update_files()
 
     # The sqlite file (and uploads/renders/derived dirs) live under a data/
     # folder that may not exist yet on a fresh install — Django's sqlite

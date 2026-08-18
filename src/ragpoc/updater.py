@@ -76,16 +76,24 @@ def apply_update(download_url: str) -> None:
 
 
 def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
-    # Windows can keep an exited process's own .exe file locked (memory-mapped image unmap,
-    # antivirus real-time scan of the freshly-downloaded new_exe, etc.) for a moment after
-    # tasklist already stops listing its PID -- a single unretried `move` can lose that race,
-    # and since nothing here checked its exit code, the failure was silent: the app just kept
-    # launching the untouched old exe while a "_new.exe" sat next to it forever. Next update
-    # attempt then treats THAT stale copy as current_exe and downloads a "_new_new.exe" on
-    # top of it, compounding one silent failure into a pile of duplicate binaries. Retrying
-    # the move for up to ~15s covers that race; a log line on the rare case it still fails
-    # makes the failure discoverable instead of silent.
+    # A single unretried `move` of new_exe straight over current_exe kept losing a race against
+    # Windows/antivirus still holding the just-exited process's own .exe file locked: it failed
+    # silently (nothing checked its exit code), the app just kept launching the untouched old
+    # exe while a "_new.exe" sat next to it forever, and the next update attempt then treated
+    # THAT stale copy as current_exe -- one silent failure compounding into a pile of duplicate
+    # binaries. A retry loop around that same overwrite helped but wasn't enough: it can still
+    # lose if the lock outlasts the retry window (large exe under antivirus scan, etc.).
+    #
+    # The robust fix (the pattern mature Windows auto-updaters use, e.g. Squirrel.Windows) is to
+    # never overwrite an in-use file at all: Windows allows *renaming* a running process's own
+    # exe even while it's still mapped/executing (unlike overwriting it), so current_exe is
+    # renamed out of the way first -- which almost always succeeds immediately -- and only then
+    # is new_exe moved into the now-free canonical path, which is just a move into empty space
+    # and can't lose a lock race. The renamed-away old exe is deleted best-effort; if that one
+    # step still fails because of a lingering handle, main() sweeps up any leftover *.exe.old
+    # file on the next app start (see cleanup_stale_update_files), once that lock is long gone.
     log_path = current_exe.with_name("ragpoc.log")
+    old_backup = current_exe.with_suffix(current_exe.suffix + ".old")
     script_path = Path(tempfile.gettempdir()) / "ragpoc_update.bat"
     script_path.write_text(
         "@echo off\r\n"
@@ -95,19 +103,47 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
         "  timeout /t 1 /nobreak >nul\r\n"
         "  goto wait\r\n"
         ")\r\n"
+        f'if exist "{old_backup}" del /f /q "{old_backup}" >nul 2>&1\r\n'
         "set attempts=0\r\n"
-        ":move_retry\r\n"
-        f'move /y "{new_exe}" "{current_exe}" >nul 2>&1\r\n'
+        ":rename_retry\r\n"
+        f'move /y "{current_exe}" "{old_backup}" >nul 2>&1\r\n'
         "if errorlevel 1 (\r\n"
         "  set /a attempts+=1\r\n"
         "  if %attempts% LSS 15 (\r\n"
         "    timeout /t 1 /nobreak >nul\r\n"
-        "    goto move_retry\r\n"
+        "    goto rename_retry\r\n"
         "  )\r\n"
-        f'  echo [%date% %time%] Update swap failed after 15 attempts: could not move "{new_exe}" over "{current_exe}" >> "{log_path}"\r\n'
+        f'  echo [%date% %time%] Update failed: could not rename "{current_exe}" out of the way after 15 attempts >> "{log_path}"\r\n'
+        "  goto relaunch\r\n"
         ")\r\n"
+        f'move /y "{new_exe}" "{current_exe}" >nul 2>&1\r\n'
+        "if errorlevel 1 (\r\n"
+        f'  echo [%date% %time%] Update failed: could not move new exe into place, restoring previous version >> "{log_path}"\r\n'
+        f'  move /y "{old_backup}" "{current_exe}" >nul 2>&1\r\n'
+        "  goto relaunch\r\n"
+        ")\r\n"
+        f'del /f /q "{old_backup}" >nul 2>&1\r\n'
+        ":relaunch\r\n"
         f'start "" "{current_exe}"\r\n'
         f'del "%~f0"\r\n',
         encoding="utf-8",
     )
     return script_path
+
+
+def cleanup_stale_update_files() -> None:
+    """Best-effort sweep for *.exe.old leftovers from an update whose final cleanup step lost
+    a lock race (see _write_updater_script) -- called on every startup of the frozen build, by
+    which point whatever process held the old exe locked has long since exited. Never raises:
+    this is opportunistic housekeeping, not something that should ever block startup."""
+    if not getattr(sys, "frozen", False):
+        return
+    try:
+        current_exe = Path(sys.executable).resolve()
+        for stale in current_exe.parent.glob("*.exe.old"):
+            try:
+                stale.unlink()
+            except OSError:
+                pass
+    except OSError:
+        pass
