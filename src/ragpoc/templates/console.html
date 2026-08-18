@@ -547,6 +547,9 @@
       color: var(--text-secondary);
       cursor: pointer;
       transition: all 0.12s ease;
+      /* Fixed-size icon button: never let a sibling with more content (e.g. a long thread
+         name in a select next to it) squeeze this one out of its own space. */
+      flex-shrink: 0;
     }
 
     .action-mini-btn:hover {
@@ -1883,6 +1886,17 @@
     /* Custom dropdown (replaces native <select> rendering, see craftifySelect()) */
     .craft-select-wrap {
       position: relative;
+      /* Lets a long selected label (e.g. a long chat thread name) actually shrink and
+         ellipsize via .craft-select-trigger-label's own overflow:hidden, instead of forcing
+         this wrap wider than its flex row and pushing sibling buttons (rename/delete) out of
+         the visible panel -- the classic flex "min-width:auto" trap. */
+      min-width: 0;
+    }
+
+    /* When the wrap sits alongside fixed-size icon buttons in a flex row (e.g. the thread
+       selector's rename/delete buttons), let it be the one that shrinks. */
+    .d-flex > .craft-select-wrap.w-100 {
+      flex: 1 1 auto;
     }
 
     .craft-select-native {
@@ -4156,6 +4170,7 @@
     let currentNotebookId = null;
     let editor = null;
     let currentThreadId = null;
+    let chatStreamActive = false;
     let pendingChatAttachments = [];
     let collapsedNotebooks = new Set();
     let pendingDeleteAction = null;
@@ -4550,6 +4565,49 @@
       if (items[selectedSlashIdx]) items[selectedSlashIdx].scrollIntoView({ block: 'nearest' });
     }
 
+    // Handle keyboard navigation inside slash menu.
+    // Registered once here at module scope (NOT inside openPage(), which runs on every page
+    // switch) — an earlier version lived inside openPage() and re-registered a fresh listener
+    // on every switch without ever removing the old one, so after N page switches a single
+    // ArrowDown press fired N accumulated listeners, each advancing selectedSlashIdx by one,
+    // making the selection jump past several items instead of moving by one.
+    // Capture:true (not on editor.view.dom) so it runs BEFORE ProseMirror's own Enter/Arrow
+    // keymap: listeners on the same DOM node fire in registration order, and Tiptap's internal
+    // handler is attached to editor.view.dom the moment the Editor is constructed — after that,
+    // calling preventDefault() from a listener added later is too late, ProseMirror has already
+    // split the paragraph. A capture-phase listener on an ancestor (document) always runs first
+    // regardless of when it was registered.
+    document.addEventListener('keydown', e => {
+      if (!slashPopup.classList.contains('active')) return;
+      if (!editor || !editor.isFocused) return;
+      let items = visibleSlashItems();
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!items.length) return;
+        selectedSlashIdx = (selectedSlashIdx + 1) % items.length;
+        updateSlashSelection();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!items.length) return;
+        selectedSlashIdx = (selectedSlashIdx - 1 + items.length) % items.length;
+        updateSlashSelection();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!items.length) return;
+        let selectedItem = items[selectedSlashIdx];
+        if (selectedItem) {
+          executeSlashCommand(selectedItem.dataset.slashCmd);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeSlashMenu();
+      }
+    }, true);
+
     function openNotionAiBar(coords, defaultPrompt = '', action = 'ask') {
       closeSlashMenu();
       if (coords && coords.top > 0) {
@@ -4594,6 +4652,48 @@
       let endPos = startPos + placeholder.length;
       let rawText = '';
       let firstToken = true;
+      let renderTimer = null;
+      // Snapshot which page this generation targets, before the (multi-second, for a long
+      // answer) wait for the stream to finish -- currentPage/editor are reassigned by openPage()
+      // on every page switch, so touching them from here after the user has navigated away used
+      // to insert generated text into whatever page happened to be open when a token arrived,
+      // and savePage() would then persist that onto the wrong page.
+      let targetPageId = currentPage?.id;
+      function onTargetPage() { return currentPage?.id === targetPageId; }
+
+      // Re-parses the FULL accumulated markdown on every tick and replaces [startPos, endPos]
+      // with the result, instead of inserting each raw token as literal text and only running
+      // marked.parse() once at the very end. The literal-insert approach used to leave the
+      // model's raw markdown syntax (**bold**, "- " list dashes, *italic*) sitting visible in
+      // the note for the whole generation -- confirmed by capturing the actual token stream
+      // directly: the very first chunk is delivered as "**Arquitectura híbrida**\n- Combina...",
+      // asterisks and all. Re-parsing on each tick means the user only ever sees real formatted
+      // output, matching how the main chat panel already streams (see scheduleRender/flushRender
+      // in the /chat/stream handler below). Position tracking: replacing [startPos, endPos] with
+      // HTML of unknown resulting node-size, then reading the doc's new content.size straight
+      // after the transaction, is the only reliable way to find the new endPos -- Tiptap doesn't
+      // guarantee the post-insert selection lands at the end of what was just inserted.
+      function renderBuffer() {
+        if (!onTargetPage()) return;
+        let sizeBefore = editor.state.doc.content.size;
+        let html = marked.parse(rawText);
+        editor.chain().insertContentAt({ from: startPos, to: endPos }, html).run();
+        endPos += editor.state.doc.content.size - sizeBefore;
+      }
+      function scheduleRender() {
+        if (renderTimer) return;
+        renderTimer = setTimeout(() => {
+          renderTimer = null;
+          renderBuffer();
+        }, 80);
+      }
+      function flushRender() {
+        if (renderTimer) {
+          clearTimeout(renderTimer);
+          renderTimer = null;
+        }
+        renderBuffer();
+      }
 
       try {
         let fullContext = editor.getText();
@@ -4630,35 +4730,37 @@
             let ev = JSON.parse(raw.slice(6));
 
             if (ev.type === 'token') {
-              if (firstToken) {
+              if (firstToken && onTargetPage()) {
                 // Clear the "Generando…" placeholder as soon as real content starts arriving
                 editor.chain().insertContentAt({ from: startPos, to: endPos }, '').run();
                 endPos = startPos;
-                firstToken = false;
               }
-              // insertContentAt parses a string argument as HTML, so raw "<"/"&" in the
-              // model's output (code snippets, generics like List<String>, etc.) must be
-              // escaped or it'd get misread as markup instead of inserted as literal text.
-              editor.chain().insertContentAt(endPos, esc(ev.text)).run();
-              endPos += ev.text.length;
+              firstToken = false;
               rawText += ev.text;
+              scheduleRender();
             }
             if (ev.type === 'error') {
               streamErr = ev.message;
             }
             if (ev.type === 'done') {
-              // Snap the raw streamed text into properly formatted rich content
-              let html = marked.parse(rawText);
-              editor.chain().insertContentAt({ from: startPos, to: endPos }, html).run();
+              flushRender();
             }
           }
         }
 
         if (streamErr) throw new Error(streamErr);
-        await savePage();
+        if (onTargetPage()) {
+          await savePage();
+        } else {
+          showToast('Generación de IA terminada, pero navegaste a otra página antes de que acabara — el texto no se insertó.', 'warning');
+        }
       } catch (err) {
-        // Wipe whatever placeholder/partial text is still sitting in the note before surfacing the error
-        editor.chain().insertContentAt({ from: startPos, to: endPos }, '').run();
+        // Wipe whatever placeholder/partial text is still sitting in the note before surfacing
+        // the error -- only if this is still the same page; on a different page now, that range
+        // belongs to unrelated content and must not be touched.
+        if (onTargetPage()) {
+          editor.chain().insertContentAt({ from: startPos, to: endPos }, '').run();
+        }
         showToast('Error en generación: ' + err.message, 'error');
       } finally {
         submitBtn.disabled = false;
@@ -6943,6 +7045,15 @@
     // must not linger, or the chat looks like it's mixing conversations from everywhere.
     async function refreshChatForNotebookSwitch() {
       if ($('#chat-scope').value !== 'notebook') return;
+      if (chatStreamActive) {
+        // A /chat/stream request is still being read into the current #chat-log. Wiping it now
+        // wouldn't stop the server from finishing the generation and saving it (confirmed: the
+        // ChatMessage row lands in the DB regardless) -- it would just make the in-progress
+        // answer disappear from the screen with no trace, indistinguishable from the request
+        // having been cut off. Leave the panel showing the in-flight conversation; it re-syncs
+        // to the new notebook's threads on the next scope-affecting action once the stream ends.
+        return;
+      }
       resetChatView('Asistente de Conocimiento', 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.');
       await loadThreadsForScope();
     }
@@ -7593,44 +7704,6 @@
         };
       })();
 
-      // Handle keyboard navigation inside slash menu.
-      // Registered on `document` with capture:true (not on editor.view.dom) so it runs
-      // BEFORE ProseMirror's own Enter/Arrow keymap: listeners on the same DOM node fire
-      // in registration order, and Tiptap's internal handler is attached to editor.view.dom
-      // the moment the Editor is constructed — after that, calling preventDefault() from a
-      // listener added later is too late, ProseMirror has already split the paragraph.
-      // A capture-phase listener on an ancestor (document) always runs first regardless.
-      document.addEventListener('keydown', e => {
-        if (!slashPopup.classList.contains('active')) return;
-        if (!editor || !editor.isFocused) return;
-        let items = visibleSlashItems();
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!items.length) return;
-          selectedSlashIdx = (selectedSlashIdx + 1) % items.length;
-          updateSlashSelection();
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!items.length) return;
-          selectedSlashIdx = (selectedSlashIdx - 1 + items.length) % items.length;
-          updateSlashSelection();
-        } else if (e.key === 'Enter') {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!items.length) return;
-          let selectedItem = items[selectedSlashIdx];
-          if (selectedItem) {
-            executeSlashCommand(selectedItem.dataset.slashCmd);
-          }
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          e.stopPropagation();
-          closeSlashMenu();
-        }
-      }, true);
-
       document.querySelectorAll('[data-c]').forEach(b => {
         b.onclick = () => {
           let cmd = b.dataset.c;
@@ -7700,7 +7773,59 @@
       await loadThreadsForScope();
     }
 
+    // Builds the same ProseMirror node shapes insertMediaIntoEditor() inserts live, for the case
+    // where the upload finished after the user already navigated away from the page it belongs
+    // to -- see persistMediaToPage() below.
+    function mediaContentNodesJSON(mediaUrl, mediaType, originalFilename, docId = '', byteSize = 0) {
+      if (mediaType === 'image') {
+        return [{ type: 'image', attrs: { src: mediaUrl, alt: originalFilename } }];
+      } else if (mediaType === 'video') {
+        return [
+          { type: 'videoBlock', attrs: { src: mediaUrl, filename: originalFilename } },
+          { type: 'paragraph', content: [] },
+        ];
+      } else if (mediaType === 'audio' || originalFilename.endsWith('.mp3') || originalFilename.endsWith('.wav')) {
+        return [
+          { type: 'audioBlock', attrs: { src: mediaUrl, filename: originalFilename } },
+          { type: 'paragraph', content: [] },
+        ];
+      }
+      return [
+        {
+          type: 'fileBlock',
+          attrs: { docId: docId || '', filename: originalFilename, mediaType: mediaType || 'file', byteSize: byteSize || 0, url: mediaUrl },
+        },
+        { type: 'paragraph', content: [] },
+      ];
+    }
+
+    // Appends the uploaded media block straight through the API instead of the live editor --
+    // used when the page the upload was started on is no longer the one open on screen. The
+    // live `editor`/`currentPage` globals get reassigned by openPage() on every page switch, so
+    // touching them from a completion callback that started before the switch used to insert
+    // the finished upload into whatever page happened to be open when it landed (and savePage()
+    // would then persist that onto the wrong page's content) instead of the page it was actually
+    // uploaded to.
+    async function persistMediaToPage(pageId, mediaUrl, mediaType, originalFilename, docId, byteSize) {
+      let page = await api('/api/pages/' + pageId);
+      let doc = page.content_json && page.content_json.type === 'doc' ? page.content_json : { type: 'doc', content: [] };
+      doc.content = [...(doc.content || []), ...mediaContentNodesJSON(mediaUrl, mediaType, originalFilename, docId, byteSize)];
+      await api('/api/pages/' + pageId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: page.title,
+          content_json: doc,
+          plain_text: (page.plain_text || '') + `\n[Adjunto: ${originalFilename}]`,
+        }),
+      });
+    }
+
     async function handleMediaUploadAndInsert(file) {
+      // Snapshot which page this upload belongs to now, before the (potentially minutes-long)
+      // upload+indexing wait -- currentPage may point at a different page entirely by the time
+      // this resolves.
+      let targetPageId = currentPage.id;
       let progressContainer = $('#upload-progress-container');
       let progressBar = $('#upload-progress-bar');
       let progressLabel = $('#upload-progress-label');
@@ -7717,7 +7842,14 @@
         let form = new FormData();
         form.append('file', file);
 
-        // Upload with XHR to track real network upload progress
+        // Upload with XHR to track real network upload progress. The network transfer itself
+        // (0-70%) is usually near-instant on this local server; the slow part for video/large
+        // files is what happens AFTER all bytes arrive — ffmpeg segmenting, transcription,
+        // embeddings — which runs synchronously inside the request with no progress signal of
+        // its own, so xhr.onload only fires once everything is fully done. Without the crawl
+        // below the bar just sits frozen at 70% for however long that takes (minutes, for a
+        // 15-minute video), which reads as the upload having hung.
+        let crawlTimer = null;
         let result = await new Promise((resolve, reject) => {
           let xhr = new XMLHttpRequest();
           xhr.open('POST', '/api/pages/' + currentPage.id + '/attachments');
@@ -7730,11 +7862,26 @@
             }
           };
 
+          xhr.upload.onload = () => {
+            // All bytes are on the server now; the request just hasn't resolved yet because
+            // it's still indexing. Make that visible instead of leaving the bar looking stuck.
+            if (progressLabel) progressLabel.textContent = 'Procesando e indexando (puede tardar varios minutos en videos largos)…';
+            let percent = 70;
+            crawlTimer = setInterval(() => {
+              percent = Math.min(percent + 1, 95);
+              if (progressBar) progressBar.style.width = percent + '%';
+              if (progressPercent) progressPercent.textContent = percent + '%';
+            }, 2000);
+          };
+
           xhr.onload = () => {
+            if (crawlTimer) { clearInterval(crawlTimer); crawlTimer = null; }
             if (xhr.status >= 200 && xhr.status < 300) {
-              if (progressBar) progressBar.style.width = '85%';
-              if (progressPercent) progressPercent.textContent = '85%';
-              if (progressLabel) progressLabel.textContent = 'Generando embeddings y guardando vectores…';
+              // Embeddings are already generated and saved by the time the response comes
+              // back — the crawl above covered that wait — so jump straight to done instead
+              // of dropping back down to a lower, now-inaccurate percentage.
+              if (progressBar) progressBar.style.width = '97%';
+              if (progressPercent) progressPercent.textContent = '97%';
               resolve(JSON.parse(xhr.responseText));
             } else {
               let errText = 'Error en subida';
@@ -7743,7 +7890,10 @@
             }
           };
 
-          xhr.onerror = () => reject(new Error('Fallo de red durante la subida.'));
+          xhr.onerror = () => {
+            if (crawlTimer) { clearInterval(crawlTimer); crawlTimer = null; }
+            reject(new Error('Fallo de red durante la subida.'));
+          };
           xhr.send(form);
         });
 
@@ -7755,10 +7905,14 @@
         if (progressPercent) progressPercent.textContent = '100%';
         if (progressLabel) progressLabel.textContent = '✓ ¡Archivo indexado e insertado!';
 
-        insertMediaIntoEditor(mediaUrl, mediaType, doc.original_filename, doc.id, doc.byte_size);
-        await savePage();
-
-        await loadAttachmentsPanel();
+        if (currentPage?.id === targetPageId) {
+          insertMediaIntoEditor(mediaUrl, mediaType, doc.original_filename, doc.id, doc.byte_size);
+          await savePage();
+          await loadAttachmentsPanel();
+        } else {
+          await persistMediaToPage(targetPageId, mediaUrl, mediaType, doc.original_filename, doc.id, doc.byte_size);
+          showToast(`"${doc.original_filename}" se indexó y se insertó en la página donde lo subiste (ya no es la que tienes abierta).`, 'success');
+        }
 
         setTimeout(() => {
           if (progressContainer) progressContainer.style.display = 'none';
@@ -8202,6 +8356,7 @@
       let execIndicator = asstMsg.querySelector('#agent-exec-indicator');
       let asstHeader = asstMsg.querySelector('#asst-header-row');
 
+      chatStreamActive = true;
       try {
         // "notebook" scope needs a resolvable notebook, which isn't guaranteed (e.g. chatting
         // from the workspace root with nothing open yet), so fall back to "workspace" instead of
@@ -8273,6 +8428,48 @@
           log.scrollTop = log.scrollHeight;
         };
 
+        // Mirrors the agent's create_workspace_page/update_page_notes output live into the
+        // editor, but ONLY while the target page is the one actually open on screen -- captured
+        // once, on the first page_write_token, since editor/currentPage are reassigned by
+        // openPage() on every page switch and touching them after the user has navigated away
+        // would insert the agent's text into the wrong page (same hazard as the notion-ai-bar
+        // streaming fix above). If the target isn't the open page (the common case: the user is
+        // still chatting while the agent writes elsewhere), nothing here runs at all -- the
+        // backend already persisted it, and the page_written handler below shows a toast once
+        // it's done. Debounced re-parse-the-whole-buffer-each-tick, not raw character insertion,
+        // for the same reason the inline "/ai-ask" bar was fixed to do it: literal markdown
+        // syntax must never flash on screen while it streams.
+        let pageWriteTargetId = null;
+        let pageWriteBuffer = '';
+        let pageWriteStartPos = null;
+        let pageWriteEndPos = null;
+        let pageWriteRenderTimer = null;
+
+        function pageWriteOnTargetPage() {
+          return pageWriteTargetId != null && currentPage?.id === pageWriteTargetId;
+        }
+        function renderPageWriteBuffer() {
+          if (!pageWriteOnTargetPage()) return;
+          let sizeBefore = editor.state.doc.content.size;
+          let html = marked.parse(pageWriteBuffer);
+          editor.chain().insertContentAt({ from: pageWriteStartPos, to: pageWriteEndPos }, html).run();
+          pageWriteEndPos += editor.state.doc.content.size - sizeBefore;
+        }
+        function schedulePageWriteRender() {
+          if (pageWriteRenderTimer) return;
+          pageWriteRenderTimer = setTimeout(() => {
+            pageWriteRenderTimer = null;
+            renderPageWriteBuffer();
+          }, 80);
+        }
+        function flushPageWriteRender() {
+          if (pageWriteRenderTimer) {
+            clearTimeout(pageWriteRenderTimer);
+            pageWriteRenderTimer = null;
+          }
+          renderPageWriteBuffer();
+        }
+
         while (true) {
           let { value, done } = await reader.read();
           if (done) break;
@@ -8306,6 +8503,31 @@
               if (asstHeader) asstHeader.style.setProperty('display', 'flex', 'important');
               fullAnswerMarkdown += ev.text;
               scheduleRender();
+            }
+            if (ev.type === 'page_write_token') {
+              if (pageWriteTargetId === null) {
+                pageWriteTargetId = ev.page_id;
+                if (pageWriteOnTargetPage()) {
+                  pageWriteStartPos = editor.state.doc.content.size;
+                  pageWriteEndPos = pageWriteStartPos;
+                }
+              }
+              pageWriteBuffer += ev.text;
+              schedulePageWriteRender();
+            }
+            if (ev.type === 'page_written') {
+              flushPageWriteRender();
+              // The agent wrote directly to a page's content in the DB (create_workspace_page /
+              // update_page_notes tools) — the sidebar tree and, if it's the page currently open
+              // in the editor, the editor itself have no other way to find out, so without this
+              // the write is invisible until the user navigates away and back.
+              refresh();
+              if (currentPage && ev.page_id === currentPage.id) {
+                openPage(currentPage.id);
+                showToast(`El asistente actualizó la nota "${ev.title}".`, 'success');
+              } else {
+                showToast(`El asistente ${ev.action === 'created' ? 'creó' : 'actualizó'} la página "${ev.title}".`, 'success');
+              }
             }
             if (ev.type === 'error') {
               if (execIndicator) execIndicator.style.display = 'none';
@@ -8366,6 +8588,8 @@
         errDiv.className = 'text-danger small mt-2';
         errDiv.textContent = 'Error: ' + err.message;
         asstMsg.appendChild(errDiv);
+      } finally {
+        chatStreamActive = false;
       }
     };
 

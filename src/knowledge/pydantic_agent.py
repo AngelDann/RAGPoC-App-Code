@@ -4,6 +4,7 @@ import asyncio
 import re
 import urllib.request
 from dataclasses import dataclass
+from typing import Callable
 
 from asgiref.sync import sync_to_async
 from ddgs import DDGS
@@ -26,6 +27,19 @@ class AgentDeps:
     notebook_id: str | None = None
     workspace_id: str | None = None
     attached_docs_context: str = ""
+    # Lets page-writing tools notify the SSE stream so the frontend can refresh the sidebar
+    # tree and, if it's the page currently open in the editor, reload it — otherwise a
+    # create_workspace_page/update_page_notes write lands silently in the DB and the open
+    # editor keeps showing stale content until the user navigates away and back.
+    on_tool_event: Callable[[dict], None] | None = None
+    # Set by create_workspace_page/update_page_notes to hand off to chat_stream_view's own
+    # token loop: those tools no longer take the page content as an argument (a tool-call
+    # argument only reaches Python once the model has finished generating the whole thing, so
+    # there was no way to stream it token-by-token into the page). Instead they prepare a
+    # target page id and set this dict; the model's NEXT text-producing step (which pydantic-ai
+    # already exposes token-by-token via stream_text) is mirrored live into that page as it
+    # arrives, and persisted once the turn's text stream ends. See chat_stream_view.
+    page_write_state: dict | None = None
 
 
 SYSTEM_PROMPT = """Eres el asistente de conocimiento y copiloto operativo RAGPoC potenciado por PydanticAI (inspirado en Hermes Agent).
@@ -39,8 +53,8 @@ HERRAMIENTAS DISPONIBLES:
 3. `add_source_to_knowledge_base`: Guarda e indexa URLs o notas de texto en la base vectorial, a nivel de cuaderno.
 4. `manage_memory`: Guarda, actualiza o elimina hechos duraderos sobre el usuario, preferencias, convenciones y lecciones aprendidas (estilo Hermes memory).
 5. `manage_skill`: Crea, consulta o actualiza habilidades y flujos de trabajo reutilizables (estilo Hermes skills).
-6. `create_workspace_page`: Crea una nueva página dentro del cuaderno activo o especificado con título y contenido Markdown.
-7. `update_page_notes`: Añade contenido, edita o actualiza la nota de la página actual.
+6. `create_workspace_page`: Prepara una página nueva (con título) dentro del cuaderno activo o especificado. NO recibe el contenido como argumento: después de llamarla, escribe el contenido en Markdown como tu siguiente respuesta de texto normal — se transmite en vivo a la página y se guarda automáticamente al terminar.
+7. `update_page_notes`: Prepara la página actual (o una especificada) para recibir contenido adicional. Igual que la anterior: no lleva el contenido como argumento, escríbelo como tu siguiente respuesta de texto normal.
 8. `get_workspace_structure`: Explora la jerarquía completa de cuadernos y páginas del espacio de trabajo.
 
 ══════════════════════════════════════════════
@@ -50,6 +64,7 @@ DIRECTIVAS DE OPERACIÓN (HERMES STYLE):
 - **Memoria Procedimental (Skills):** Si descubres o el usuario te enseña un flujo de trabajo complejo repetible, guárdalo con `manage_skill(action='create', name=..., instructions=...)`.
 - Responde siempre en español claro y conciso con formato Markdown (negritas, listas, tablas).
 - Cita las fuentes de la base de conocimiento usando [n].
+- **Después de `create_workspace_page` o `update_page_notes`:** tu siguiente respuesta de texto ES el contenido que se guardará en la página. Escribe ÚNICAMENTE el contenido en Markdown — sin saludos, sin "aquí tienes", sin confirmaciones. Si quieres además comentarle algo al usuario en el chat, hazlo en un mensaje aparte, no mezclado con el contenido de la página.
 """
 
 
@@ -299,10 +314,10 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
     async def create_workspace_page(
         ctx: RunContext[AgentDeps],
         title: str,
-        content: str,
         notebook_id: str | None = None,
     ) -> dict:
-        """Crea una nueva página dentro del cuaderno actual o especificado con título y texto en Markdown."""
+        """Prepara una página nueva dentro del cuaderno actual o especificado. No recibe el contenido:
+        escríbelo como tu siguiente respuesta de texto normal, se transmite en vivo a la página."""
         from knowledge.models import Notebook, Page, Workspace
 
         def _create():
@@ -319,64 +334,72 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
                 if not target_nb:
                     return {"error": f"Cuaderno con ID {target_nb_id} no encontrado."}
 
-            from knowledge.markdown_tiptap import markdown_to_tiptap_json
-
-            body_doc = markdown_to_tiptap_json(content)
+            page_title = title.strip() or "Nueva Página"
             page = Page.objects.create(
                 notebook=target_nb,
-                title=title.strip() or "Nueva Página",
-                plain_text=content.strip(),
+                title=page_title,
+                plain_text="",
                 content_json={
                     "type": "doc",
-                    "content": [
-                        {"type": "heading", "attrs": {"level": 1}, "content": [{"type": "text", "text": title}]},
-                        *body_doc["content"],
-                    ]
-                }
+                    "content": [{"type": "heading", "attrs": {"level": 1}, "content": [{"type": "text", "text": page_title}]}],
+                },
             )
-            return {"status": "success", "page_id": page.id, "title": page.title, "notebook": target_nb.name}
+            return {"status": "ready_for_content", "page_id": page.id, "title": page.title, "notebook_id": target_nb.id, "notebook": target_nb.name, "mode": "create"}
 
         try:
-            return await sync_to_async(_create)()
+            result = await sync_to_async(_create)()
+            if result.get("status") == "ready_for_content":
+                # Hands off to chat_stream_view: the model's NEXT text-producing step is what
+                # actually contains the page content now (see AgentDeps.page_write_state), not
+                # this tool call's own return value.
+                ctx.deps.page_write_state = {
+                    "page_id": result["page_id"],
+                    "notebook_id": result["notebook_id"],
+                    "title": result["title"],
+                    "mode": "create",
+                }
+                result["instructions"] = (
+                    "Página creada. Escribe ahora el contenido en Markdown como tu respuesta de texto "
+                    "normal (sin saludos ni confirmaciones) -- se transmitirá en vivo a esta página."
+                )
+            return result
         except Exception as e:
             return {"error": f"No se pudo crear la página: {str(e)}"}
 
     @agent.tool
     async def update_page_notes(
         ctx: RunContext[AgentDeps],
-        content_to_append: str,
         page_id: str | None = None,
     ) -> dict:
-        """Añade o inserta contenido de texto directamente al final de la nota de la página actual."""
+        """Prepara la página actual (o una especificada) para recibir contenido adicional. No recibe el
+        contenido: escríbelo como tu siguiente respuesta de texto normal, se transmite en vivo a la página."""
         from knowledge.models import Page
 
-        def _update():
+        def _resolve():
             target_page_id = page_id or ctx.deps.page_id
             if not target_page_id:
                 return {"error": "No hay página activa seleccionada para actualizar."}
             p = Page.objects.filter(id=target_page_id).first()
             if not p:
                 return {"error": f"Página con ID {target_page_id} no encontrada."}
-
-            from knowledge.markdown_tiptap import markdown_to_tiptap_json
-
-            updated_text = (p.plain_text or "").strip() + "\n\n" + content_to_append.strip()
-            p.plain_text = updated_text
-            # Append the markdown, converted to real formatted nodes (headings, lists,
-            # bold, etc.), to the Tiptap JSON — a raw text node would show the literal
-            # markdown syntax instead of rendering it.
-            doc_json = p.content_json or {"type": "doc", "content": []}
-            if not isinstance(doc_json, dict) or "content" not in doc_json:
-                doc_json = {"type": "doc", "content": []}
-            doc_json["content"].extend(markdown_to_tiptap_json(content_to_append)["content"])
-            p.content_json = doc_json
-            p.save()
-            return {"status": "success", "page_id": p.id, "title": p.title, "updated_length": len(updated_text)}
+            return {"status": "ready_for_content", "page_id": p.id, "notebook_id": p.notebook_id, "title": p.title, "mode": "append"}
 
         try:
-            return await sync_to_async(_update)()
+            result = await sync_to_async(_resolve)()
+            if result.get("status") == "ready_for_content":
+                ctx.deps.page_write_state = {
+                    "page_id": result["page_id"],
+                    "notebook_id": result["notebook_id"],
+                    "title": result["title"],
+                    "mode": "append",
+                }
+                result["instructions"] = (
+                    "Página lista. Escribe ahora el contenido adicional en Markdown como tu respuesta de "
+                    "texto normal (sin saludos ni confirmaciones) -- se transmitirá en vivo a esta página."
+                )
+            return result
         except Exception as e:
-            return {"error": f"No se pudo actualizar la página: {str(e)}"}
+            return {"error": f"No se pudo preparar la página: {str(e)}"}
 
     @agent.tool
     async def get_workspace_structure(ctx: RunContext[AgentDeps]) -> dict:

@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 from base64 import b64encode
@@ -6,6 +7,7 @@ import pytest
 from django.core.management import call_command
 from django.test import Client
 
+from knowledge.models import Document
 from knowledge.services import get_rag_service
 from ragpoc.config import Settings
 from ragpoc.embeddings import FakeEmbeddingProvider
@@ -212,6 +214,54 @@ def test_django_upload_attachment_and_deduplication():
     assert data2["linked"] is True
     assert data2["reused"] is True
     assert data2["document"]["id"] == data1["document"]["id"]
+
+
+@pytest.mark.django_db
+def test_django_reupload_after_failed_ingest_retries_instead_of_linking_a_dead_document(tmp_path):
+    # Reproduces a real report: uploading a video with no OpenRouter key configured fails ingest
+    # (which deletes the uploaded file and leaves the document row status='failed'), and
+    # re-uploading the exact same file afterwards -- e.g. once the user sets a key -- used to hit
+    # the content-hash "reused" shortcut unconditionally. That shortcut only checked the hash, not
+    # status or whether the file still existed, so it linked the page to the same dead document
+    # without ever retrying ingestion: the attachment showed up in the sidebar but its preview
+    # 404'd forever, since /api/documents/<id>/file has nothing on disk to serve.
+    #
+    # The failed document is seeded directly via the Django ORM rather than by driving a real
+    # failing upload through the endpoint: Ingestor writes through its own raw sqlite3 connection,
+    # which -- inside this test's wrapping transaction -- Document.objects can't see anyway, so a
+    # first failed request here would never reach the buggy shortcut either way and the test would
+    # pass regardless of the fix. In the running app, with no such open transaction spanning
+    # requests, that write is exactly what the second request's ORM query does see.
+    client = Client()
+    ws = client.post("/api/workspaces", data=json.dumps({"name": "Personal"}), content_type="application/json", **auth_header()).json()
+    nb = client.post("/api/notebooks", data=json.dumps({"workspace_id": ws["id"], "name": "Notas"}), content_type="application/json", **auth_header()).json()
+    page = client.post("/api/pages", data=json.dumps({"notebook_id": nb["id"], "title": "A"}), content_type="application/json", **auth_header()).json()
+
+    content = b"contenido identico que ya fallo una vez y se reintenta despues"
+    digest = hashlib.sha256(content).hexdigest()
+    Document.objects.create(
+        id="stale-failed-doc",
+        source_path=str(tmp_path / "deleted-by-the-failed-attempt" / "nota.txt"),
+        original_filename="nota.txt",
+        media_type="text",
+        content_hash=digest,
+        byte_size=len(content),
+        status="failed",
+        error_message="Configura tu OpenRouter API key en Ajustes o en OPENROUTER_API_KEY.",
+    )
+
+    file = io.BytesIO(content)
+    file.name = "nota.txt"
+    resp = client.post(f"/api/pages/{page['id']}/attachments", {"file": file}, **auth_header())
+    assert resp.status_code == 201
+    data = resp.json()
+    # Must actually retry ingestion, not silently link the still-failed row from before.
+    assert data["reused"] is False
+    assert data["document"]["status"] == "indexed"
+    assert data["document"]["id"] != "stale-failed-doc"
+
+    file_resp = client.get(f"/api/documents/{data['document']['id']}/file", **auth_header())
+    assert file_resp.status_code == 200
 
 
 @pytest.mark.django_db
@@ -581,4 +631,59 @@ async def test_agent_notebook_scoped_tools():
     doc = await Document.objects.aget(id=res["document_id"])
     linked = await NotebookDocument.objects.filter(notebook=nb, document=doc).aexists()
     assert linked is True
+
+
+@pytest.mark.django_db
+@pytest.mark.asyncio
+async def test_agent_page_write_tools_prepare_target_without_content_argument():
+    # create_workspace_page/update_page_notes no longer take the page content as an argument
+    # (see the "stream the agent's page writes live" fix): a tool-call argument only reaches
+    # Python once the model has finished generating it, so there was no way to stream it
+    # token-by-token into the page. Now they just set deps.page_write_state with a target page
+    # id -- the actual content arrives separately, as the model's next normal text-streaming
+    # step in chat_stream_view, which mirrors those tokens into the page as they arrive.
+    import inspect
+    import types
+
+    from knowledge import views
+    from knowledge.models import Notebook, Page, Workspace
+    from knowledge.pydantic_agent import AgentDeps, create_pydantic_rag_agent
+    from ragpoc.config import get_settings
+
+    rag = views.get_rag_service()
+    settings = get_settings()
+
+    ws = await Workspace.objects.acreate(name="WS Page Write")
+    nb = await Notebook.objects.acreate(workspace=ws, name="NB Page Write")
+    existing_page = await Page.objects.acreate(notebook=nb, title="Nota existente", plain_text="Contenido viejo.")
+
+    agent = create_pydantic_rag_agent(settings)
+    create_tool = agent._function_toolset.tools.get("create_workspace_page")
+    update_tool = agent._function_toolset.tools.get("update_page_notes")
+    assert create_tool is not None
+    assert update_tool is not None
+    assert "content" not in inspect.signature(create_tool.function).parameters
+    assert "content_to_append" not in inspect.signature(update_tool.function).parameters
+
+    deps = AgentDeps(retriever=rag.retriever, settings=settings, page_id=existing_page.id, notebook_id=nb.id, workspace_id=ws.id)
+    ctx = types.SimpleNamespace(deps=deps)
+
+    result = await create_tool.function(ctx, title="Nota nueva del agente", notebook_id=nb.id)
+    assert result["status"] == "ready_for_content"
+    assert deps.page_write_state == {
+        "page_id": result["page_id"],
+        "notebook_id": nb.id,
+        "title": result["title"],
+        "mode": "create",
+    }
+    new_page = await Page.objects.aget(id=result["page_id"])
+    assert new_page.plain_text == ""  # content arrives later, via the token stream
+
+    deps.page_write_state = None
+    result2 = await update_tool.function(ctx, page_id=existing_page.id)
+    assert result2["status"] == "ready_for_content"
+    assert deps.page_write_state["mode"] == "append"
+    assert deps.page_write_state["page_id"] == existing_page.id
+    unchanged = await Page.objects.aget(id=existing_page.id)
+    assert unchanged.plain_text == "Contenido viejo."  # not touched yet either
 

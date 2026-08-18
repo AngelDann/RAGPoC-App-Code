@@ -75,7 +75,10 @@ class Ingestor:
             elif media == "pdf": count = await self._pdf(doc_id, source)
             elif media == "audio": count = await self._audio(doc_id, source)
             else: count = await self._video(doc_id, source)
-            self.connection.execute("UPDATE documents SET status='indexed', indexed_at=? WHERE id=?", (_now(), doc_id))
+            # Clears out any error_message from a prior failed attempt at this same source_path
+            # (see Ingestor.ingest's existing/doc_id reuse above) -- otherwise a successful retry
+            # would still display the old failure text next to a now-healthy document.
+            self.connection.execute("UPDATE documents SET status='indexed', indexed_at=?, error_message=NULL WHERE id=?", (_now(), doc_id))
             self.connection.commit()
             return {"document_id": doc_id, "status": "indexed", "chunk_count": count}
         except Exception as error:

@@ -494,8 +494,15 @@ def upload_page_attachment(request: HttpRequest, page_id: str) -> JsonResponse:
     raw = file_obj.read()
     digest = hashlib.sha256(raw).hexdigest()
 
+    # Only short-circuit onto a prior document if it actually finished indexing and its file is
+    # still on disk. A same-hash match on a 'failed' or 'pending' row (e.g. a video that errored
+    # out for lack of an OpenRouter key, which also deletes the uploaded file -- see the except
+    # branch below) used to get "linked" here unconditionally: the page would show the attachment
+    # as if the upload succeeded, but /api/documents/<id>/file would 404 forever since nothing was
+    # ever indexed and the file was gone. Falling through instead re-runs the full ingest path,
+    # which retries against the same document id (Ingestor.ingest matches by source_path).
     existing = Document.objects.filter(content_hash=digest).first()
-    if existing:
+    if existing and existing.status == "indexed" and Path(existing.source_path).is_file():
         _, created = NotebookDocument.objects.get_or_create(notebook=page.notebook, document=existing)
         doc_dict = {
             "id": existing.id,
@@ -520,8 +527,13 @@ def upload_page_attachment(request: HttpRequest, page_id: str) -> JsonResponse:
     rag = get_rag_service()
     try:
         report = asyncio.run(rag.ingestor.ingest(destination))
-        # Ensure Document exists in Django ORM (sync from database if needed or create)
-        doc = Document.objects.filter(content_hash=digest).first()
+        # Ensure Document exists in Django ORM (sync from database if needed or create). Looked up
+        # by the id ingest() just reported, not by content_hash: a retry after an earlier failed
+        # attempt under a different filename (different source_path, so Ingestor treats it as a
+        # separate row instead of reusing the old one by source_path match) can leave more than one
+        # document sharing this content_hash, and a hash-only lookup has no way to prefer the one
+        # that was actually just indexed over an unrelated stale row.
+        doc = Document.objects.filter(id=report["document_id"]).first()
         if not doc:
             doc_row = rag.retriever.get_document(report["document_id"])
             media_type = doc_row["media_type"] if doc_row else "text"
@@ -1764,6 +1776,7 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                     notebook_id=selected.get("notebook_id"),
                     workspace_id=workspace_id,
                     attached_docs_context="",
+                    on_tool_event=lambda evt: q.put(evt),
                 )
                 
                 prompt_parts: list[Any] = []
@@ -1836,10 +1849,23 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
 
                 async def stream_all():
                     assistant_tokens = []
+                    page_write_tokens: list[str] = []
+                    # Set by create_workspace_page/update_page_notes (see pydantic_agent.py) the
+                    # moment the model calls one of them -- from then on, every token of the
+                    # model's own final text step IS the page content, so it gets mirrored into
+                    # page_write_tokens (and a page_write_token SSE event) alongside the normal
+                    # chat token. Captured once the tool fires and not re-read per token: a
+                    # second write-tool call mid-turn is not a real flow this UI exposes today.
+                    write_state: dict | None = None
                     async with agent_instance.run_stream(prompt_parts if len(prompt_parts) > 1 else question, deps=deps) as result:
                         async for token in result.stream_text(delta=True):
                             assistant_tokens.append(token)
                             q.put({"type": "token", "text": token})
+                            if deps.page_write_state and write_state is None:
+                                write_state = deps.page_write_state
+                            if write_state:
+                                page_write_tokens.append(token)
+                                q.put({"type": "page_write_token", "text": token, "page_id": write_state["page_id"]})
                         usage = result.usage
 
                     final_text = "".join(assistant_tokens)
@@ -1866,6 +1892,41 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                         )
 
                     await save_assistant_msg()
+
+                    if write_state and page_write_tokens:
+                        content = "".join(page_write_tokens).strip()
+
+                        @sync_to_async
+                        def persist_page_write():
+                            from knowledge.markdown_tiptap import markdown_to_tiptap_json
+
+                            p = Page.objects.filter(id=write_state["page_id"]).first()
+                            if not p:
+                                return None
+                            new_nodes = markdown_to_tiptap_json(content)["content"]
+                            if write_state["mode"] == "append":
+                                p.plain_text = (p.plain_text or "").strip() + "\n\n" + content
+                                doc_json = p.content_json if isinstance(p.content_json, dict) and "content" in p.content_json else {"type": "doc", "content": []}
+                                doc_json["content"].extend(new_nodes)
+                                p.content_json = doc_json
+                            else:
+                                p.plain_text = content
+                                # Keep the H1 title node create_workspace_page seeded the page with.
+                                heading = p.content_json["content"][:1] if isinstance(p.content_json, dict) and p.content_json.get("content") else []
+                                p.content_json = {"type": "doc", "content": [*heading, *new_nodes]}
+                            p.save()
+                            return p.title
+
+                        title = await persist_page_write()
+                        if title is not None:
+                            q.put({
+                                "type": "page_written",
+                                "action": "created" if write_state["mode"] == "create" else "updated",
+                                "page_id": write_state["page_id"],
+                                "notebook_id": write_state["notebook_id"],
+                                "title": title,
+                            })
+
                     q.put({"type": "done"})
 
                 loop.run_until_complete(stream_all())
