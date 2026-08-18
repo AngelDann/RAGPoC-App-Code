@@ -3110,7 +3110,17 @@
         <div class="workspace-pill" id="ws-banner">
           <div class="section-tag"><i class="bi bi-folder2-open"></i> Espacio de trabajo</div>
           <div class="d-flex align-items-center gap-1 mb-2">
-            <div class="fw-bold fs-6 text-truncate" id="workspace-name" style="flex:1;">Cargando espacio…</div>
+            <div class="dropdown flex-1" style="min-width:0;">
+              <button type="button" class="dropdown-toggle fw-bold fs-6 text-truncate d-flex align-items-center"
+                id="workspace-switcher-btn" data-bs-toggle="dropdown" aria-expanded="false"
+                title="Cambiar de espacio de trabajo"
+                style="width:100%; text-align:left; border:none; background:transparent; padding:0; color:inherit;">
+                <span id="workspace-name" class="text-truncate">Cargando espacio…</span>
+              </button>
+              <ul class="dropdown-menu" id="workspace-switcher-menu" style="min-width:220px; max-height:320px; overflow-y:auto;">
+                <li class="dropdown-item-text small text-muted px-3 py-2">Cargando…</li>
+              </ul>
+            </div>
             <button class="action-mini-btn" id="btn-rename-workspace" title="Renombrar espacio de trabajo">
               <i class="bi bi-pencil" style="font-size:11px;"></i>
             </button>
@@ -7983,6 +7993,40 @@
         e.returnValue = '';
       }
     });
+
+    // Workspace switcher dropdown: re-fetched every time it opens (rather than cached) so it
+    // always reflects workspaces created/renamed since the app started.
+    async function renderWorkspaceSwitcher() {
+      let menu = $('#workspace-switcher-menu');
+      if (!menu) return;
+      menu.innerHTML = '<li class="dropdown-item-text small text-muted px-3 py-2">Cargando…</li>';
+      try {
+        let list = await api('/api/workspaces');
+        if (!list.length) {
+          menu.innerHTML = '<li class="dropdown-item-text small text-muted px-3 py-2">No hay espacios de trabajo</li>';
+          return;
+        }
+        menu.innerHTML = list.map((ws, i) => `
+          <li><a class="dropdown-item d-flex align-items-center gap-2" href="#" data-ws-idx="${i}">
+            <i class="bi ${ws.id === workspace?.id ? 'bi-check-lg text-primary' : 'bi-folder2 text-muted'}" style="width:14px;"></i>
+            <span class="text-truncate">${esc(ws.name)}</span>
+          </a></li>
+        `).join('');
+        // Looked up by index from the already-fetched list (not re-read from the DOM/attrs)
+        // so a workspace name with quotes in it can't break out of an HTML attribute.
+        menu.querySelectorAll('[data-ws-idx]').forEach(item => {
+          let ws = list[Number(item.dataset.wsIdx)];
+          item.onclick = async e => {
+            e.preventDefault();
+            if (ws.id === workspace?.id) return;
+            await window.setWorkspace({ id: ws.id, name: ws.name });
+          };
+        });
+      } catch (err) {
+        menu.innerHTML = '<li class="dropdown-item-text small text-danger px-3 py-2">Error al cargar espacios</li>';
+      }
+    }
+    $('#workspace-switcher-btn')?.parentElement.addEventListener('show.bs.dropdown', renderWorkspaceSwitcher);
 
     $('#new-workspace').onclick = () => {
       openActionModal('workspace');
