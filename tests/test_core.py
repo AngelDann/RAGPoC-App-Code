@@ -3,6 +3,7 @@ from pathlib import Path
 from ragpoc.chunking import ApproximateTokenCounter, chunk_text
 from ragpoc.config import BASE_DIR, Settings
 from ragpoc.db import configured_dimension, initialize_database, persist_dimension
+from ragpoc.updater import _write_updater_script
 
 
 def test_settings_default_to_local_data_directory():
@@ -32,3 +33,20 @@ def test_text_is_chunked_near_target_with_overlap():
 
 def test_empty_text_has_no_chunks():
     assert chunk_text(" \n ", ApproximateTokenCounter()) == []
+
+
+def test_updater_script_retries_the_exe_swap_before_giving_up():
+    # A bare, unretried `move` lost the race against Windows still holding the just-exited
+    # process's own .exe locked, so it silently kept running the old exe forever while a
+    # "_new.exe" piled up unused next to it -- the script must retry instead of trying once.
+    current_exe = Path("C:/apps/RAGPoC/RAGPoC.exe")
+    new_exe = Path("C:/apps/RAGPoC/RAGPoC_new.exe")
+    script_path = _write_updater_script(pid=4242, current_exe=current_exe, new_exe=new_exe)
+    try:
+        content = script_path.read_text(encoding="utf-8")
+        assert content.count(f'move /y "{new_exe}" "{current_exe}"') == 1
+        assert ":move_retry" in content
+        assert "goto move_retry" in content
+        assert f'start "" "{current_exe}"' in content
+    finally:
+        script_path.unlink(missing_ok=True)

@@ -76,6 +76,16 @@ def apply_update(download_url: str) -> None:
 
 
 def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
+    # Windows can keep an exited process's own .exe file locked (memory-mapped image unmap,
+    # antivirus real-time scan of the freshly-downloaded new_exe, etc.) for a moment after
+    # tasklist already stops listing its PID -- a single unretried `move` can lose that race,
+    # and since nothing here checked its exit code, the failure was silent: the app just kept
+    # launching the untouched old exe while a "_new.exe" sat next to it forever. Next update
+    # attempt then treats THAT stale copy as current_exe and downloads a "_new_new.exe" on
+    # top of it, compounding one silent failure into a pile of duplicate binaries. Retrying
+    # the move for up to ~15s covers that race; a log line on the rare case it still fails
+    # makes the failure discoverable instead of silent.
+    log_path = current_exe.with_name("ragpoc.log")
     script_path = Path(tempfile.gettempdir()) / "ragpoc_update.bat"
     script_path.write_text(
         "@echo off\r\n"
@@ -85,7 +95,17 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
         "  timeout /t 1 /nobreak >nul\r\n"
         "  goto wait\r\n"
         ")\r\n"
-        f'move /y "{new_exe}" "{current_exe}" >nul\r\n'
+        "set attempts=0\r\n"
+        ":move_retry\r\n"
+        f'move /y "{new_exe}" "{current_exe}" >nul 2>&1\r\n'
+        "if errorlevel 1 (\r\n"
+        "  set /a attempts+=1\r\n"
+        "  if %attempts% LSS 15 (\r\n"
+        "    timeout /t 1 /nobreak >nul\r\n"
+        "    goto move_retry\r\n"
+        "  )\r\n"
+        f'  echo [%date% %time%] Update swap failed after 15 attempts: could not move "{new_exe}" over "{current_exe}" >> "{log_path}"\r\n'
+        ")\r\n"
         f'start "" "{current_exe}"\r\n'
         f'del "%~f0"\r\n',
         encoding="utf-8",

@@ -8007,10 +8007,15 @@
           return;
         }
         menu.innerHTML = list.map((ws, i) => `
-          <li><a class="dropdown-item d-flex align-items-center gap-2" href="#" data-ws-idx="${i}">
-            <i class="bi ${ws.id === workspace?.id ? 'bi-check-lg text-primary' : 'bi-folder2 text-muted'}" style="width:14px;"></i>
-            <span class="text-truncate">${esc(ws.name)}</span>
-          </a></li>
+          <li class="d-flex align-items-center px-1">
+            <a class="dropdown-item flex-1 d-flex align-items-center gap-2" href="#" data-ws-idx="${i}">
+              <i class="bi ${ws.id === workspace?.id ? 'bi-check-lg text-primary' : 'bi-folder2 text-muted'}" style="width:14px;"></i>
+              <span class="text-truncate">${esc(ws.name)}</span>
+            </a>
+            <button type="button" class="action-mini-btn danger" data-ws-delete-idx="${i}" title="Eliminar espacio de trabajo">
+              <i class="bi bi-trash" style="font-size:11px;"></i>
+            </button>
+          </li>
         `).join('');
         // Looked up by index from the already-fetched list (not re-read from the DOM/attrs)
         // so a workspace name with quotes in it can't break out of an HTML attribute.
@@ -8020,6 +8025,40 @@
             e.preventDefault();
             if (ws.id === workspace?.id) return;
             await window.setWorkspace({ id: ws.id, name: ws.name });
+          };
+        });
+        menu.querySelectorAll('[data-ws-delete-idx]').forEach(btn => {
+          let ws = list[Number(btn.dataset.wsDeleteIdx)];
+          btn.onclick = e => {
+            e.preventDefault();
+            e.stopPropagation();
+            openDeleteModal(
+              'Eliminar Espacio de Trabajo',
+              `¿Estás seguro de que deseas eliminar el espacio "${ws.name}" y todos sus cuadernos, páginas y datos asociados? Esta acción no se puede deshacer.`,
+              async () => {
+                await api(`/api/workspaces/${ws.id}`, { method: 'DELETE' });
+                showToast('Espacio de trabajo eliminado.', 'success');
+                // Deleting a workspace that isn't the active one only needs the list refreshed
+                // (handled by the dropdown reopening); deleting the active one leaves nothing
+                // valid on screen, so clear the stale tree/page and let initWorkspace() find
+                // another workspace to fall back to (or leave the empty state if none remain).
+                if (ws.id === workspace?.id) {
+                  workspace = null;
+                  currentPage = null;
+                  localStorage.removeItem('ragpocWorkspaceId');
+                  $('#workspace-tree').innerHTML = '';
+                  $('#workspace-name').textContent = 'Cargando espacio…';
+                  $('#page-area').innerHTML = `
+                    <div class="empty-state text-center my-auto p-4">
+                      <i class="bi bi-journal-text display-3 text-muted mb-3 d-block"></i>
+                      <h1 class="fw-bold">Tu Base de Conocimiento</h1>
+                      <p class="text-muted">Selecciona una página en el panel lateral o crea un nuevo espacio de trabajo para comenzar.</p>
+                    </div>
+                  `;
+                  await initWorkspace();
+                }
+              }
+            );
           };
         });
       } catch (err) {
