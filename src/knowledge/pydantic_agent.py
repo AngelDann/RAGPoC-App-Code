@@ -319,6 +319,9 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
                 if not target_nb:
                     return {"error": f"Cuaderno con ID {target_nb_id} no encontrado."}
 
+            from knowledge.markdown_tiptap import markdown_to_tiptap_json
+
+            body_doc = markdown_to_tiptap_json(content)
             page = Page.objects.create(
                 notebook=target_nb,
                 title=title.strip() or "Nueva Página",
@@ -327,7 +330,7 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
                     "type": "doc",
                     "content": [
                         {"type": "heading", "attrs": {"level": 1}, "content": [{"type": "text", "text": title}]},
-                        {"type": "paragraph", "content": [{"type": "text", "text": content.strip()}]},
+                        *body_doc["content"],
                     ]
                 }
             )
@@ -355,16 +358,17 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
             if not p:
                 return {"error": f"Página con ID {target_page_id} no encontrada."}
 
+            from knowledge.markdown_tiptap import markdown_to_tiptap_json
+
             updated_text = (p.plain_text or "").strip() + "\n\n" + content_to_append.strip()
             p.plain_text = updated_text
-            # Append paragraph node to Tiptap JSON
+            # Append the markdown, converted to real formatted nodes (headings, lists,
+            # bold, etc.), to the Tiptap JSON — a raw text node would show the literal
+            # markdown syntax instead of rendering it.
             doc_json = p.content_json or {"type": "doc", "content": []}
             if not isinstance(doc_json, dict) or "content" not in doc_json:
                 doc_json = {"type": "doc", "content": []}
-            doc_json["content"].append({
-                "type": "paragraph",
-                "content": [{"type": "text", "text": content_to_append.strip()}],
-            })
+            doc_json["content"].extend(markdown_to_tiptap_json(content_to_append)["content"])
             p.content_json = doc_json
             p.save()
             return {"status": "success", "page_id": p.id, "title": p.title, "updated_length": len(updated_text)}

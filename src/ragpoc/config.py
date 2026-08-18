@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     ui_password: str | None = None
     desktop_mode: bool = False
     embedding_model: str = "google/gemini-embedding-2-preview"
-    chat_model: str = "google/gemini-3.6-flash"
+    chat_model: str = "google/gemini-3.7-flash"
     image_model: str = "google/gemini-3.1-flash-image"
     tts_model: str = "google/gemini-3.1-flash-tts-preview"
     tts_voice_a: str = "Kore"

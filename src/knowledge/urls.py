@@ -23,6 +23,7 @@ urlpatterns = [
     path("api/artifacts/generate", views.generate_artifact_view, name="generate_artifact_view"),
     path("api/artifacts/generate-stream", views.generate_artifact_stream_view, name="generate_artifact_stream_view"),
     path("api/ai/inline-action", views.inline_ai_action_view, name="inline_ai_action_view"),
+    path("api/ai/inline-action-stream", views.inline_ai_action_stream_view, name="inline_ai_action_stream_view"),
     path("api/notebooks/<str:notebook_id>/artifacts", views.notebook_artifacts_list_view, name="notebook_artifacts_list_view"),
     path("api/artifacts/<str:artifact_id>", views.delete_notebook_artifact_view, name="delete_notebook_artifact_view"),
     path("api/artifacts/<str:artifact_id>/pdf", views.download_artifact_pdf_view, name="download_artifact_pdf_view"),

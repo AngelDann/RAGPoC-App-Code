@@ -252,6 +252,30 @@ def test_django_inline_ai_actions():
 
 
 @pytest.mark.django_db
+def test_django_inline_ai_actions_stream():
+    client = Client()
+    resp = client.post(
+        "/api/ai/inline-action-stream",
+        data=json.dumps({
+            "action": "summarize",
+            "context_text": "El sistema RAGPoC fue migrado exitosamente de FastAPI a Django. Se utiliza SQLite con sqlite-vec para almacenar embeddings y k-NN vectorial. Tiptap es el editor central.",
+        }),
+        content_type="application/json",
+        **auth_header(),
+    )
+    assert resp.status_code == 200
+    assert resp["Content-Type"] == "text/event-stream"
+    events = [
+        json.loads(line[6:])
+        for line in b"".join(resp.streaming_content).decode("utf-8").split("\n\n")
+        if line.startswith("data: ")
+    ]
+    assert events[-1]["type"] == "done"
+    full_text = "".join(e["text"] for e in events if e["type"] == "token")
+    assert len(full_text) > 0
+
+
+@pytest.mark.django_db
 def test_django_omni_search_and_artifacts():
     client = Client()
     ws = client.post("/api/workspaces", data=json.dumps({"name": "OmniSpace"}), content_type="application/json", **auth_header()).json()

@@ -1211,55 +1211,43 @@ def download_page_pdf_view(request: HttpRequest, page_id: str) -> HttpResponse:
     return response
 
 
-@csrf_exempt
-def inline_ai_action_view(request: HttpRequest) -> JsonResponse:
-    """Endpoint para acciones de IA en línea estilo Notion AI (redactar, continuar, resumir, tareas, mejorar)."""
-    if request.method != "POST":
-        return JsonResponse({"detail": "Method not allowed"}, status=405)
-    try:
-        body = json.loads(request.body.decode("utf-8"))
-    except Exception:
-        return JsonResponse({"detail": "Invalid JSON"}, status=400)
+_INLINE_AI_SYSTEM_PROMPTS = {
+    "ask": (
+        "Eres el asistente de redacción en línea integrado en el editor (estilo Notion AI). "
+        "Escribe directamente el contenido solicitado en formato HTML limpio (usando <p>, <h1>, <h2>, <ul>, <li>, <blockquote>, <pre><code>) "
+        "o Markdown estándar, listo para ser insertado en la nota. NO añadas introducciones como 'Aquí tienes:' ni saludos. "
+        "Sé conciso, técnico y directo."
+    ),
+    "continue": (
+        "Eres un copiloto de redacción. Lee el contexto previo de la nota y continúa escribiendo el siguiente párrafo o sección "
+        "de forma natural, manteniendo el mismo tono, estilo y vocabulario. Devuelve únicamente el texto de continuación."
+    ),
+    "summarize": (
+        "Genera un resumen conciso en 3-5 viñetas clave del texto proporcionado. Devuelve listas <ul><li> estructuradas."
+    ),
+    "tasks": (
+        "Analiza el texto y extrae todos los elementos de acción o tareas pendientes. "
+        "Devuelve una lista de tareas estructurada con viñetas claras y responsables/pasos si los hay."
+    ),
+    "improve": (
+        "Reescribe el texto proporcionado para mejorar su claridad, redacción, flujo y profesionalismo, "
+        "manteniendo intacto el significado técnico original. Devuelve únicamente el texto mejorado."
+    ),
+    "explain": (
+        "Explica de forma clara, didáctica y estructurada el concepto o fragmento de código proporcionado."
+    ),
+}
 
+
+def _build_inline_ai_prompt(body: dict) -> tuple[str, str, str]:
+    """Resuelve (action, system_prompt, user_message) a partir del payload del endpoint inline-action."""
     action = body.get("action", "ask")  # ask, continue, summarize, tasks, improve, explain
     prompt = (body.get("prompt") or "").strip()
     context_text = (body.get("context_text") or "").strip()
     selected_text = (body.get("selected_text") or "").strip()
 
-    settings = get_settings()
-    if not settings.openrouter_api_key:
-        return JsonResponse({"detail": "OPENROUTER_API_KEY no configurada."}, status=500)
+    chosen_system = _INLINE_AI_SYSTEM_PROMPTS.get(action, _INLINE_AI_SYSTEM_PROMPTS["ask"])
 
-    system_prompts = {
-        "ask": (
-            "Eres el asistente de redacción en línea integrado en el editor (estilo Notion AI). "
-            "Escribe directamente el contenido solicitado en formato HTML limpio (usando <p>, <h1>, <h2>, <ul>, <li>, <blockquote>, <pre><code>) "
-            "o Markdown estándar, listo para ser insertado en la nota. NO añadas introducciones como 'Aquí tienes:' ni saludos. "
-            "Sé conciso, técnico y directo."
-        ),
-        "continue": (
-            "Eres un copiloto de redacción. Lee el contexto previo de la nota y continúa escribiendo el siguiente párrafo o sección "
-            "de forma natural, manteniendo el mismo tono, estilo y vocabulario. Devuelve únicamente el texto de continuación."
-        ),
-        "summarize": (
-            "Genera un resumen conciso en 3-5 viñetas clave del texto proporcionado. Devuelve listas <ul><li> estructuradas."
-        ),
-        "tasks": (
-            "Analiza el texto y extrae todos los elementos de acción o tareas pendientes. "
-            "Devuelve una lista de tareas estructurada con viñetas claras y responsables/pasos si los hay."
-        ),
-        "improve": (
-            "Reescribe el texto proporcionado para mejorar su claridad, redacción, flujo y profesionalismo, "
-            "manteniendo intacto el significado técnico original. Devuelve únicamente el texto mejorado."
-        ),
-        "explain": (
-            "Explica de forma clara, didáctica y estructurada el concepto o fragmento de código proporcionado."
-        ),
-    }
-
-    chosen_system = system_prompts.get(action, system_prompts["ask"])
-
-    # Prepare user content
     parts = []
     if context_text and action == "continue":
         parts.append(f"Contexto previo de la nota:\n{context_text[-1500:]}")
@@ -1274,6 +1262,24 @@ def inline_ai_action_view(request: HttpRequest) -> JsonResponse:
         parts.append("Escribe una sección informativa relevante.")
 
     user_message = "\n\n".join(parts)
+    return action, chosen_system, user_message
+
+
+@csrf_exempt
+def inline_ai_action_view(request: HttpRequest) -> JsonResponse:
+    """Endpoint para acciones de IA en línea estilo Notion AI (redactar, continuar, resumir, tareas, mejorar)."""
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"detail": "Invalid JSON"}, status=400)
+
+    settings = get_settings()
+    if not settings.openrouter_api_key:
+        return JsonResponse({"detail": "OPENROUTER_API_KEY no configurada."}, status=500)
+
+    action, chosen_system, user_message = _build_inline_ai_prompt(body)
 
     started = time.perf_counter()
     try:
@@ -1315,6 +1321,80 @@ def inline_ai_action_view(request: HttpRequest) -> JsonResponse:
             error_message=str(e),
         )
         return JsonResponse({"detail": f"Error en generación de IA: {str(e)}"}, status=500)
+
+
+@csrf_exempt
+def inline_ai_action_stream_view(request: HttpRequest) -> HttpResponse:
+    """Variante SSE de inline_ai_action_view: transmite tokens a medida que el modelo los genera,
+    para que el editor pueda mostrar el efecto de escritura en vivo en vez de esperar la respuesta completa."""
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"detail": "Invalid JSON"}, status=400)
+
+    settings = get_settings()
+    if not settings.openrouter_api_key:
+        return JsonResponse({"detail": "OPENROUTER_API_KEY no configurada."}, status=500)
+
+    action, chosen_system, user_message = _build_inline_ai_prompt(body)
+
+    def event_stream():
+        started = time.perf_counter()
+        try:
+            from openai import OpenAI
+            client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=settings.openrouter_api_key,
+            )
+            stream = client.chat.completions.create(
+                model=settings.chat_model,
+                messages=[
+                    {"role": "system", "content": chosen_system},
+                    {"role": "user", "content": user_message},
+                ],
+                temperature=0.3,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+
+            input_tokens = 0
+            output_tokens = 0
+            for chunk in stream:
+                if chunk.choices:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        yield f"data: {json.dumps({'type': 'token', 'text': delta}, ensure_ascii=False)}\n\n"
+                usage = getattr(chunk, "usage", None)
+                if usage:
+                    input_tokens = usage.prompt_tokens or 0
+                    output_tokens = usage.completion_tokens or 0
+
+            record_usage(
+                category="inline_ai",
+                action=f"inline_ai:{action}",
+                model=settings.chat_model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+            )
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as e:
+            record_usage(
+                category="inline_ai",
+                action=f"inline_ai:{action}",
+                model=settings.chat_model,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+                status="error",
+                error_message=str(e),
+            )
+            yield f"data: {json.dumps({'type': 'error', 'message': f'Error en generación de IA: {str(e)}'}, ensure_ascii=False)}\n\n"
+
+    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
 
 
 @csrf_exempt

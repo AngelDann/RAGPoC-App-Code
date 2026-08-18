@@ -251,6 +251,19 @@
       border-radius: var(--radius-sm);
     }
 
+    /* Voice dictation mic button, active/recording state */
+    .btn-craft-icon.dictating {
+      background: #fee2e2;
+      border-color: #fca5a5;
+      color: #b91c1c;
+      animation: dictatePulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes dictatePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.35); }
+      50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+    }
+
     .dropdown-menu {
       border: 1px solid var(--border-warm);
       border-radius: var(--radius-md);
@@ -302,8 +315,9 @@
 
     /* 3-Column Studio Layout */
     .app-shell {
+      position: relative;
       display: grid;
-      grid-template-columns: 280px minmax(0, 1fr) 360px;
+      grid-template-columns: var(--sidebar-w, 280px) minmax(0, 1fr) var(--chat-w, 360px);
       height: 100vh;
       height: 100dvh;
       width: 100vw;
@@ -312,9 +326,45 @@
       transition: grid-template-columns 0.18s ease;
     }
 
-    .app-shell.sidebar-collapsed { grid-template-columns: 52px minmax(0, 1fr) 360px; }
-    .app-shell.chat-collapsed { grid-template-columns: 280px minmax(0, 1fr) 52px; }
+    .app-shell.sidebar-collapsed { grid-template-columns: 52px minmax(0, 1fr) var(--chat-w, 360px); }
+    .app-shell.chat-collapsed { grid-template-columns: var(--sidebar-w, 280px) minmax(0, 1fr) 52px; }
     .app-shell.sidebar-collapsed.chat-collapsed { grid-template-columns: 52px minmax(0, 1fr) 52px; }
+    .app-shell.resizing-panel { transition: none; }
+
+    /* Drag handles between panels — positioned in JS (setupPanelResizers) so they track
+       the actual panel edges regardless of the grid's gap/padding math. Absolutely
+       positioned grid children are taken out of the 3-column auto-placement, so these
+       don't disturb the sidebar/editor/chat column layout. */
+    .panel-resizer {
+      position: absolute;
+      top: 0;
+      width: 10px;
+      margin-left: -5px;
+      cursor: col-resize;
+      z-index: 70;
+      touch-action: none;
+    }
+
+    .panel-resizer::after {
+      content: '';
+      position: absolute;
+      left: 4px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      border-radius: var(--radius-full);
+      background: transparent;
+      transition: background 0.12s ease;
+    }
+
+    .panel-resizer:hover::after,
+    .panel-resizer.resizing::after {
+      background: var(--accent-warm);
+    }
+
+    @media (max-width: 900px) {
+      .panel-resizer { display: none !important; }
+    }
 
     /* Collapsed rail: a thin strip with just a button to re-expand the panel */
     .panel-rail {
@@ -627,6 +677,19 @@
       animation: pageFadeIn 0.22s ease;
       cursor: text;
       position: relative;
+      transition: max-width 0.18s ease;
+    }
+
+    /* The 840px cap reads well when both side panels are open (the editor column is roughly
+       that wide anyway), but once a panel collapses to its 52px rail the freed-up width just
+       becomes dead space either side of the note — widen the cap to actually use it. */
+    .app-shell.sidebar-collapsed:not(.chat-collapsed) .editor-container,
+    .app-shell.chat-collapsed:not(.sidebar-collapsed) .editor-container {
+      max-width: 1040px;
+    }
+
+    .app-shell.sidebar-collapsed.chat-collapsed .editor-container {
+      max-width: 1240px;
     }
 
     .editor-container .editor-toolbar,
@@ -1232,6 +1295,21 @@
       display: flex !important;
       flex-direction: column;
       gap: 8px;
+    }
+
+    /* In-editor loading placeholder shown while streaming AI content is on its way */
+    em.ai-inline-loading {
+      color: #b45309;
+      background: linear-gradient(90deg, rgba(245, 158, 11, 0.15) 25%, rgba(245, 158, 11, 0.4) 50%, rgba(245, 158, 11, 0.15) 75%);
+      background-size: 200% 100%;
+      animation: aiInlineShimmer 1.2s ease-in-out infinite;
+      border-radius: 3px;
+      padding: 0 2px;
+    }
+
+    @keyframes aiInlineShimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
     }
 
     .slash-section-label {
@@ -3001,6 +3079,8 @@
   <div id="toast-stack" aria-live="polite"></div>
 
   <div class="app-shell">
+    <div class="panel-resizer" id="sidebar-resizer" title="Arrastra para cambiar el ancho"></div>
+    <div class="panel-resizer" id="chat-resizer" title="Arrastra para cambiar el ancho"></div>
     <!-- Left: Navigation Sidebar / Drawer -->
     <aside class="sidebar craft-panel" id="sidebar-drawer">
       <div class="panel-rail" id="sidebar-rail">
@@ -3193,9 +3273,15 @@
                   <i class="bi bi-paperclip"></i> Adjuntar
                   <input id="chat-file-input" type="file" multiple hidden>
                 </label>
-                <button class="btn-craft btn-craft-primary btn-sm" type="submit">
-                  <i class="bi bi-send-fill"></i> Enviar
-                </button>
+                <div class="d-flex align-items-center gap-2">
+                  <button type="button" class="btn-craft btn-craft-icon btn-sm" id="btn-dictate-chat"
+                    title="Dictado por voz">
+                    <i class="bi bi-mic-fill"></i>
+                  </button>
+                  <button class="btn-craft btn-craft-primary btn-sm" type="submit">
+                    <i class="bi bi-send-fill"></i> Enviar
+                  </button>
+                </div>
               </div>
             </div>
           </form>
@@ -3338,7 +3424,8 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script type="module">
-    import { Editor, Node } from 'https://esm.sh/@tiptap/core@2.11.5';
+    import { Editor, Node, Extension } from 'https://esm.sh/@tiptap/core@2.11.5';
+    import { Plugin, PluginKey } from 'https://esm.sh/@tiptap/pm@2.11.5/state';
     import { generateHTML } from 'https://esm.sh/@tiptap/html@2.11.5';
     import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.11.5';
     import Image from 'https://esm.sh/@tiptap/extension-image@2.11.5';
@@ -3617,10 +3704,55 @@
       }
     }
 
+    // Pressing Enter on an empty line at the very end of a blockquote should step OUT of
+    // it (Notion-style), not just add yet another empty line inside — ProseMirror's raw
+    // default keeps splitting the blockquote's paragraph forever, which is exactly the
+    // "can't get out of the quote" complaint.
+    const BlockquoteKeyboardExit = Extension.create({
+      name: 'blockquoteKeyboardExit',
+      addKeyboardShortcuts() {
+        const exitBlockquote = () => {
+          let { $from, empty } = this.editor.state.selection;
+          if (!empty) return false;
+          if ($from.parent.type.name !== 'paragraph' || $from.parent.content.size !== 0) return false;
+          if ($from.depth < 1) return false;
+          let parent = $from.node($from.depth - 1);
+          if (parent.type.name !== 'blockquote') return false;
+          if ($from.index($from.depth - 1) !== parent.childCount - 1) return false;
+          return this.editor.commands.lift('blockquote');
+        };
+        return { Enter: exitBlockquote, 'Shift-Enter': exitBlockquote };
+      },
+    });
+
+    // Some blocks (blockquote, codeBlock, lists, table) have no textblock after them to
+    // land the cursor in when they're the last thing on the page — clicking below the
+    // content, or arrowing past the end, just re-enters them since there's nowhere else to
+    // go. Guaranteeing a trailing empty paragraph always gives the user a way out.
+    const TrailingParagraph = Extension.create({
+      name: 'trailingParagraph',
+      addProseMirrorPlugins() {
+        return [
+          new Plugin({
+            key: new PluginKey('trailingParagraph'),
+            appendTransaction: (transactions, oldState, newState) => {
+              if (!transactions.some(tr => tr.docChanged)) return null;
+              let { doc, schema } = newState;
+              if (doc.lastChild && doc.lastChild.type.name === 'paragraph') return null;
+              if (!schema.nodes.paragraph) return null;
+              return newState.tr.insert(doc.content.size, schema.nodes.paragraph.create());
+            },
+          }),
+        ];
+      },
+    });
+
     // Shared with generateHTML() so a page's PDF export renders the exact same markup as the
     // live editor, whether or not that page happens to be the one currently open.
     const PAGE_EDITOR_EXTENSIONS = [
       StarterKit.configure({ codeBlock: false }),
+      BlockquoteKeyboardExit,
+      TrailingParagraph,
       Image.configure({
         inline: true,
         allowBase64: true,
@@ -3790,6 +3922,29 @@
       return el;
     }
     window.showToast = showToast;
+
+    // Shared by every "copy this chat response" button — navigator.clipboard requires a
+    // secure context, which the packaged desktop webview may not always count as, so fall
+    // back to the old execCommand('copy') trick via a throwaway textarea when it's missing.
+    async function copyTextToClipboard(text) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          let ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        }
+        showToast('Respuesta copiada al portapapeles.', 'success');
+      } catch (e) {
+        showToast('No se pudo copiar: ' + e.message, 'error');
+      }
+    }
 
     // Shimmering placeholder rows shown while a list-style panel is loading.
     function skeletonRows(count = 3) {
@@ -4115,11 +4270,13 @@
     // Explicit notebook selection from the sidebar — updates the shared context used by both
     // artifact galleries and the generate flow, and reflects the selection visually.
     function selectNotebook(nbId) {
+      let notebookChanged = currentNotebookId !== nbId;
       currentNotebookId = nbId;
       document.querySelectorAll('.notebook-row.active').forEach(r => r.classList.remove('active'));
       document.querySelector(`[data-notebook-id="${nbId}"] .notebook-row`)?.classList.add('active');
       loadSideStudioGallery();
       if (artifactsModal?.classList.contains('active')) loadNotebookArtifactsGallery();
+      if (notebookChanged) refreshChatForNotebookSwitch();
     }
 
     // Compact card shown in place of a real artifact while its generation is still in flight —
@@ -4412,13 +4569,25 @@
       let action = notionAiBar.dataset.aiAction || 'ask';
       if (!prompt && action === 'ask') return;
 
-      notionAiStatus.style.display = 'block';
       let submitBtn = $('#btn-submit-notion-ai');
       submitBtn.disabled = true;
+      closeNotionAiBar();
+
+      // Drop a loading placeholder right at the cursor, then stream real tokens into that
+      // exact spot as they arrive — the range [startPos, endPos] is tracked by hand (plain-text
+      // insertions shift positions by exactly their length) rather than trusting Tiptap's
+      // post-insertContentAt selection, which isn't guaranteed to land at the end of the insert.
+      editor.chain().focus().run();
+      let startPos = editor.state.selection.from;
+      let placeholder = 'Generando…';
+      editor.chain().insertContentAt(startPos, `<em class="ai-inline-loading">${placeholder}</em>`).run();
+      let endPos = startPos + placeholder.length;
+      let rawText = '';
+      let firstToken = true;
 
       try {
         let fullContext = editor.getText();
-        let result = await api('/api/ai/inline-action', {
+        let r = await fetch('/api/ai/inline-action-stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -4429,16 +4598,60 @@
           })
         });
 
-        closeNotionAiBar();
-        editor.chain().focus();
-        // Insert generated content cleanly into the note
-        editor.commands.insertContent(marked.parse(result.content));
+        if (!r.ok) {
+          let errBody = await r.json().catch(() => ({}));
+          throw new Error(errBody.detail || `Error ${r.status}: ${r.statusText}`);
+        }
+
+        let reader = r.body.getReader();
+        let dec = new TextDecoder();
+        let buf = '';
+        let streamErr = null;
+
+        while (true) {
+          let { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let i;
+          while ((i = buf.indexOf('\n\n')) >= 0) {
+            let raw = buf.slice(0, i);
+            buf = buf.slice(i + 2);
+            if (!raw.startsWith('data: ')) continue;
+            let ev = JSON.parse(raw.slice(6));
+
+            if (ev.type === 'token') {
+              if (firstToken) {
+                // Clear the "Generando…" placeholder as soon as real content starts arriving
+                editor.chain().insertContentAt({ from: startPos, to: endPos }, '').run();
+                endPos = startPos;
+                firstToken = false;
+              }
+              // insertContentAt parses a string argument as HTML, so raw "<"/"&" in the
+              // model's output (code snippets, generics like List<String>, etc.) must be
+              // escaped or it'd get misread as markup instead of inserted as literal text.
+              editor.chain().insertContentAt(endPos, esc(ev.text)).run();
+              endPos += ev.text.length;
+              rawText += ev.text;
+            }
+            if (ev.type === 'error') {
+              streamErr = ev.message;
+            }
+            if (ev.type === 'done') {
+              // Snap the raw streamed text into properly formatted rich content
+              let html = marked.parse(rawText);
+              editor.chain().insertContentAt({ from: startPos, to: endPos }, html).run();
+            }
+          }
+        }
+
+        if (streamErr) throw new Error(streamErr);
         await savePage();
       } catch (err) {
+        // Wipe whatever placeholder/partial text is still sitting in the note before surfacing the error
+        editor.chain().insertContentAt({ from: startPos, to: endPos }, '').run();
         showToast('Error en generación: ' + err.message, 'error');
       } finally {
         submitBtn.disabled = false;
-        notionAiStatus.style.display = 'none';
       }
     };
 
@@ -6253,6 +6466,72 @@
     setSidebarCollapsed(localStorage.getItem('ragpocSidebarCollapsed') === '1');
     setChatCollapsed(localStorage.getItem('ragpocChatCollapsed') === '1');
 
+    // --- Drag-to-resize for both side panels, so their width is the user's call instead
+    // of a fixed 280px/360px. Widths live on CSS vars read by .app-shell's grid-template-
+    // columns and persist in localStorage across sessions.
+    (function setupPanelResizers() {
+      const MIN_SIDEBAR = 220, MAX_SIDEBAR = 480;
+      const MIN_CHAT = 280, MAX_CHAT = 620;
+      const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+      let savedSidebar = clamp(parseInt(localStorage.getItem('ragpocSidebarWidth'), 10) || 280, MIN_SIDEBAR, MAX_SIDEBAR);
+      let savedChat = clamp(parseInt(localStorage.getItem('ragpocChatWidth'), 10) || 360, MIN_CHAT, MAX_CHAT);
+      appShell.style.setProperty('--sidebar-w', savedSidebar + 'px');
+      appShell.style.setProperty('--chat-w', savedChat + 'px');
+
+      const leftHandle = $('#sidebar-resizer');
+      const rightHandle = $('#chat-resizer');
+
+      function positionHandles() {
+        let shellRect = appShell.getBoundingClientRect();
+        let sbRect = sidebar.getBoundingClientRect();
+        let chatRect = chatDrawer.getBoundingClientRect();
+        leftHandle.style.left = (sbRect.right - shellRect.left) + 'px';
+        leftHandle.style.height = shellRect.height + 'px';
+        rightHandle.style.left = (chatRect.left - shellRect.left) + 'px';
+        rightHandle.style.height = shellRect.height + 'px';
+        // A collapsed panel is a fixed 52px rail, not something to resize.
+        leftHandle.style.display = appShell.classList.contains('sidebar-collapsed') ? 'none' : '';
+        rightHandle.style.display = appShell.classList.contains('chat-collapsed') ? 'none' : '';
+      }
+
+      function bindDrag(handle, { edge, varName, min, max, storageKey }) {
+        handle.addEventListener('mousedown', e => {
+          e.preventDefault();
+          handle.classList.add('resizing');
+          appShell.classList.add('resizing-panel');
+          document.body.style.userSelect = 'none';
+          document.body.style.cursor = 'col-resize';
+          let shellRect = appShell.getBoundingClientRect();
+
+          function onMove(ev) {
+            let px = edge === 'left' ? ev.clientX - shellRect.left : shellRect.right - ev.clientX;
+            appShell.style.setProperty(varName, clamp(Math.round(px), min, max) + 'px');
+            positionHandles();
+          }
+          function onUp() {
+            handle.classList.remove('resizing');
+            appShell.classList.remove('resizing-panel');
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            localStorage.setItem(storageKey, parseInt(getComputedStyle(appShell).getPropertyValue(varName), 10));
+          }
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
+      }
+
+      bindDrag(leftHandle, { edge: 'left', varName: '--sidebar-w', min: MIN_SIDEBAR, max: MAX_SIDEBAR, storageKey: 'ragpocSidebarWidth' });
+      bindDrag(rightHandle, { edge: 'right', varName: '--chat-w', min: MIN_CHAT, max: MAX_CHAT, storageKey: 'ragpocChatWidth' });
+
+      window.addEventListener('resize', positionHandles);
+      appShell.addEventListener('transitionend', e => { if (e.propertyName === 'grid-template-columns') positionHandles(); });
+      new MutationObserver(positionHandles).observe(appShell, { attributes: true, attributeFilter: ['class'] });
+      positionHandles();
+    })();
+
     window.setWorkspace = async function (ws) {
       workspace = ws;
       await refresh();
@@ -6642,6 +6921,21 @@
       });
     }
 
+    function resetChatView(welcomeTitle, welcomeBody) {
+      currentThreadId = null;
+      $('#thread-selector').value = '';
+      $('#chat-log').innerHTML = `<div class="chat-welcome-box"><div class="fw-bold mb-1 text-dark"><i class="bi bi-stars text-amber"></i> ${esc(welcomeTitle)}</div>${esc(welcomeBody)}</div>`;
+    }
+
+    // Chat threads are scoped to a notebook (or the whole workspace) — when the user
+    // switches notebooks, the previously loaded thread/log belongs to the old one and
+    // must not linger, or the chat looks like it's mixing conversations from everywhere.
+    async function refreshChatForNotebookSwitch() {
+      if ($('#chat-scope').value !== 'notebook') return;
+      resetChatView('Asistente de Conocimiento', 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.');
+      await loadThreadsForScope();
+    }
+
     // Thread Loading & Switching
     async function loadThreadsForScope() {
       // Mirrors the same scope resolution used to send a chat message, so the thread list
@@ -6669,8 +6963,7 @@
     $('#thread-selector').onchange = async e => {
       let selectedId = e.target.value;
       if (!selectedId) {
-        currentThreadId = null;
-        $('#chat-log').innerHTML = `<div class="chat-welcome-box"><div class="fw-bold mb-1 text-dark"><i class="bi bi-stars text-amber"></i> Asistente de Conocimiento</div>Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.</div>`;
+        resetChatView('Asistente de Conocimiento', 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.');
         return;
       }
       currentThreadId = selectedId;
@@ -6704,25 +6997,20 @@
         '¿Estás seguro de que deseas eliminar esta conversación y todos sus mensajes?',
         async () => {
           await api(`/api/threads/${tId}`, { method: 'DELETE' });
-          currentThreadId = null;
-          $('#chat-log').innerHTML = `<div class="chat-welcome-box"><div class="fw-bold mb-1 text-dark"><i class="bi bi-stars text-amber"></i> Asistente de Conocimiento</div>Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.</div>`;
+          resetChatView('Asistente de Conocimiento', 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.');
           await loadThreadsForScope();
         }
       );
     };
 
     $('#new-thread-btn').onclick = () => {
-      currentThreadId = null;
-      $('#thread-selector').value = '';
-      $('#chat-log').innerHTML = `<div class="chat-welcome-box"><div class="fw-bold mb-1 text-dark"><i class="bi bi-stars text-amber"></i> Nueva conversación</div>Escribe tu pregunta o adjunta archivos para comenzar este nuevo hilo.</div>`;
+      resetChatView('Nueva conversación', 'Escribe tu pregunta o adjunta archivos para comenzar este nuevo hilo.');
     };
 
     // Switching scope changes which threads even apply — drop the in-progress thread/log (it
     // belongs to the old scope) and reload the list for the newly selected one.
     $('#chat-scope').onchange = async () => {
-      currentThreadId = null;
-      $('#thread-selector').value = '';
-      $('#chat-log').innerHTML = `<div class="chat-welcome-box"><div class="fw-bold mb-1 text-dark"><i class="bi bi-stars text-amber"></i> Asistente de Conocimiento</div>Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.</div>`;
+      resetChatView('Asistente de Conocimiento', 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.');
       await loadThreadsForScope();
     };
 
@@ -6747,6 +7035,9 @@
               <div class="d-flex justify-content-between align-items-center mb-1">
                 <div class="small fw-bold text-dark"><i class="bi bi-robot"></i> Asistente</div>
                 <div class="d-flex gap-1">
+                  <button type="button" class="action-mini-btn" data-copy-chat-note title="Copiar respuesta">
+                    <i class="bi bi-clipboard text-secondary" style="font-size:11px;"></i>
+                  </button>
                   <button type="button" class="action-mini-btn" data-insert-chat-note title="Insertar esta respuesta en la nota activa">
                     <i class="bi bi-pin-angle-fill text-primary" style="font-size:11px;"></i>
                   </button>
@@ -6759,6 +7050,7 @@
             `;
 
             let rawText = m.content;
+            aDiv.querySelector('[data-copy-chat-note]').onclick = () => copyTextToClipboard(rawText);
             aDiv.querySelector('[data-insert-chat-note]').onclick = async () => {
               editor.chain().focus();
               editor.commands.insertContent(marked.parse(rawText));
@@ -7071,6 +7363,7 @@
       if (notebookChanged) {
         loadSideStudioGallery();
         if (artifactsModal?.classList.contains('active')) loadNotebookArtifactsGallery();
+        refreshChatForNotebookSwitch();
       }
 
       $('#page-area').innerHTML = `
@@ -7189,6 +7482,18 @@
         },
       });
       unsavedChanges = false;
+
+      // TrailingParagraph's appendTransaction only guards against a trap block (blockquote,
+      // codeBlock, list, table…) becoming the LAST node through a live edit — it doesn't run
+      // on the editor's initial content load. A page saved before this fix existed (or whose
+      // last block just happens to be one of those) needs the same guarantee applied once here.
+      if (editor.state.doc.lastChild && editor.state.doc.lastChild.type.name !== 'paragraph') {
+        let { schema, tr } = editor.state;
+        editor.view.dispatch(tr.insert(editor.state.doc.content.size, schema.nodes.paragraph.create()));
+        unsavedChanges = false;
+        $('#save-status').textContent = 'Guardado';
+        $('#save-dot').className = 'status-bulb';
+      }
 
       // Notion-style "+" gutter button: hover a top-level block to reveal a button that
       // inserts a new empty paragraph right after it and focuses it — lets you add content
@@ -7673,8 +7978,82 @@
       openActionModal('notebook', workspace.id);
     };
 
+    // --- Voice Dictation for the chat input (Web Speech API) ---
+    // No backend involved: the browser/WebView2's built-in speech engine transcribes live and we
+    // just append the result into the textarea, same as if the user had typed it.
+    (function setupChatDictation() {
+      let btn = $('#btn-dictate-chat');
+      if (!btn) return;
+      let SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognitionCtor) {
+        btn.style.display = 'none';
+        return;
+      }
+
+      let textarea = $('#chat-question');
+      let recognizer = null;
+      let isDictating = false;
+      let baseText = '';
+
+      function stopDictation() {
+        if (recognizer) recognizer.stop();
+      }
+
+      btn.onclick = () => {
+        if (isDictating) {
+          stopDictation();
+          return;
+        }
+        baseText = textarea.value.trim() ? textarea.value.trim() + ' ' : '';
+        recognizer = new SpeechRecognitionCtor();
+        recognizer.lang = 'es-ES';
+        recognizer.continuous = true;
+        recognizer.interimResults = true;
+
+        recognizer.onstart = () => {
+          isDictating = true;
+          btn.classList.add('dictating');
+          btn.title = 'Detener dictado';
+        };
+
+        recognizer.onresult = event => {
+          let finalTranscript = '';
+          let interimTranscript = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            let transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) finalTranscript += transcript;
+            else interimTranscript += transcript;
+          }
+          if (finalTranscript) baseText += finalTranscript + ' ';
+          textarea.value = baseText + interimTranscript;
+          textarea.scrollTop = textarea.scrollHeight;
+        };
+
+        recognizer.onerror = event => {
+          if (event.error !== 'no-speech' && event.error !== 'aborted') {
+            showToast('Error de dictado por voz: ' + event.error, 'error');
+          }
+        };
+
+        recognizer.onend = () => {
+          isDictating = false;
+          btn.classList.remove('dictating');
+          btn.title = 'Dictado por voz';
+          textarea.focus();
+        };
+
+        try {
+          recognizer.start();
+        } catch (err) {
+          showToast('No se pudo iniciar el dictado por voz.', 'error');
+        }
+      };
+    })();
+
     $('#chat-form').onsubmit = async e => {
       e.preventDefault();
+      // Stop live dictation if it's still running so it doesn't keep appending text after send
+      if ($('#btn-dictate-chat')?.classList.contains('dictating')) $('#btn-dictate-chat').click();
       let q = $('#chat-question').value.trim();
       if (!q) return;
 
@@ -7702,6 +8081,9 @@
         <div class="d-flex justify-content-between align-items-center mb-1" id="asst-header-row" style="display:none !important;">
           <div class="small fw-bold text-dark"><i class="bi bi-robot"></i> Asistente</div>
           <div class="d-flex gap-1" id="asst-actions-bar" style="display:none !important;">
+            <button type="button" class="action-mini-btn" id="stream-copy-btn" title="Copiar respuesta">
+              <i class="bi bi-clipboard text-secondary" style="font-size:11px;"></i>
+            </button>
             <button type="button" class="action-mini-btn" id="stream-insert-btn" title="Insertar esta respuesta en la nota activa">
               <i class="bi bi-pin-angle-fill text-primary" style="font-size:11px;"></i>
             </button>
@@ -7840,8 +8222,13 @@
               let actionsBar = asstMsg.querySelector('#asst-actions-bar');
               if (actionsBar) {
                 actionsBar.style.setProperty('display', 'flex', 'important');
+                let copyBtn = asstMsg.querySelector('#stream-copy-btn');
                 let insBtn = asstMsg.querySelector('#stream-insert-btn');
                 let createBtn = asstMsg.querySelector('#stream-create-btn');
+
+                if (copyBtn) {
+                  copyBtn.onclick = () => copyTextToClipboard(fullAnswerMarkdown);
+                }
 
                 if (insBtn) {
                   insBtn.onclick = async () => {
@@ -7972,7 +8359,14 @@
         }
         return;
       }
-      if (!chatSkillPopup.classList.contains('active')) return;
+      if (!chatSkillPopup.classList.contains('active')) {
+        // Enter sends the message; Shift+Enter keeps the textarea's normal newline.
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          $('#chat-form').requestSubmit();
+        }
+        return;
+      }
       let items = [...chatSkillPopupList.querySelectorAll('[data-skill-name]')];
       if (e.key === 'ArrowDown') {
         e.preventDefault();
