@@ -88,10 +88,13 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
     # never overwrite an in-use file at all: Windows allows *renaming* a running process's own
     # exe even while it's still mapped/executing (unlike overwriting it), so current_exe is
     # renamed out of the way first -- which almost always succeeds immediately -- and only then
-    # is new_exe moved into the now-free canonical path, which is just a move into empty space
-    # and can't lose a lock race. The renamed-away old exe is deleted best-effort; if that one
+    # is new_exe moved into the now-free canonical path. That second move can still lose a lock
+    # race though: new_exe just landed from the internet and is unsigned (no Authenticode signing
+    # in release.yml), which is exactly what Windows Defender/SmartScreen scans on-write, so it
+    # gets its own retry loop too. The renamed-away old exe is deleted best-effort; if that one
     # step still fails because of a lingering handle, main() sweeps up any leftover *.exe.old
-    # file on the next app start (see cleanup_stale_update_files), once that lock is long gone.
+    # (or, if the second move exhausts its retries, *_new.exe) on the next app start (see
+    # cleanup_stale_update_files), once that lock is long gone.
     log_path = current_exe.with_name("ragpoc.log")
     old_backup = current_exe.with_suffix(current_exe.suffix + ".old")
     script_path = Path(tempfile.gettempdir()) / "ragpoc_update.bat"
@@ -116,9 +119,16 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
         f'  echo [%date% %time%] Update failed: could not rename "{current_exe}" out of the way after 15 attempts >> "{log_path}"\r\n'
         "  goto relaunch\r\n"
         ")\r\n"
+        "set attempts=0\r\n"
+        ":install_retry\r\n"
         f'move /y "{new_exe}" "{current_exe}" >nul 2>&1\r\n'
         "if errorlevel 1 (\r\n"
-        f'  echo [%date% %time%] Update failed: could not move new exe into place, restoring previous version >> "{log_path}"\r\n'
+        "  set /a attempts+=1\r\n"
+        "  if %attempts% LSS 15 (\r\n"
+        "    timeout /t 1 /nobreak >nul\r\n"
+        "    goto install_retry\r\n"
+        "  )\r\n"
+        f'  echo [%date% %time%] Update failed: could not move new exe into place after 15 attempts, restoring previous version >> "{log_path}"\r\n'
         f'  move /y "{old_backup}" "{current_exe}" >nul 2>&1\r\n'
         "  goto relaunch\r\n"
         ")\r\n"
@@ -132,18 +142,21 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
 
 
 def cleanup_stale_update_files() -> None:
-    """Best-effort sweep for *.exe.old leftovers from an update whose final cleanup step lost
-    a lock race (see _write_updater_script) -- called on every startup of the frozen build, by
-    which point whatever process held the old exe locked has long since exited. Never raises:
-    this is opportunistic housekeeping, not something that should ever block startup."""
+    """Best-effort sweep for *.exe.old and *_new.exe leftovers from an update whose final
+    cleanup step lost a lock race (see _write_updater_script) -- called on every startup of the
+    frozen build, by which point whatever process held the file locked has long since exited.
+    Never raises: this is opportunistic housekeeping, not something that should ever block
+    startup. Safe to run unconditionally: it only fires after the app is already up and running
+    again, i.e. never while an update is actually in flight."""
     if not getattr(sys, "frozen", False):
         return
     try:
         current_exe = Path(sys.executable).resolve()
-        for stale in current_exe.parent.glob("*.exe.old"):
-            try:
-                stale.unlink()
-            except OSError:
-                pass
+        for pattern in ("*.exe.old", "*_new.exe"):
+            for stale in current_exe.parent.glob(pattern):
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
     except OSError:
         pass

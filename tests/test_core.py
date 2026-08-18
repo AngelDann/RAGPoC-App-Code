@@ -52,6 +52,12 @@ def test_updater_script_renames_old_exe_out_of_the_way_before_placing_the_new_on
         assert f'move /y "{new_exe}" "{current_exe}"' in content
         assert ":rename_retry" in content
         assert "goto rename_retry" in content
+        # The second move (placing new_exe into position) races the same AV-lock hazard as the
+        # first -- new_exe just landed from the internet unsigned, which is exactly what
+        # Windows Defender scans on-write -- so it needs its own retry loop too, not just the
+        # first rename.
+        assert ":install_retry" in content
+        assert "goto install_retry" in content
         # A failed new-exe swap must roll back to the renamed-away original, not leave the
         # app pointing at nothing.
         assert f'move /y "{old_backup}" "{current_exe}"' in content
@@ -63,13 +69,19 @@ def test_updater_script_renames_old_exe_out_of_the_way_before_placing_the_new_on
 def test_cleanup_stale_update_files_removes_leftover_old_exe(tmp_path, monkeypatch):
     fake_exe = tmp_path / "RAGPoC.exe"
     fake_exe.write_text("fake")
-    stale = tmp_path / "RAGPoC.exe.old"
-    stale.write_text("stale leftover from a previous update")
+    stale_old = tmp_path / "RAGPoC.exe.old"
+    stale_old.write_text("stale leftover from a previous update")
+    # Leftover from a failed install-retry (see _write_updater_script): the rename-away of
+    # current_exe succeeded but the AV-locked move of new_exe into place exhausted its
+    # retries, so this file was never cleaned up by the updater script itself.
+    stale_new = tmp_path / "RAGPoC_new.exe"
+    stale_new.write_text("stale leftover download from a failed update")
 
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(fake_exe))
 
     cleanup_stale_update_files()
 
-    assert not stale.exists()
-    assert fake_exe.exists()  # only the .old leftover is swept, never the real exe
+    assert not stale_old.exists()
+    assert not stale_new.exists()
+    assert fake_exe.exists()  # only the leftovers are swept, never the real exe
