@@ -2,8 +2,15 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+# ffmpeg/ffprobe are console apps. The desktop build runs with no console of its own
+# (console=False in ragpoc.spec), so Windows pops up a fresh console window for every single
+# subprocess.run() call unless we explicitly ask it not to -- for a 15-minute video split into
+# 30s segments that's ~60 flashing windows (two ffmpeg calls per segment) while it processes.
+_NO_WINDOW_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
 @dataclass(frozen=True)
@@ -22,6 +29,7 @@ def video_duration(path: Path) -> float:
         check=True,
         capture_output=True,
         text=True,
+        creationflags=_NO_WINDOW_FLAGS,
     )
     return float(json.loads(result.stdout)["format"]["duration"])
 
@@ -41,6 +49,7 @@ def extract_video_segments(path: Path, output_dir: Path, segment_seconds: int = 
             ["ffmpeg", "-y", "-ss", str(midpoint), "-i", str(path), "-frames:v", "1", "-q:v", "3", str(frame_path)],
             check=True,
             capture_output=True,
+            creationflags=_NO_WINDOW_FLAGS,
         )
         subprocess.run(
             [
@@ -50,6 +59,7 @@ def extract_video_segments(path: Path, output_dir: Path, segment_seconds: int = 
             ],
             check=True,
             capture_output=True,
+            creationflags=_NO_WINDOW_FLAGS,
         )
         segments.append(VideoSegment(ordinal, start, end, midpoint, frame_path, clip_path))
         ordinal += 1
