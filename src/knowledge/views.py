@@ -31,7 +31,7 @@ from knowledge.models import (
     Workspace,
     calculate_content_hash,
 )
-from knowledge.pydantic_agent import AgentDeps, create_pydantic_rag_agent
+from knowledge.pydantic_agent import AgentDeps, create_pydantic_rag_agent, evidence_media_parts
 from knowledge.services import get_rag_service, reset_rag_service
 from knowledge.settings_store import (
     get_api_key_status,
@@ -544,8 +544,8 @@ def upload_page_attachment(request: HttpRequest, page_id: str) -> JsonResponse:
                 media_type=media_type,
                 content_hash=digest,
                 byte_size=len(raw),
-                status="indexed",
-                indexed_at=timezone.now(),
+                status=report["status"],
+                indexed_at=timezone.now() if report["status"] == "indexed" else None,
             )
         NotebookDocument.objects.get_or_create(notebook=page.notebook, document=doc)
         doc_dict = {
@@ -663,9 +663,15 @@ def list_or_add_sources(request: HttpRequest) -> JsonResponse:
             return JsonResponse({"detail": "No content, url or file provided."}, status=400)
 
         digest = hashlib.sha256(raw_bytes).hexdigest()
+        # Only reuse a prior document if it actually finished indexing and its file is still on
+        # disk -- same fix as upload_page_attachment: a same-hash match on an 'unindexed' or
+        # 'failed' row (e.g. no OpenRouter key/connection at the time, which also means the file
+        # may since have been cleared) used to get linked here unconditionally instead of
+        # retrying, silently reusing a document that was never actually searchable.
         existing_doc = Document.objects.filter(content_hash=digest).first()
+        reusable = existing_doc if existing_doc and existing_doc.status == "indexed" and Path(existing_doc.source_path).is_file() else None
 
-        doc = existing_doc
+        doc = reusable
         if not doc:
             settings.allowed_upload_dir.mkdir(parents=True, exist_ok=True)
             dest = settings.allowed_upload_dir / f"{digest[:16]}-{filename}"
@@ -675,9 +681,11 @@ def list_or_add_sources(request: HttpRequest) -> JsonResponse:
                 report = asyncio.run(rag.ingestor.ingest(dest))
                 # rag.ingestor.ingest() already inserts this row via raw SQL into the same
                 # physical `documents` table Django's ORM reads (Document.Meta.db_table).
-                # Re-check before creating, or Document.objects.create() hits a UNIQUE
-                # constraint violation on `id` (matches the working pattern in upload_page_attachment).
-                doc = Document.objects.filter(content_hash=digest).first()
+                # Looked up by the id ingest() just reported, not by content_hash -- a retry
+                # after an earlier unindexed/failed attempt under a different filename (different
+                # source_path, so Ingestor treats it as a separate row) can leave more than one
+                # document sharing this content_hash (matches the fix in upload_page_attachment).
+                doc = Document.objects.filter(id=report["document_id"]).first()
                 if not doc:
                     doc_row = rag.retriever.get_document(report["document_id"])
                     media_type = doc_row["media_type"] if doc_row else "text"
@@ -688,8 +696,8 @@ def list_or_add_sources(request: HttpRequest) -> JsonResponse:
                         media_type=media_type,
                         content_hash=digest,
                         byte_size=len(raw_bytes),
-                        status="indexed",
-                        indexed_at=timezone.now(),
+                        status=report["status"],
+                        indexed_at=timezone.now() if report["status"] == "indexed" else None,
                     )
             except Exception as e:
                 dest.unlink(missing_ok=True)
@@ -715,7 +723,9 @@ def list_or_add_sources(request: HttpRequest) -> JsonResponse:
             "media_type": doc.media_type,
             "byte_size": doc.byte_size,
             "notebook_id": nb_id,
-            "reused": bool(existing_doc),
+            "reused": bool(reusable),
+            "status": doc.status,
+            "error_message": doc.error_message,
         }, status=201)
 
     # GET: List this notebook's sources (resolving the notebook via page_id if needed)
@@ -729,7 +739,14 @@ def list_or_add_sources(request: HttpRequest) -> JsonResponse:
 
     docs = Document.objects.filter(notebook_documents__notebook_id=nb_id_resolved)
     sources_list = [
-        {"id": d.id, "filename": d.original_filename, "media_type": d.media_type, "byte_size": d.byte_size}
+        {
+            "id": d.id,
+            "filename": d.original_filename,
+            "media_type": d.media_type,
+            "byte_size": d.byte_size,
+            "status": d.status,
+            "error_message": d.error_message,
+        }
         for d in docs
     ]
     return JsonResponse(sources_list, safe=False)
@@ -800,6 +817,32 @@ def document_detail_dispatch(request: HttpRequest, document_id: str) -> JsonResp
 
         doc.delete()
         return JsonResponse({"status": "deleted", "id": document_id})
+
+    elif request.method == "POST":
+        # Retries indexing an 'unindexed' (or 'failed') document from its already-stored file --
+        # no re-upload needed. Ingestor.ingest() matches by source_path, so this reuses the same
+        # doc_id/chunks instead of creating a duplicate (see ingestion.py).
+        file_path = Path(doc.source_path)
+        if not file_path.is_file():
+            return JsonResponse({"detail": "El archivo original ya no está en disco; hay que volver a subirlo."}, status=404)
+
+        rag = get_rag_service()
+        try:
+            asyncio.run(rag.ingestor.ingest(file_path))
+        except Exception:
+            # A hard failure (bad file) leaves ingest()'s own 'failed' status/error_message
+            # already persisted -- just reflect it below rather than erroring the request too.
+            pass
+        doc.refresh_from_db()
+        return JsonResponse({
+            "id": doc.id,
+            "filename": doc.original_filename,
+            "media_type": doc.media_type,
+            "byte_size": doc.byte_size,
+            "status": doc.status,
+            "error_message": doc.error_message,
+            "indexed_at": doc.indexed_at.isoformat() if doc.indexed_at else None,
+        })
 
     return JsonResponse({"detail": "Method not allowed"}, status=405)
 
@@ -1815,21 +1858,12 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                             rag_context_text += " (Archivo binario/visual indexado)\n\n"
                     prompt_parts.append(rag_context_text)
 
-                    # INJECT MULTIMODAL BYTES FOR IMAGES IN EVIDENCE
-                    for _idx, s in enumerate(sources, 1):
-                        s_type = s.get("media_type")
-                        s_path = s.get("source_path")
-                        if s_type == "image" and s_path:
-                            p_img = Path(s_path)
-                            if p_img.exists() and p_img.is_file():
-                                try:
-                                    img_bytes = p_img.read_bytes()
-                                    suffix = p_img.suffix.lower()
-                                    mime = "image/png" if suffix == ".png" else "image/jpeg" if suffix in {".jpg", ".jpeg"} else "image/webp"
-                                    prompt_parts.append(f"\n[Imagen recuperada de la fuente {s.get('filename')}]:\n")
-                                    prompt_parts.append(BinaryContent(data=img_bytes, media_type=mime))
-                                except Exception:
-                                    pass
+                    # INJECT MULTIMODAL BYTES FOR NON-TEXT EVIDENCE (image / PDF page / video clip /
+                    # audio). See evidence_media_parts: none of these get a transcription or caption
+                    # at ingestion time, so without the raw bytes the model only sees the "(Archivo
+                    # binario/visual indexado)" placeholder above and can't describe the content.
+                    for s in sources:
+                        prompt_parts.extend(evidence_media_parts(s))
 
                 prompt_parts.append(f"\nPregunta del usuario: {question}")
                 

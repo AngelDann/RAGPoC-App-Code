@@ -6901,8 +6901,13 @@
 
           if (modalFileProgressBar) modalFileProgressBar.style.width = '100%';
           if (modalFileProgressPercent) modalFileProgressPercent.textContent = '100%';
-          if (statusEl) statusEl.textContent = `✓ Archivo "${result.filename}" indexado exitosamente.`;
-          showToast(`Archivo "${result.filename}" indexado como fuente del cuaderno.`, 'success');
+          if (result.status === 'unindexed') {
+            if (statusEl) statusEl.textContent = `⚠ "${result.filename}" se guardó sin indexar (sin conexión o falta la API key).`;
+            showToast(`"${result.filename}" se guardó como fuente, pero no se pudo indexar. Reintenta desde Adjuntos cuando tengas conexión.`, 'warning');
+          } else {
+            if (statusEl) statusEl.textContent = `✓ Archivo "${result.filename}" indexado exitosamente.`;
+            showToast(`Archivo "${result.filename}" indexado como fuente del cuaderno.`, 'success');
+          }
 
         } catch (err) {
           if (modalFileProgressBar) {
@@ -6946,7 +6951,9 @@
             notebook_id: sourcesModalNotebookId,
           })
         });
-        statusEl.textContent = `✓ Fuente "${result.filename}" indexada exitosamente.`;
+        statusEl.textContent = result.status === 'unindexed'
+          ? `⚠ Fuente "${result.filename}" guardada sin indexar (sin conexión o falta la API key).`
+          : `✓ Fuente "${result.filename}" indexada exitosamente.`;
         urlInput.value = '';
         await loadModalSourcesList();
         if (currentPage) await loadAttachmentsPanel();
@@ -6974,7 +6981,9 @@
             notebook_id: sourcesModalNotebookId,
           })
         });
-        statusEl.textContent = `✓ Fuente "${result.filename}" guardada e indexada.`;
+        statusEl.textContent = result.status === 'unindexed'
+          ? `⚠ Fuente "${result.filename}" guardada sin indexar (sin conexión o falta la API key).`
+          : `✓ Fuente "${result.filename}" guardada e indexada.`;
         $('#source-text-title').value = '';
         $('#source-text-content').value = '';
         await loadModalSourcesList();
@@ -7900,15 +7909,31 @@
         let doc = result.document;
         let mediaUrl = `/api/documents/${doc.id}/file`;
         let mediaType = doc.media_type;
+        // The file is stored and servable either way (see /api/documents/<id>/file) -- only
+        // whether it's *searchable* by the agent differs. 'unindexed' means ingest() hit a
+        // connectivity problem (no OpenRouter key, or no internet) rather than a broken file,
+        // so it's kept instead of deleted and can be retried later from the Adjuntos panel
+        // without re-uploading (see attachmentRowHTML's retry button).
+        let unindexed = doc.status === 'unindexed';
 
         if (progressBar) progressBar.style.width = '100%';
         if (progressPercent) progressPercent.textContent = '100%';
-        if (progressLabel) progressLabel.textContent = '✓ ¡Archivo indexado e insertado!';
+        if (progressLabel) {
+          progressLabel.textContent = unindexed
+            ? '⚠ Guardado sin indexar (sin conexión o falta la API key)'
+            : '✓ ¡Archivo indexado e insertado!';
+        }
 
         if (currentPage?.id === targetPageId) {
           insertMediaIntoEditor(mediaUrl, mediaType, doc.original_filename, doc.id, doc.byte_size);
           await savePage();
           await loadAttachmentsPanel();
+          if (unindexed) {
+            showToast(`"${doc.original_filename}" se guardó, pero no se pudo indexar (sin conexión o falta la API key). Podrás reintentarlo desde Adjuntos.`, 'warning');
+          }
+        } else if (unindexed) {
+          await persistMediaToPage(targetPageId, mediaUrl, mediaType, doc.original_filename, doc.id, doc.byte_size);
+          showToast(`"${doc.original_filename}" se guardó (sin indexar) en la página donde lo subiste. Podrás reintentar el indexado desde Adjuntos.`, 'warning');
         } else {
           await persistMediaToPage(targetPageId, mediaUrl, mediaType, doc.original_filename, doc.id, doc.byte_size);
           showToast(`"${doc.original_filename}" se indexó y se insertó en la página donde lo subiste (ya no es la que tienes abierta).`, 'success');
@@ -7941,15 +7966,28 @@
         : d.media_type === 'audio' ? 'bi-music-note-beamed text-success'
         : 'bi-file-earmark-text text-secondary';
       let sizeKb = ((d.byte_size || 0) / 1024).toFixed(1);
+      // 'unindexed' means the file is stored fine but couldn't be embedded (no OpenRouter key,
+      // or no internet reaching it) -- not deleted like a genuine failure, so a retry from here
+      // can pick it back up without re-uploading. See upload_page_attachment/document_detail_dispatch.
+      let unindexed = d.status === 'unindexed';
+      let warningBadge = unindexed
+        ? `<i class="bi bi-cloud-slash text-warning" style="font-size:11px;" title="${esc(d.error_message || 'Sin indexar: sin conexión o falta la API key.')}"></i>`
+        : '';
+      let retryBtn = unindexed
+        ? `<button type="button" class="action-mini-btn" data-reindex-attachment="${d.id}" data-att-name="${esc(d.filename)}" style="width:20px; height:20px;" title="Reintentar indexado">
+             <i class="bi bi-arrow-repeat" style="font-size:11px;"></i>
+           </button>`
+        : '';
       return `
         <div class="attachment-row" draggable="true" data-drag-doc-id="${d.id}" data-drag-doc-url="/api/documents/${d.id}/file" data-drag-doc-type="${d.media_type}" data-drag-doc-name="${esc(d.filename)}" data-drag-doc-size="${d.byte_size}">
           <i class="bi bi-grip-vertical text-muted attachment-row-icon" style="font-size:12px;"></i>
           <i class="bi ${icon} attachment-row-icon"></i>
           <div class="attachment-row-main" onclick="window.openFilePreviewModal('${d.id}', '${esc(d.filename)}', '${d.media_type}')" title="${esc(d.filename)} — clic para previsualizar">
-            <div class="attachment-row-name">${esc(d.filename)}</div>
-            <div class="attachment-row-meta">${sizeKb} KB</div>
+            <div class="attachment-row-name">${esc(d.filename)} ${warningBadge}</div>
+            <div class="attachment-row-meta">${sizeKb} KB${unindexed ? ' · sin indexar' : ''}</div>
           </div>
           <div class="attachment-row-actions">
+            ${retryBtn}
             <button type="button" class="action-mini-btn" data-insert-doc-btn="${d.id}" data-doc-url="/api/documents/${d.id}/file" data-doc-type="${d.media_type}" data-doc-name="${esc(d.filename)}" data-doc-size="${d.byte_size}" title="Incrustar en el editor de la nota" style="width:22px; height:22px;">
               <i class="bi bi-plus-lg" style="font-size:12px;"></i>
             </button>
@@ -8049,6 +8087,27 @@
             } catch (err) {
               showToast('Error al renombrar: ' + err.message, 'error');
             }
+          }
+        };
+      });
+
+      container.querySelectorAll('[data-reindex-attachment]').forEach(btn => {
+        btn.onclick = async e => {
+          e.stopPropagation();
+          let dId = btn.dataset.reindexAttachment;
+          let dName = btn.dataset.attName;
+          btn.disabled = true;
+          try {
+            let result = await api(`/api/documents/${dId}`, { method: 'POST' });
+            if (result.status === 'indexed') {
+              showToast(`"${dName}" se indexó correctamente.`, 'success');
+            } else {
+              showToast(`"${dName}" sigue sin poder indexarse: ${result.error_message || 'sin conexión o falta la API key.'}`, 'warning');
+            }
+            if (currentPage) await loadAttachmentsPanel();
+          } catch (err) {
+            showToast('Error al reintentar el indexado: ' + err.message, 'error');
+            btn.disabled = false;
           }
         };
       });

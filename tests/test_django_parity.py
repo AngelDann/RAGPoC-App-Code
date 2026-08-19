@@ -10,7 +10,7 @@ from django.test import Client
 from knowledge.models import Document
 from knowledge.services import get_rag_service
 from ragpoc.config import Settings
-from ragpoc.embeddings import FakeEmbeddingProvider
+from ragpoc.embeddings import EmbeddingError, FakeEmbeddingProvider
 
 
 def auth_header() -> dict[str, str]:
@@ -262,6 +262,56 @@ def test_django_reupload_after_failed_ingest_retries_instead_of_linking_a_dead_d
 
     file_resp = client.get(f"/api/documents/{data['document']['id']}/file", **auth_header())
     assert file_resp.status_code == 200
+
+
+@pytest.mark.django_db
+def test_django_upload_survives_connectivity_failure_as_unindexed_and_can_be_retried():
+    # A user reported losing an upload attempt entirely (file deleted, hard 400 Bad Request)
+    # whenever there was no internet or no OpenRouter key configured -- not video-specific, every
+    # media type goes through the same embedding step. A connectivity failure should now come
+    # back as a normal 201 with the document marked 'unindexed', file kept on disk and servable,
+    # and retriable later via POST /api/documents/<id> without re-uploading anything.
+    client = Client()
+    ws = client.post("/api/workspaces", data=json.dumps({"name": "Personal"}), content_type="application/json", **auth_header()).json()
+    nb = client.post("/api/notebooks", data=json.dumps({"workspace_id": ws["id"], "name": "Notas"}), content_type="application/json", **auth_header()).json()
+    page = client.post("/api/pages", data=json.dumps({"notebook_id": nb["id"], "title": "A"}), content_type="application/json", **auth_header()).json()
+
+    from knowledge import views
+    rag = views.get_rag_service()
+    working_provider = rag.ingestor.provider
+
+    class _NoConnectionProvider:
+        async def embed_texts(self, texts):
+            raise EmbeddingError("Configura tu OpenRouter API key en Ajustes o en OPENROUTER_API_KEY.")
+
+    rag.ingestor.provider = _NoConnectionProvider()
+    try:
+        file = io.BytesIO(b"contenido subido sin conexion a internet")
+        file.name = "sin_red.txt"
+        resp = client.post(f"/api/pages/{page['id']}/attachments", {"file": file}, **auth_header())
+    finally:
+        rag.ingestor.provider = working_provider
+
+    # Soft outcome: still a success response, not the 400 the file-deleting hard-failure path uses.
+    assert resp.status_code == 201
+    data = resp.json()["document"]
+    assert data["status"] == "unindexed"
+
+    # The file must have been kept, not deleted -- servable right away even though unindexed.
+    file_resp = client.get(f"/api/documents/{data['id']}/file", **auth_header())
+    assert file_resp.status_code == 200
+
+    # Retrying (connectivity "back") via the reindex endpoint must succeed without re-uploading.
+    retry_resp = client.post(f"/api/documents/{data['id']}", **auth_header())
+    assert retry_resp.status_code == 200
+    # doc.refresh_from_db() (inside the view) reads via Django's own DB connection, which --
+    # only inside this test's wrapping transaction -- can't see a write just committed through
+    # the raw sqlite connection Ingestor uses (same cross-connection visibility gap documented
+    # in test_django_reupload_after_failed_ingest_retries_instead_of_linking_a_dead_document
+    # above; a real request has no such open transaction and doesn't hit this). Verify success
+    # via that same raw connection instead, which reflects its own write immediately.
+    row = rag.connection.execute("SELECT status FROM documents WHERE id = ?", (data["id"],)).fetchone()
+    assert row["status"] == "indexed"
 
 
 @pytest.mark.django_db

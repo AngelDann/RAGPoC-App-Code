@@ -8,10 +8,12 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
+
 from ragpoc.chunking import ApproximateTokenCounter, chunk_text
 from ragpoc.config import Settings
 from ragpoc.db import persist_dimension
-from ragpoc.embeddings import EmbeddingProvider
+from ragpoc.embeddings import EmbeddingError, EmbeddingProvider
 from ragpoc.extractors.image import inspect_image
 from ragpoc.extractors.pdf_pages import render_pdf_pages
 from ragpoc.extractors.text import TEXT_SUFFIXES, extract_text
@@ -81,6 +83,19 @@ class Ingestor:
             self.connection.execute("UPDATE documents SET status='indexed', indexed_at=?, error_message=NULL WHERE id=?", (_now(), doc_id))
             self.connection.commit()
             return {"document_id": doc_id, "status": "indexed", "chunk_count": count}
+        except (EmbeddingError, httpx.TransportError) as error:
+            # Connectivity problems (no OpenRouter key, or a genuine network failure reaching
+            # it -- httpx.TransportError covers DNS failure/connection refused/timeout, since
+            # OpenRouterEmbeddingProvider._post() doesn't wrap its request in its own try/except)
+            # are not the same class of failure as a broken file (unsupported type, oversized
+            # PDF, video too long -- those stay ValueErrors and fall through to the except below).
+            # The file the caller already wrote to `source` is genuinely fine and worth keeping:
+            # mark it 'unindexed' and return normally instead of raising, so the caller doesn't
+            # delete it. It can be retried later (from the same source_path, once there's a key
+            # or a connection) without the user re-uploading anything.
+            self.connection.execute("UPDATE documents SET status='unindexed', error_message=? WHERE id=?", (str(error)[:1000], doc_id))
+            self.connection.commit()
+            return {"document_id": doc_id, "status": "unindexed", "reason": str(error)[:500]}
         except Exception as error:
             self.connection.execute("UPDATE documents SET status='failed', error_message=? WHERE id=?", (str(error)[:1000], doc_id))
             self.connection.commit()
