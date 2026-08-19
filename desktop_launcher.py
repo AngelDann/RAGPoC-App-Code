@@ -100,6 +100,19 @@ def main():
     except Exception as e:
         print(f"Aviso en migraciones: {e}")
 
+    # Django only imports urls.py (and therefore views.py, and therefore pydantic_ai and every
+    # other heavy dependency views.py pulls in) the first time it needs to resolve a URL --
+    # migrate above never touches it. Left alone, that import (~4-5s, mostly pydantic_ai) would
+    # happen lazily on the *first HTTP request the webview window makes*, i.e. right after the
+    # window is already visible to the user -- it would sit there looking open but unresponsive
+    # for several seconds. Forcing it here instead pays that cost during the splash period,
+    # before wait_for_server()/webview.create_window() below, so the window is instantly usable
+    # the moment it appears.
+    print("Preparando la aplicación...")
+    from django.urls import get_resolver
+
+    get_resolver().url_patterns
+
     host = "127.0.0.1"
     port = 8080
     url = f"http://{host}:{port}/"

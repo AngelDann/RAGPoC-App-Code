@@ -73,16 +73,16 @@ def health_view(request: HttpRequest) -> JsonResponse:
     })
 
 
-def check_update_view(request: HttpRequest) -> JsonResponse:
+async def check_update_view(request: HttpRequest) -> JsonResponse:
     try:
-        info = check_for_update()
+        info = await check_for_update()
     except Exception as e:
         return JsonResponse({"detail": f"No se pudo verificar actualizaciones: {e}"}, status=502)
     return JsonResponse(info)
 
 
 @csrf_exempt
-def apply_update_view(request: HttpRequest) -> JsonResponse:
+async def apply_update_view(request: HttpRequest) -> JsonResponse:
     if request.method != "POST":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
     try:
@@ -95,7 +95,7 @@ def apply_update_view(request: HttpRequest) -> JsonResponse:
         return JsonResponse({"detail": "download_url is required."}, status=422)
 
     try:
-        apply_update(download_url)
+        await apply_update(download_url)
     except UpdateError as e:
         return JsonResponse({"detail": str(e)}, status=400)
     except Exception as e:

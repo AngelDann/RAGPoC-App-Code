@@ -14,7 +14,7 @@ import httpx
 from packaging.version import Version
 
 from ragpoc import __version__
-from ragpoc.http import SSL_CONTEXT
+from ragpoc.http import SSL_CONTEXT, new_async_client
 from ragpoc.http import get as http_get
 
 GITHUB_REPO = "AngelDann/RAGPoC-App-Code"
@@ -26,11 +26,19 @@ class UpdateError(RuntimeError):
     pass
 
 
-def check_for_update() -> dict:
+async def check_for_update() -> dict:
     """Queries GitHub Releases for the latest published version. Works whether or not the app
     is frozen (only apply_update() requires a frozen build), so it degrades gracefully when run
-    from source -- update_available will just never fire since __version__ tracks HEAD there."""
-    response = http_get(_RELEASES_API, timeout=10, headers={"Accept": "application/vnd.github+json"})
+    from source -- update_available will just never fire since __version__ tracks HEAD there.
+
+    Async, not the sync ragpoc.http.get used elsewhere in this module: this fires unconditionally
+    on every desktop app startup (see console.html's checkForUpdate()), racing the DOM-ready
+    workspace load. A sync view here would tie up Django's single thread-sensitive worker thread
+    for the whole GitHub round-trip (up to the 10s timeout on a slow/blocked connection) --
+    since ASGI serializes *every* sync view onto that one thread, the workspace tree/page fetch
+    would queue up behind it, and the window would sit unresponsive until it finished."""
+    async with new_async_client() as client:
+        response = await client.get(_RELEASES_API, timeout=10, headers={"Accept": "application/vnd.github+json"})
     response.raise_for_status()
     data = response.json()
     latest_tag = (data.get("tag_name") or "").lstrip("v")
@@ -52,12 +60,18 @@ def check_for_update() -> dict:
     }
 
 
-def apply_update(download_url: str) -> None:
+async def apply_update(download_url: str) -> None:
     """Downloads the new build's zip (RAGPoC.exe + _internal\\, see ragpoc.spec) to a staging
     directory, extracts it, then hands off to a detached batch script that waits for this process
     to exit, replaces the install in place, and relaunches it. Windows won't let a running process
     overwrite its own .exe file, hence the external helper. Only touches the exe and _internal\\ --
-    data/ and .env live alongside them, untouched."""
+    data/ and .env live alongside them, untouched.
+
+    Async, not sync httpx, for the same reason check_for_update() is: apply_update_view is called
+    directly from the console's "Actualizar" button with no way to know the download will be quick,
+    and a slow/throttled GitHub Releases download (seen taking 60s+ in testing on a slow connection)
+    would otherwise tie up Django's single thread-sensitive worker for that whole time -- freezing
+    every other view (chat, workspace tree, everything) since ASGI serializes all sync views onto it."""
     if not getattr(sys, "frozen", False):
         raise UpdateError("El auto-actualizador solo funciona en la build compilada (.exe).")
     if urlparse(download_url).hostname not in _ALLOWED_DOWNLOAD_HOSTS:
@@ -66,25 +80,32 @@ def apply_update(download_url: str) -> None:
     current_exe = Path(sys.executable).resolve()
     current_dir = current_exe.parent
     tmp_dir = Path(tempfile.gettempdir())
-    zip_path = tmp_dir / "ragpoc_update.zip"
-    # Cleared and re-extracted on every attempt, so any leftover from an interrupted previous
-    # update (crash, power loss) self-heals instead of needing a separate stale-state sweep.
-    staging_dir = tmp_dir / "ragpoc_update_staging"
+    pid = os.getpid()
+    # PID-scoped, not fixed names: a prior update attempt's detached swap script survives this
+    # process (that's the point -- it waits out our exit before touching files) and can still be
+    # sitting in its own wait loop, e.g. if the app was force-closed mid-update and relaunched. A
+    # second apply_update() reusing the same fixed temp paths would overwrite that other script's
+    # zip/staging/.bat out from under it mid-read -- observed in testing as a silent, unlogged
+    # failure (the running cmd interpreter doesn't lock the .bat file it's reading). Scoping every
+    # temp path to our own pid makes concurrent/leftover attempts independent instead of colliding.
+    zip_path = tmp_dir / f"ragpoc_update_{pid}.zip"
+    staging_dir = tmp_dir / f"ragpoc_update_staging_{pid}"
     if staging_dir.exists():
         shutil.rmtree(staging_dir, ignore_errors=True)
     staging_dir.mkdir(parents=True, exist_ok=True)
 
-    with httpx.stream("GET", download_url, timeout=180, follow_redirects=True, verify=SSL_CONTEXT) as response:
-        response.raise_for_status()
-        with zip_path.open("wb") as f:
-            for chunk in response.iter_bytes():
-                f.write(chunk)
+    async with new_async_client(timeout=180) as client:
+        async with client.stream("GET", download_url, follow_redirects=True) as response:
+            response.raise_for_status()
+            with zip_path.open("wb") as f:
+                async for chunk in response.aiter_bytes():
+                    f.write(chunk)
 
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(staging_dir)
 
     script_path = _write_updater_script(
-        pid=os.getpid(),
+        pid=pid,
         current_exe=current_exe,
         staging_exe=staging_dir / current_exe.name,
         current_internal=current_dir / "_internal",
@@ -164,8 +185,9 @@ def _write_updater_script(
     # the value is never stale.
     log_path = current_exe.with_name("ragpoc.log")
     old_backup = current_exe.with_suffix(current_exe.suffix + ".old")
-    pid_probe = Path(tempfile.gettempdir()) / "ragpoc_update_pid.txt"
-    script_path = Path(tempfile.gettempdir()) / "ragpoc_update.bat"
+    # pid-scoped, like the zip/staging paths in apply_update() -- see the comment there.
+    pid_probe = Path(tempfile.gettempdir()) / f"ragpoc_update_pid_{pid}.txt"
+    script_path = Path(tempfile.gettempdir()) / f"ragpoc_update_{pid}.bat"
     script_path.write_text(
         "@echo off\r\n"
         # Logged before anything can go wrong, so a swap that dies early leaves a trace instead of
@@ -187,13 +209,30 @@ def _write_updater_script(
         f'del /f /q "{pid_probe}" >nul 2>&1\r\n'
         f'if exist "{old_backup}" del /f /q "{old_backup}" >nul 2>&1\r\n'
         f'robocopy "{staging_internal}" "{current_internal}" /MIR /R:15 /W:1 /NFL /NDL /NJH /NJS /NP >nul 2>&1\r\n'
-        "if %errorlevel% GEQ 8 (\r\n"
-        f'  echo [%date% %time%] Update failed: robocopy could not sync _internal (exit %errorlevel%) >> "{log_path}"\r\n'
+        "set robo_rc=%errorlevel%\r\n"
+        "if %robo_rc% GEQ 8 (\r\n"
+        f'  echo [%date% %time%] Update failed: robocopy could not sync _internal, exit=%robo_rc% >> "{log_path}"\r\n'
         "  goto relaunch\r\n"
         ")\r\n"
+        # No literal parentheses in this text (or in any echo that follows a multi-line `if (...)`
+        # block, throughout this script): cmd.exe's block parser counts parens to find where an
+        # `if (...)` ends, and unescaped `(`/`)` in plain (unquoted) echo text -- even on an
+        # unrelated later line -- can desync that count and silently corrupt everything parsed
+        # after it. Confirmed by direct testing: this single line, immediately after the robocopy
+        # if-block above, was enough on its own to make the entire rest of the script (both exe
+        # moves, the relaunch) execute with no trace in the log and no error anywhere -- cmd just
+        # silently skipped straight to relaunching the *old*, unswapped exe.
+        f'echo [%date% %time%] Update: robocopy synced _internal, exit=%robo_rc% >> "{log_path}"\r\n'
         "set attempts=0\r\n"
         ":rename_retry\r\n"
-        f'move /y "{current_exe}" "{old_backup}" >nul 2>&1\r\n'
+        # >> log, not >nul: testing found `move` redirected to nul unreliable specifically when
+        # the parent cmd.exe's own stdout/stderr are themselves DEVNULL (as they are here -- see
+        # apply_update's Popen call) -- a nested nul-device redirect under an already-nul parent
+        # handle intermittently made the move fail (or the whole script stall) with no error
+        # surfaced anywhere, which is exactly the silent no-op this comment used to warn about
+        # further up. Redirecting to a real file sidesteps that nul-handle interaction entirely
+        # and is strictly more useful (move's only output is "N file(s) moved." or the real error).
+        f'move /y "{current_exe}" "{old_backup}" >> "{log_path}" 2>&1\r\n'
         "if errorlevel 1 (\r\n"
         "  set /a attempts+=1\r\n"
         "  if %attempts% LSS 60 (\r\n"
@@ -203,9 +242,11 @@ def _write_updater_script(
         f'  echo [%date% %time%] Update failed: could not rename "{current_exe}" out of the way after 60 attempts >> "{log_path}"\r\n'
         "  goto relaunch\r\n"
         ")\r\n"
+        f'echo [%date% %time%] Update: renamed current exe out of the way to {old_backup.name}, %attempts% attempts >> "{log_path}"\r\n'
+        f'for %%A in ("{staging_exe}") do set new_exe_size=%%~zA\r\n'
         "set attempts=0\r\n"
         ":install_retry\r\n"
-        f'move /y "{staging_exe}" "{current_exe}" >nul 2>&1\r\n'
+        f'move /y "{staging_exe}" "{current_exe}" >> "{log_path}" 2>&1\r\n'
         "if errorlevel 1 (\r\n"
         "  set /a attempts+=1\r\n"
         "  if %attempts% LSS 60 (\r\n"
@@ -213,11 +254,18 @@ def _write_updater_script(
         "    goto install_retry\r\n"
         "  )\r\n"
         f'  echo [%date% %time%] Update failed: could not move new exe into place after 60 attempts, restoring previous version >> "{log_path}"\r\n'
-        f'  move /y "{old_backup}" "{current_exe}" >nul 2>&1\r\n'
+        f'  move /y "{old_backup}" "{current_exe}" >> "{log_path}" 2>&1\r\n'
         "  goto relaunch\r\n"
         ")\r\n"
         f'del /f /q "{old_backup}" >nul 2>&1\r\n'
-        f'echo [%date% %time%] Update: new build installed successfully >> "{log_path}"\r\n'
+        # Logs the ACTUAL resulting file size, not just "the move command reported success" -- a
+        # move can report success while something else (AV quarantine, a sync client) touches the
+        # file microseconds later, and that would otherwise look identical to a clean install in
+        # this log. %%~zA reads the size Windows currently has on disk for the file, checked right
+        # after the move so any such interference shows up as a mismatch against the source size
+        # captured just before the move (new_exe_size, above).
+        f'for %%A in ("{current_exe}") do set installed_exe_size=%%~zA\r\n'
+        f'echo [%date% %time%] Update: new build installed, staged size=%new_exe_size% installed size=%installed_exe_size% >> "{log_path}"\r\n'
         ":relaunch\r\n"
         # A brief pause before the first launch of the exe that was JUST written to disk. UPX
         # packs the build (see ragpoc.spec), which some AV/EDR products scan more aggressively
