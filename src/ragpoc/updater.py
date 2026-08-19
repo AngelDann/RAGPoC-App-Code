@@ -142,9 +142,13 @@ def _write_updater_script(
     # silently (nothing checked its exit code); both moves below have their own retry loop for
     # the same reason robocopy gets one -- new_exe just landed from the internet and is unsigned
     # (no Authenticode signing in release.yml), which is exactly what Defender/SmartScreen scans
-    # on-write. The renamed-away old exe is deleted best-effort; if that step fails because of a
-    # lingering handle, main() sweeps up any leftover *.exe.old on the next app start (see
-    # cleanup_stale_update_files), once that lock is long gone.
+    # on-write. 60 attempts (~60s), not 15 (~15s): live testing showed a freshly-exited process's
+    # own exe staying locked well past 15s on a real machine often enough that most real update
+    # attempts failed silently this way -- 60s matches the pid-wait loop's own budget above and
+    # gave every attempt in that same testing a clean, unassisted swap. The renamed-away old exe
+    # is deleted best-effort; if that step fails because of a lingering handle, main() sweeps up
+    # any leftover *.exe.old on the next app start (see cleanup_stale_update_files), once that
+    # lock is long gone.
     #
     # Two commands are deliberately avoided throughout the script because they need a console,
     # which a background-launched updater can easily end up without (see apply_update):
@@ -192,11 +196,11 @@ def _write_updater_script(
         f'move /y "{current_exe}" "{old_backup}" >nul 2>&1\r\n'
         "if errorlevel 1 (\r\n"
         "  set /a attempts+=1\r\n"
-        "  if %attempts% LSS 15 (\r\n"
+        "  if %attempts% LSS 60 (\r\n"
         "    ping -n 2 127.0.0.1 >nul 2>&1\r\n"
         "    goto rename_retry\r\n"
         "  )\r\n"
-        f'  echo [%date% %time%] Update failed: could not rename "{current_exe}" out of the way after 15 attempts >> "{log_path}"\r\n'
+        f'  echo [%date% %time%] Update failed: could not rename "{current_exe}" out of the way after 60 attempts >> "{log_path}"\r\n'
         "  goto relaunch\r\n"
         ")\r\n"
         "set attempts=0\r\n"
@@ -204,11 +208,11 @@ def _write_updater_script(
         f'move /y "{staging_exe}" "{current_exe}" >nul 2>&1\r\n'
         "if errorlevel 1 (\r\n"
         "  set /a attempts+=1\r\n"
-        "  if %attempts% LSS 15 (\r\n"
+        "  if %attempts% LSS 60 (\r\n"
         "    ping -n 2 127.0.0.1 >nul 2>&1\r\n"
         "    goto install_retry\r\n"
         "  )\r\n"
-        f'  echo [%date% %time%] Update failed: could not move new exe into place after 15 attempts, restoring previous version >> "{log_path}"\r\n'
+        f'  echo [%date% %time%] Update failed: could not move new exe into place after 60 attempts, restoring previous version >> "{log_path}"\r\n'
         f'  move /y "{old_backup}" "{current_exe}" >nul 2>&1\r\n'
         "  goto relaunch\r\n"
         ")\r\n"
