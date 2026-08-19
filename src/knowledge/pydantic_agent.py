@@ -4,17 +4,20 @@ import asyncio
 import re
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 from asgiref.sync import sync_to_async
 from ddgs import DDGS
 from openai import AsyncOpenAI
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, BinaryContent, RunContext
+from pydantic_ai.messages import ToolReturn
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from knowledge.settings_store import get_effective_settings as get_settings
 from ragpoc.config import Settings
+from ragpoc.embeddings import AUDIO_MIME_TYPES
 from ragpoc.http import new_async_client
 from ragpoc.retrieval import Retriever
 
@@ -68,6 +71,52 @@ DIRECTIVAS DE OPERACIÓN (HERMES STYLE):
 """
 
 
+def evidence_media_parts(source: dict) -> list[str | BinaryContent]:
+    """Turn one retrieval hit into the raw bytes Gemini needs to actually see/hear it.
+
+    Video, audio and PDF-page chunks are indexed as embedding vectors only -- ingestion never
+    runs a transcription or captioning step, so chunks.text_content stays NULL for them. Without
+    handing Gemini the underlying file directly (it's multimodal, so this is cheaper and more
+    accurate than adding a separate transcription pipeline), that evidence is search-only: the
+    model can tell a matching chunk exists but not what's actually in it.
+    """
+    media_type = source.get("media_type")
+    filename = source.get("filename") or "fuente"
+    parts: list[str | BinaryContent] = []
+    try:
+        if media_type == "image" and source.get("source_path"):
+            path = Path(source["source_path"])
+            if path.is_file():
+                suffix = path.suffix.lower()
+                mime = "image/png" if suffix == ".png" else "image/jpeg" if suffix in {".jpg", ".jpeg"} else "image/webp"
+                parts.append(f"\n[Imagen recuperada de la fuente {filename}]:\n")
+                parts.append(BinaryContent(data=path.read_bytes(), media_type=mime))
+        elif media_type == "pdf" and source.get("derived_path"):
+            path = Path(source["derived_path"])
+            if path.is_file():
+                page = source.get("page_number")
+                label = f" (página {page})" if page else ""
+                parts.append(f"\n[Página de PDF recuperada de la fuente {filename}{label}]:\n")
+                parts.append(BinaryContent(data=path.read_bytes(), media_type="image/png"))
+        elif media_type == "video" and source.get("derived_path"):
+            path = Path(source["derived_path"])
+            if path.is_file():
+                meta = source.get("metadata") or {}
+                start_tc = meta.get("start_timecode")
+                label = f" ({start_tc}-{meta.get('end_timecode')})" if start_tc else ""
+                parts.append(f"\n[Clip de video recuperado de la fuente {filename}{label}]:\n")
+                parts.append(BinaryContent(data=path.read_bytes(), media_type="video/mp4"))
+        elif media_type == "audio" and source.get("source_path"):
+            path = Path(source["source_path"])
+            if path.is_file():
+                mime = AUDIO_MIME_TYPES.get(path.suffix.lower(), "audio/mpeg")
+                parts.append(f"\n[Audio recuperado de la fuente {filename}]:\n")
+                parts.append(BinaryContent(data=path.read_bytes(), media_type=mime))
+    except Exception:
+        return []
+    return parts
+
+
 def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDeps, str]:
     settings = settings or get_settings()
 
@@ -92,7 +141,7 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
         ctx: RunContext[AgentDeps],
         query: str,
         top_k: int = 5,
-    ) -> list[dict]:
+    ) -> list[dict] | ToolReturn:
         """Busca en la base de conocimiento local (notas, imágenes, PDFs, videos) del cuaderno actual."""
         try:
             from knowledge.models import Notebook, Page
@@ -120,6 +169,7 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
                 notebook_ids=notebook_ids,
             )
             formatted = []
+            media_parts: list[str | BinaryContent] = []
             for idx, r in enumerate(results, 1):
                 formatted.append({
                     "citation": f"[{idx}]",
@@ -128,6 +178,9 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
                     "page_number": r.get("page_number"),
                     "text_excerpt": (r.get("text") or "")[:800],
                 })
+                media_parts.extend(evidence_media_parts(r))
+            if media_parts:
+                return ToolReturn(return_value=formatted, content=media_parts)
             return formatted
         except Exception as e:
             return [{"error": str(e)}]
