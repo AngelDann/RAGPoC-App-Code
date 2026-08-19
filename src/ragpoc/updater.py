@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import threading
+import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -32,7 +34,12 @@ def check_for_update() -> dict:
     response.raise_for_status()
     data = response.json()
     latest_tag = (data.get("tag_name") or "").lstrip("v")
-    asset = next((a for a in data.get("assets", []) if a["name"].lower().endswith(".exe")), None)
+    # A zip of the onedir build's contents (RAGPoC.exe + _internal\), not a standalone .exe --
+    # see ragpoc.spec and release.yml. A build from before this switch only ever published a
+    # bare .exe and won't find a matching asset here; its update button will report "no download
+    # available" rather than corrupt anything, and needs installing by hand once to bootstrap
+    # onto the onedir layout, exactly like any other update-mechanism-changing release.
+    asset = next((a for a in data.get("assets", []) if a["name"].lower().endswith(".zip")), None)
 
     available = bool(latest_tag) and Version(latest_tag) > Version(__version__)
     return {
@@ -46,25 +53,45 @@ def check_for_update() -> dict:
 
 
 def apply_update(download_url: str) -> None:
-    """Downloads the new .exe next to the running one, then hands off to a detached batch
-    script that waits for this process to exit, replaces the executable, and relaunches it.
-    Windows won't let a running process overwrite its own .exe file, hence the external helper.
-    Only touches the executable itself -- data/ and .env live alongside it, untouched."""
+    """Downloads the new build's zip (RAGPoC.exe + _internal\\, see ragpoc.spec) to a staging
+    directory, extracts it, then hands off to a detached batch script that waits for this process
+    to exit, replaces the install in place, and relaunches it. Windows won't let a running process
+    overwrite its own .exe file, hence the external helper. Only touches the exe and _internal\\ --
+    data/ and .env live alongside them, untouched."""
     if not getattr(sys, "frozen", False):
         raise UpdateError("El auto-actualizador solo funciona en la build compilada (.exe).")
     if urlparse(download_url).hostname not in _ALLOWED_DOWNLOAD_HOSTS:
         raise UpdateError("download_url debe apuntar a un asset de GitHub Releases.")
 
     current_exe = Path(sys.executable).resolve()
-    new_exe = current_exe.with_name(current_exe.stem + "_new.exe")
+    current_dir = current_exe.parent
+    tmp_dir = Path(tempfile.gettempdir())
+    zip_path = tmp_dir / "ragpoc_update.zip"
+    # Cleared and re-extracted on every attempt, so any leftover from an interrupted previous
+    # update (crash, power loss) self-heals instead of needing a separate stale-state sweep.
+    staging_dir = tmp_dir / "ragpoc_update_staging"
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir, ignore_errors=True)
+    staging_dir.mkdir(parents=True, exist_ok=True)
 
     with httpx.stream("GET", download_url, timeout=180, follow_redirects=True, verify=SSL_CONTEXT) as response:
         response.raise_for_status()
-        with new_exe.open("wb") as f:
+        with zip_path.open("wb") as f:
             for chunk in response.iter_bytes():
                 f.write(chunk)
 
-    script_path = _write_updater_script(os.getpid(), current_exe, new_exe)
+    with zipfile.ZipFile(zip_path) as zf:
+        zf.extractall(staging_dir)
+
+    script_path = _write_updater_script(
+        pid=os.getpid(),
+        current_exe=current_exe,
+        staging_exe=staging_dir / current_exe.name,
+        current_internal=current_dir / "_internal",
+        staging_internal=staging_dir / "_internal",
+        staging_dir=staging_dir,
+        zip_path=zip_path,
+    )
     # CREATE_NO_WINDOW, not DETACHED_PROCESS: detached gives cmd.exe no console at all, and cmd
     # runs every `|` pipeline stage by re-launching itself, which fails without one -- cmd died
     # on the swap script's very first pipeline and nothing after it ever ran (silently, since the
@@ -85,38 +112,52 @@ def apply_update(download_url: str) -> None:
     threading.Timer(1.5, lambda: os._exit(0)).start()
 
 
-def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
-    # A single unretried `move` of new_exe straight over current_exe kept losing a race against
-    # Windows/antivirus still holding the just-exited process's own .exe file locked: it failed
-    # silently (nothing checked its exit code), the app just kept launching the untouched old
-    # exe while a "_new.exe" sat next to it forever, and the next update attempt then treated
-    # THAT stale copy as current_exe -- one silent failure compounding into a pile of duplicate
-    # binaries. A retry loop around that same overwrite helped but wasn't enough: it can still
-    # lose if the lock outlasts the retry window (large exe under antivirus scan, etc.).
+def _write_updater_script(
+    pid: int,
+    current_exe: Path,
+    staging_exe: Path,
+    current_internal: Path,
+    staging_internal: Path,
+    staging_dir: Path,
+    zip_path: Path,
+) -> Path:
+    # Two parts to every swap: the bulk of the build (_internal\, dozens of DLLs/data files) and
+    # the exe itself. They need different techniques.
     #
-    # The robust fix (the pattern mature Windows auto-updaters use, e.g. Squirrel.Windows) is to
-    # never overwrite an in-use file at all: Windows allows *renaming* a running process's own
-    # exe even while it's still mapped/executing (unlike overwriting it), so current_exe is
-    # renamed out of the way first -- which almost always succeeds immediately -- and only then
-    # is new_exe moved into the now-free canonical path. That second move can still lose a lock
-    # race though: new_exe just landed from the internet and is unsigned (no Authenticode signing
-    # in release.yml), which is exactly what Windows Defender/SmartScreen scans on-write, so it
-    # gets its own retry loop too. The renamed-away old exe is deleted best-effort; if that one
-    # step still fails because of a lingering handle, main() sweeps up any leftover *.exe.old
-    # (or, if the second move exhausts its retries, *_new.exe) on the next app start (see
+    # _internal\ is synced with `robocopy /MIR`: by the time this runs, the old process (whose
+    # pid we waited out below) has already exited, so nothing has these DLLs open the way a
+    # running process holds its own .exe -- a plain in-place overwrite is fine, no rename-first
+    # dance needed. robocopy's /R and /W give it its own built-in retry against a transient
+    # lock/scan (e.g. antivirus briefly touching a freshly-written DLL), so no hand-rolled retry
+    # loop is needed here either. Its exit codes do NOT follow normal cmd conventions though --
+    # 0-7 all mean success (0 = nothing changed, 1 = files copied, etc.), only >=8 is a real
+    # failure, hence `if %errorlevel% GEQ 8` rather than `if errorlevel 1`.
+    #
+    # The exe still needs the rename-first pattern (the pattern mature Windows auto-updaters use,
+    # e.g. Squirrel.Windows): Windows allows *renaming* a running process's own exe even while
+    # still mapped/executing (unlike overwriting it) -- but that only matters while it's still
+    # running, and by this point in the script it no longer is. The rename-first swap is kept
+    # anyway since it's already proven reliable and gives a rollback path (old_backup) for free.
+    # A single unretried move here previously lost races against Windows/antivirus locks
+    # silently (nothing checked its exit code); both moves below have their own retry loop for
+    # the same reason robocopy gets one -- new_exe just landed from the internet and is unsigned
+    # (no Authenticode signing in release.yml), which is exactly what Defender/SmartScreen scans
+    # on-write. The renamed-away old exe is deleted best-effort; if that step fails because of a
+    # lingering handle, main() sweeps up any leftover *.exe.old on the next app start (see
     # cleanup_stale_update_files), once that lock is long gone.
     #
     # Two commands are deliberately avoided throughout the script because they need a console,
     # which a background-launched updater can easily end up without (see apply_update):
     #   - `a | b` pipelines: cmd runs each stage by re-launching itself, and dies outright if it
     #     can't. The old `tasklist | find` wait loop killed the script on its first line, which is
-    #     why every swap silently no-op'd and left a stray _new.exe behind -- redirect to a temp
-    #     file and `find` in that file instead.
+    #     why every swap silently no-op'd and left a stray copy behind -- redirect to a temp file
+    #     and `find` in that file instead.
     #   - `timeout`: exits immediately with "input redirection is not supported" when stdin isn't
     #     a console, turning every retry pause into a busy spin -- `ping -n 2 127.0.0.1` sleeps
     #     ~1s with no such requirement.
-    # Both loops re-expand %attempts% correctly despite being inside parenthesised blocks: `goto`
-    # makes cmd re-read and re-parse from the label each pass, so the value is never stale.
+    # Both hand-rolled retry loops re-expand %attempts% correctly despite being inside
+    # parenthesised blocks: `goto` makes cmd re-read and re-parse from the label each pass, so
+    # the value is never stale.
     log_path = current_exe.with_name("ragpoc.log")
     old_backup = current_exe.with_suffix(current_exe.suffix + ".old")
     pid_probe = Path(tempfile.gettempdir()) / "ragpoc_update_pid.txt"
@@ -141,6 +182,11 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
         ")\r\n"
         f'del /f /q "{pid_probe}" >nul 2>&1\r\n'
         f'if exist "{old_backup}" del /f /q "{old_backup}" >nul 2>&1\r\n'
+        f'robocopy "{staging_internal}" "{current_internal}" /MIR /R:15 /W:1 /NFL /NDL /NJH /NJS /NP >nul 2>&1\r\n'
+        "if %errorlevel% GEQ 8 (\r\n"
+        f'  echo [%date% %time%] Update failed: robocopy could not sync _internal (exit %errorlevel%) >> "{log_path}"\r\n'
+        "  goto relaunch\r\n"
+        ")\r\n"
         "set attempts=0\r\n"
         ":rename_retry\r\n"
         f'move /y "{current_exe}" "{old_backup}" >nul 2>&1\r\n'
@@ -155,7 +201,7 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
         ")\r\n"
         "set attempts=0\r\n"
         ":install_retry\r\n"
-        f'move /y "{new_exe}" "{current_exe}" >nul 2>&1\r\n'
+        f'move /y "{staging_exe}" "{current_exe}" >nul 2>&1\r\n'
         "if errorlevel 1 (\r\n"
         "  set /a attempts+=1\r\n"
         "  if %attempts% LSS 15 (\r\n"
@@ -167,20 +213,19 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
         "  goto relaunch\r\n"
         ")\r\n"
         f'del /f /q "{old_backup}" >nul 2>&1\r\n'
-        f'echo [%date% %time%] Update: new exe installed successfully >> "{log_path}"\r\n'
+        f'echo [%date% %time%] Update: new build installed successfully >> "{log_path}"\r\n'
         ":relaunch\r\n"
-        # A brief pause before the first launch of the file that was JUST written to disk. UPX
+        # A brief pause before the first launch of the exe that was JUST written to disk. UPX
         # packs the build (see ragpoc.spec), which some AV/EDR products scan more aggressively
         # than an uncompressed exe precisely because packers are a common malware-evasion
-        # technique -- a scan (or any other transient handle on the fresh file) that overlaps
-        # the PyInstaller bootloader's own self-extraction can make it fail to LoadLibrary the
-        # embedded Python DLL, surfacing as "Failed to load Python DLL ... module not found" even
-        # though the exe on disk is perfectly intact. This doesn't fire on the rollback path
-        # (restoring old_backup, a file that's already run cleanly before) but costs nothing
-        # there either.
+        # technique -- a scan (or any other transient handle on the freshly-written files)
+        # overlapping the very first launch is exactly the kind of race this pause, and the
+        # onedir switch itself (no more self-extraction step at all), both guard against.
         "ping -n 4 127.0.0.1 >nul 2>&1\r\n"
         f'start "" "{current_exe}"\r\n'
         ":cleanup\r\n"
+        f'rd /s /q "{staging_dir}" >nul 2>&1\r\n'
+        f'del /f /q "{zip_path}" >nul 2>&1\r\n'
         f'del /f /q "{pid_probe}" >nul 2>&1\r\n'
         f'del "%~f0"\r\n',
         encoding="utf-8",
@@ -189,21 +234,20 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
 
 
 def cleanup_stale_update_files() -> None:
-    """Best-effort sweep for *.exe.old and *_new.exe leftovers from an update whose final
-    cleanup step lost a lock race (see _write_updater_script) -- called on every startup of the
-    frozen build, by which point whatever process held the file locked has long since exited.
-    Never raises: this is opportunistic housekeeping, not something that should ever block
-    startup. Safe to run unconditionally: it only fires after the app is already up and running
-    again, i.e. never while an update is actually in flight."""
+    """Best-effort sweep for *.exe.old leftovers from an update whose final cleanup step lost a
+    lock race (see _write_updater_script) -- called on every startup of the frozen build, by
+    which point whatever process held the file locked has long since exited. Never raises: this
+    is opportunistic housekeeping, not something that should ever block startup. Safe to run
+    unconditionally: it only fires after the app is already up and running again, i.e. never
+    while an update is actually in flight."""
     if not getattr(sys, "frozen", False):
         return
     try:
         current_exe = Path(sys.executable).resolve()
-        for pattern in ("*.exe.old", "*_new.exe"):
-            for stale in current_exe.parent.glob(pattern):
-                try:
-                    stale.unlink()
-                except OSError:
-                    pass
+        for stale in current_exe.parent.glob("*.exe.old"):
+            try:
+                stale.unlink()
+            except OSError:
+                pass
     except OSError:
         pass

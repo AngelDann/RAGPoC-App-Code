@@ -99,20 +99,24 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# --onedir, not --onefile: a onefile build self-extracts to a fresh %TEMP%\_MEI<pid>
+# directory and LoadLibrary()s python313.dll from there on *every* launch, not just
+# after an update -- that extract-then-load step is an inherent race window (a
+# transient lock/scan on the just-written files can make it fail with "Failed to
+# load Python DLL ... module not found") that a onedir build doesn't have at all:
+# the exe loads its DLLs straight from its own install folder, no extraction step,
+# no _MEI, no per-launch race. exclude_binaries=True hands a.binaries/a.zipfiles/
+# a.datas to COLLECT below instead of embedding them in the exe itself.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='RAGPoC',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -120,4 +124,20 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=str(ROOT / 'assets' / 'ragpoc.ico'),
+)
+
+# Produces dist/RAGPoC/RAGPoC.exe + dist/RAGPoC/_internal/... . release.yml zips the
+# *contents* of dist/RAGPoC/ (not the folder itself) so it extracts as RAGPoC.exe +
+# _internal\ directly inside the install folder -- BASE_DIR (src/ragpoc/config.py)
+# is the exe's own parent directory, so this keeps data/, .env and ragpoc.log
+# resolving exactly where existing installs already have them.
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='RAGPoC',
 )

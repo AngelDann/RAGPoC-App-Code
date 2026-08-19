@@ -38,11 +38,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-windows.txt
 
-      - name: Build EXE
+      - name: Build EXE (onedir)
         run: pyinstaller ragpoc.spec --clean --noconfirm
+
+      # Zips the *contents* of dist/RAGPoC/ (RAGPoC.exe + _internal\), not the
+      # folder itself -- the in-app updater extracts this directly into the
+      # existing install folder (see ragpoc/updater.py), so the paths inside the
+      # zip must already be rooted at RAGPoC.exe's own level.
+      - name: Package release zip
+        shell: pwsh
+        run: Compress-Archive -Path "dist/RAGPoC/*" -DestinationPath "dist/RAGPoC-windows.zip"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/RAGPoC.exe
+          files: dist/RAGPoC-windows.zip
           generate_release_notes: true
