@@ -255,3 +255,36 @@ def cleanup_stale_update_files() -> None:
                 pass
     except OSError:
         pass
+
+
+def unblock_downloaded_install() -> None:
+    """A release zip downloaded via a browser and extracted with Windows Explorer gets every
+    extracted file tagged with the NTFS "Mark of the Web" (a hidden Zone.Identifier=Internet
+    stream). .NET Framework's legacy security model then refuses to fully load pythonnet's
+    Python.Runtime.dll from that install folder -- pywebview treats that as "no native backend
+    available" and silently falls back to opening the OS browser instead of the desktop window,
+    with no error visible to the user. Stripping the zone tag from every file fixes it without
+    requiring anyone to know to right-click the zip and choose Unblock themselves.
+
+    Only the initial manual "download from GitHub + extract with Explorer" install is ever
+    tagged this way -- the in-app updater writes fresh files via zipfile.extractall(), which
+    never sets this stream -- so the fast path below (checking the exe itself) is a no-op on
+    every later launch."""
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        return
+    exe = Path(sys.executable).resolve()
+    try:
+        with open(f"{exe}:Zone.Identifier", "rb"):
+            pass
+    except OSError:
+        return  # not blocked -- nothing to do
+    try:
+        for path in exe.parent.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                os.remove(f"{path}:Zone.Identifier")
+            except OSError:
+                pass
+    except OSError:
+        pass

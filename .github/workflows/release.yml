@@ -49,8 +49,27 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path "dist/RAGPoC/*" -DestinationPath "dist/RAGPoC-windows.zip"
 
+      # Not preinstalled on every windows-latest image generation (it's dropped off some
+      # Windows Server 2025 runners), so install it explicitly via Chocolatey rather than
+      # assume it's there.
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      # Built alongside the zip (not instead of it): the zip stays around for the in-app
+      # updater's in-place file replacement, while the installer is what first-time users
+      # should download -- see installer.iss for why (Explorer/browser-extracted zips get
+      # tagged with Windows' Mark of the Web, which breaks pythonnet's CLR loading).
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" installer.iss
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/RAGPoC-windows.zip
+          files: |
+            dist/RAGPoC-windows.zip
+            dist/installer/RAGPoC-Setup.exe
           generate_release_notes: true
