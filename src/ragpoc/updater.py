@@ -169,6 +169,16 @@ def _write_updater_script(pid: int, current_exe: Path, new_exe: Path) -> Path:
         f'del /f /q "{old_backup}" >nul 2>&1\r\n'
         f'echo [%date% %time%] Update: new exe installed successfully >> "{log_path}"\r\n'
         ":relaunch\r\n"
+        # A brief pause before the first launch of the file that was JUST written to disk. UPX
+        # packs the build (see ragpoc.spec), which some AV/EDR products scan more aggressively
+        # than an uncompressed exe precisely because packers are a common malware-evasion
+        # technique -- a scan (or any other transient handle on the fresh file) that overlaps
+        # the PyInstaller bootloader's own self-extraction can make it fail to LoadLibrary the
+        # embedded Python DLL, surfacing as "Failed to load Python DLL ... module not found" even
+        # though the exe on disk is perfectly intact. This doesn't fire on the rollback path
+        # (restoring old_backup, a file that's already run cleanly before) but costs nothing
+        # there either.
+        "ping -n 4 127.0.0.1 >nul 2>&1\r\n"
         f'start "" "{current_exe}"\r\n'
         ":cleanup\r\n"
         f'del /f /q "{pid_probe}" >nul 2>&1\r\n'
