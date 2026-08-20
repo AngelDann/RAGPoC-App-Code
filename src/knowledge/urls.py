@@ -18,6 +18,7 @@ urlpatterns = [
     path("api/pages/<str:page_id>/documents", views.page_documents, name="page_documents"),
     path("api/pages/<str:page_id>/documents/<str:document_id>", views.attach_document, name="attach_document"),
     path("api/pages/<str:page_id>/attachments", views.upload_page_attachment, name="upload_page_attachment"),
+    path("api/pages/<str:page_id>/append-html", views.append_html_to_page_view, name="append_html_to_page_view"),
     path("api/sources", views.list_or_add_sources, name="list_or_add_sources"),
     path("api/documents/<str:document_id>", views.document_detail_dispatch, name="document_detail_dispatch"),
     path("api/artifacts/generate", views.generate_artifact_view, name="generate_artifact_view"),

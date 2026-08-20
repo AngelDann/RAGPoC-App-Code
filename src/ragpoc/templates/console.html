@@ -1854,6 +1854,69 @@
       }
     }
 
+    #upload-tray {
+      position: fixed;
+      bottom: 18px;
+      left: 18px;
+      z-index: 500;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 8px;
+      width: min(320px, calc(100vw - 32px));
+    }
+
+    .upload-tray-item {
+      background: #ffffff;
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-md);
+      box-shadow: var(--craft-shadow-lg);
+      padding: 10px 13px;
+      animation: toastIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .upload-tray-item.leaving {
+      animation: toastOut 0.18s ease forwards;
+    }
+
+    .upload-tray-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .upload-tray-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .upload-tray-target {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      margin-bottom: 5px;
+    }
+
+    .upload-tray-percent {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 480px) {
+      #upload-tray {
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        width: auto;
+      }
+    }
+
     /* Form Controls */
     .form-control-craft {
       background: #faf9f6;
@@ -3092,6 +3155,11 @@
   <!-- Toast Notification Stack (non-blocking feedback, replaces alert()) -->
   <div id="toast-stack" aria-live="polite"></div>
 
+  <!-- Upload Tray (persistent, outside #page-area so it survives switching pages/notebooks —
+       each in-flight upload/indexing operation gets its own row here instead of a single bar
+       that got destroyed on navigation and couldn't show more than one upload at a time). -->
+  <div id="upload-tray" aria-live="polite"></div>
+
   <div class="app-shell">
     <div class="panel-resizer" id="sidebar-resizer" title="Arrastra para cambiar el ancho"></div>
     <div class="panel-resizer" id="chat-resizer" title="Arrastra para cambiar el ancho"></div>
@@ -3947,6 +4015,62 @@
     }
     window.showToast = showToast;
 
+    // Persistent, per-operation upload progress row — lives in #upload-tray, outside
+    // #page-area/any modal, so switching pages, notebooks, or closing a modal never destroys it
+    // and never interrupts the underlying upload/indexing request (that keeps running regardless
+    // of what's on screen; this just makes sure there's always somewhere to see it). Each call
+    // gets its OWN row, so uploading in notebook A and notebook B (or several files) at the same
+    // time shows distinct progress instead of two operations fighting over one shared bar.
+    function createUploadTrayItem(label, targetLabel) {
+      let tray = $('#upload-tray');
+      let el = document.createElement('div');
+      el.className = 'upload-tray-item';
+      el.innerHTML = `
+        <div class="upload-tray-row">
+          <span class="small upload-tray-label"></span>
+          <span class="upload-tray-percent">0%</span>
+        </div>
+        <div class="upload-tray-target"></div>
+        <div class="progress" style="height: 6px; background-color: #eee9df;">
+          <div class="progress-bar bg-dark progress-bar-striped progress-bar-animated" style="width: 0%; transition: width 0.2s ease;"></div>
+        </div>
+      `;
+      let labelEl = el.querySelector('.upload-tray-label');
+      let targetEl = el.querySelector('.upload-tray-target');
+      let percentEl = el.querySelector('.upload-tray-percent');
+      let barEl = el.querySelector('.progress-bar');
+      labelEl.textContent = label;
+      targetEl.textContent = targetLabel || '';
+      tray.appendChild(el);
+
+      let removed = false;
+      let item = {
+        setLabel(text) { labelEl.textContent = text; },
+        setPercent(p) {
+          percentEl.textContent = `${p}%`;
+          barEl.style.width = `${p}%`;
+        },
+        fail(message) {
+          barEl.classList.add('bg-danger');
+          barEl.classList.remove('progress-bar-animated');
+          if (message) this.setLabel(message);
+          setTimeout(() => this.remove(), 4000);
+        },
+        done(message) {
+          this.setPercent(100);
+          if (message) this.setLabel(message);
+          setTimeout(() => this.remove(), 1500);
+        },
+        remove() {
+          if (removed) return;
+          removed = true;
+          el.classList.add('leaving');
+          el.addEventListener('animationend', () => el.remove(), { once: true });
+        },
+      };
+      return item;
+    }
+
     // Shared by every "copy this chat response" button — navigator.clipboard requires a
     // secure context, which the packaged desktop webview may not always count as, so fall
     // back to the old execCommand('copy') trick via a throwaway textarea when it's missing.
@@ -4169,12 +4293,98 @@
     // back to the workspace's first notebook.
     let currentNotebookId = null;
     let editor = null;
-    let currentThreadId = null;
-    let chatStreamActive = false;
     let pendingChatAttachments = [];
     let collapsedNotebooks = new Set();
     let pendingDeleteAction = null;
     let pendingArtifactGenerations = [];
+
+    // --- Chat execution contexts ---
+    // Each notebook (and the workspace-wide scope) gets its own chat context: its own thread id
+    // and its own <div> of message bubbles appended inside #chat-log, shown/hidden via
+    // display:contents/none. Only the active context's div is visible, but a /chat/stream request
+    // started in one context keeps writing into ITS OWN div regardless of which one is on screen
+    // afterwards — so switching notebooks mid-answer no longer freezes the panel or mixes
+    // conversations, and coming back to a notebook shows exactly the thread you left it on (also
+    // remembered across reloads via localStorage, keyed per workspace so multiple workspaces don't
+    // collide).
+    let chatContexts = new Map();
+    let activeChatContextKey = null;
+
+    function chatLastThreadStorageKey(key) {
+      return `ragpoc:lastThread:${key}`;
+    }
+
+    function getChatContext(key) {
+      let ctx = chatContexts.get(key);
+      if (ctx) return ctx;
+      if (chatContexts.size === 0) {
+        // Drop the server-rendered placeholder markup once, the first time any real context
+        // claims #chat-log — from then on every context owns its own div inside it.
+        $('#chat-log').innerHTML = '';
+      }
+      let el = document.createElement('div');
+      el.className = 'chat-log-instance';
+      el.style.display = 'none';
+      $('#chat-log').appendChild(el);
+      let stored = localStorage.getItem(chatLastThreadStorageKey(key));
+      ctx = { threadId: stored || null, streamActive: false, loaded: false, el };
+      chatContexts.set(key, ctx);
+      return ctx;
+    }
+
+    function setContextThread(ctx, key, threadId) {
+      ctx.threadId = threadId;
+      if (threadId) localStorage.setItem(chatLastThreadStorageKey(key), threadId);
+      else localStorage.removeItem(chatLastThreadStorageKey(key));
+    }
+
+    function chatWelcomeHTML(title, body) {
+      return `<div class="chat-welcome-box"><div class="fw-bold mb-1 text-dark"><i class="bi bi-stars text-amber"></i> ${esc(title)}</div>${esc(body)}</div>`;
+    }
+
+    // Only auto-scrolls the real scrollable element (#chat-log itself) when the context doing the
+    // scrolling is the one currently on screen — a background stream updating a hidden context's
+    // div has nothing useful to scroll to.
+    function scrollChatLogIfActive(key) {
+      if (key !== activeChatContextKey) return;
+      let outer = $('#chat-log');
+      outer.scrollTop = outer.scrollHeight;
+    }
+
+    // Resolves the chat context key for the currently selected scope, mirroring the same
+    // resolution the send handler uses, then mounts it (creating it on first visit, restoring its
+    // remembered thread if any) without touching any other context.
+    async function syncChatContextToScope() {
+      let scope = $('#chat-scope').value;
+      let key;
+      if (scope === 'notebook') {
+        let nbId = await getTargetNotebookId();
+        key = nbId ? `notebook:${nbId}` : (workspace ? `workspace:${workspace.id}` : 'workspace');
+      } else {
+        key = workspace ? `workspace:${workspace.id}` : 'workspace';
+      }
+      await showChatContext(key);
+    }
+
+    async function showChatContext(key) {
+      if (key !== activeChatContextKey) {
+        let prevCtx = activeChatContextKey ? chatContexts.get(activeChatContextKey) : null;
+        if (prevCtx) prevCtx.el.style.display = 'none';
+        let ctx = getChatContext(key);
+        activeChatContextKey = key;
+        if (!ctx.loaded) {
+          ctx.loaded = true;
+          if (ctx.threadId) {
+            await loadThreadHistory(ctx.threadId, ctx.el);
+          } else {
+            ctx.el.innerHTML = chatWelcomeHTML('Asistente de Conocimiento', 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.');
+          }
+        }
+        ctx.el.style.display = 'contents';
+        $('#thread-selector').value = ctx.threadId || '';
+      }
+      await loadThreadsForScope();
+    }
 
     // --- Floating language picker for code blocks (shown above the block under the cursor) ---
     const codeBlockLangPicker = $('#codeblock-lang-picker');
@@ -4301,7 +4511,7 @@
       document.querySelector(`[data-notebook-id="${nbId}"] .notebook-row`)?.classList.add('active');
       loadSideStudioGallery();
       if (artifactsModal?.classList.contains('active')) loadNotebookArtifactsGallery();
-      if (notebookChanged) refreshChatForNotebookSwitch();
+      if (notebookChanged) syncChatContextToScope();
     }
 
     // Compact card shown in place of a real artifact while its generation is still in flight —
@@ -4659,7 +4869,19 @@
       // to insert generated text into whatever page happened to be open when a token arrived,
       // and savePage() would then persist that onto the wrong page.
       let targetPageId = currentPage?.id;
+      let targetPageTitle = currentPage?.title || 'esta página';
       function onTargetPage() { return currentPage?.id === targetPageId; }
+
+      // Unlike the chat panel's create_workspace_page/update_page_notes tools, this endpoint
+      // (/api/ai/inline-action-stream) is a pure token stream — it never touches the DB itself,
+      // the frontend owns saving the result. So the moment the user navigates away, this page's
+      // live editor and the [startPos, endPos] range being streamed into cease to exist; without
+      // somewhere else to track it, the finished generation used to just be discarded with a
+      // toast telling the user to redo it. A tray item (same persistent one uploads use — outside
+      // #page-area, survives navigation) picks up the slack: it appears the first time a render
+      // tick finds itself off-page, and the result gets saved straight to the DB via
+      // append-html once the stream ends, instead of vanishing.
+      let bgItem = null;
 
       // Re-parses the FULL accumulated markdown on every tick and replaces [startPos, endPos]
       // with the result, instead of inserting each raw token as literal text and only running
@@ -4674,7 +4896,10 @@
       // after the transaction, is the only reliable way to find the new endPos -- Tiptap doesn't
       // guarantee the post-insert selection lands at the end of what was just inserted.
       function renderBuffer() {
-        if (!onTargetPage()) return;
+        if (!onTargetPage()) {
+          if (!bgItem) bgItem = createUploadTrayItem('Generando texto con IA…', `Página: ${targetPageTitle}`);
+          return;
+        }
         let sizeBefore = editor.state.doc.content.size;
         let html = marked.parse(rawText);
         editor.chain().insertContentAt({ from: startPos, to: endPos }, html).run();
@@ -4751,8 +4976,23 @@
         if (streamErr) throw new Error(streamErr);
         if (onTargetPage()) {
           await savePage();
+        } else if (rawText.trim()) {
+          // Send the same HTML the live editor would have received (marked.parse output), not
+          // the raw markdown -- keeps this fallback's formatting identical to the on-page path
+          // instead of re-deriving it server-side with a different renderer (see
+          // html_to_tiptap_json's docstring for why that distinction matters).
+          let html = marked.parse(rawText);
+          let plainTextDiv = document.createElement('div');
+          plainTextDiv.innerHTML = html;
+          await api(`/api/pages/${targetPageId}/append-html`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ html, plain_text: plainTextDiv.textContent }),
+          });
+          bgItem?.done('✓ Insertado en la página');
+          showToast(`Generación de IA terminada mientras navegabas — se guardó al final de "${targetPageTitle}".`, 'success');
         } else {
-          showToast('Generación de IA terminada, pero navegaste a otra página antes de que acabara — el texto no se insertó.', 'warning');
+          bgItem?.remove();
         }
       } catch (err) {
         // Wipe whatever placeholder/partial text is still sitting in the note before surfacing
@@ -4760,6 +5000,8 @@
         // belongs to unrelated content and must not be touched.
         if (onTargetPage()) {
           editor.chain().insertContentAt({ from: startPos, to: endPos }, '').run();
+        } else {
+          bgItem?.fail('Error: ' + err.message);
         }
         showToast('Error en generación: ' + err.message, 'error');
       } finally {
@@ -6852,10 +7094,19 @@
 
     async function handleModalFileUpload(files) {
       let statusEl = $('#modal-source-status');
+      // Snapshot which notebook this whole batch targets now — the modal can be closed and
+      // reopened for a different notebook (or sourcesModalNotebookId re-resolved) while a slow
+      // file in this same loop is still uploading; without this, a later file in the batch would
+      // silently get attributed to whatever notebook happens to be selected by then.
+      let targetNotebookId = sourcesModalNotebookId;
+      let targetNotebookLabel = document.querySelector(`[data-notebook-id="${targetNotebookId}"] .notebook-toggle-btn span`)?.textContent || 'este cuaderno';
       if (modalFileProgress) modalFileProgress.style.display = 'block';
 
       for (let i = 0; i < files.length; i++) {
         let file = files[i];
+        // Persistent tray row, independent of the modal — stays visible (and keeps updating)
+        // even if the user closes this modal or switches notebooks before it finishes.
+        let item = createUploadTrayItem(`Subiendo "${file.name}" (${i + 1}/${files.length})…`, `Fuente de: ${targetNotebookLabel}`);
         if (modalFileProgressLabel) modalFileProgressLabel.textContent = `Subiendo e indexando "${file.name}" (${i + 1}/${files.length})…`;
         if (modalFileProgressBar) {
           modalFileProgressBar.className = 'progress-bar bg-dark progress-bar-striped progress-bar-animated';
@@ -6863,12 +7114,13 @@
         }
         if (modalFileProgressPercent) modalFileProgressPercent.textContent = '20%';
         if (statusEl) statusEl.textContent = `Procesando "${file.name}"…`;
+        item.setPercent(20);
 
         try {
           let formData = new FormData();
           formData.append('file', file);
           formData.append('source_type', 'file');
-          formData.append('notebook_id', sourcesModalNotebookId);
+          formData.append('notebook_id', targetNotebookId);
 
           let result = await new Promise((resolve, reject) => {
             let xhr = new XMLHttpRequest();
@@ -6879,6 +7131,7 @@
                 let percent = Math.round((e.loaded / e.total) * 60);
                 if (modalFileProgressBar) modalFileProgressBar.style.width = percent + '%';
                 if (modalFileProgressPercent) modalFileProgressPercent.textContent = percent + '%';
+                item.setPercent(percent);
               }
             };
 
@@ -6887,6 +7140,8 @@
                 if (modalFileProgressBar) modalFileProgressBar.style.width = '90%';
                 if (modalFileProgressPercent) modalFileProgressPercent.textContent = '90%';
                 if (modalFileProgressLabel) modalFileProgressLabel.textContent = 'Generando embeddings y guardando vectores…';
+                item.setPercent(90);
+                item.setLabel('Generando embeddings…');
                 resolve(JSON.parse(xhr.responseText));
               } else {
                 let errText = 'Error al indexar archivo';
@@ -6903,10 +7158,12 @@
           if (modalFileProgressPercent) modalFileProgressPercent.textContent = '100%';
           if (result.status === 'unindexed') {
             if (statusEl) statusEl.textContent = `⚠ "${result.filename}" se guardó sin indexar (sin conexión o falta la API key).`;
-            showToast(`"${result.filename}" se guardó como fuente, pero no se pudo indexar. Reintenta desde Adjuntos cuando tengas conexión.`, 'warning');
+            item.done(`⚠ "${result.filename}" sin indexar`);
+            showToast(`"${result.filename}" se guardó como fuente en "${targetNotebookLabel}", pero no se pudo indexar. Reintenta desde Adjuntos cuando tengas conexión.`, 'warning');
           } else {
             if (statusEl) statusEl.textContent = `✓ Archivo "${result.filename}" indexado exitosamente.`;
-            showToast(`Archivo "${result.filename}" indexado como fuente del cuaderno.`, 'success');
+            item.done(`✓ "${result.filename}" indexado`);
+            showToast(`Archivo "${result.filename}" indexado como fuente de "${targetNotebookLabel}".`, 'success');
           }
 
         } catch (err) {
@@ -6915,6 +7172,7 @@
             modalFileProgressBar.style.width = '100%';
           }
           if (statusEl) statusEl.textContent = `Error con "${file.name}": ${err.message}`;
+          item.fail('Error: ' + err.message);
           showToast(`Error al subir ${file.name}: ${err.message}`, 'error');
         }
       }
@@ -7044,27 +7302,13 @@
     }
 
     function resetChatView(welcomeTitle, welcomeBody) {
-      currentThreadId = null;
+      if (!activeChatContextKey) activeChatContextKey = 'workspace';
+      let ctx = getChatContext(activeChatContextKey);
+      setContextThread(ctx, activeChatContextKey, null);
+      ctx.loaded = true;
+      ctx.el.style.display = 'contents';
+      ctx.el.innerHTML = chatWelcomeHTML(welcomeTitle, welcomeBody);
       $('#thread-selector').value = '';
-      $('#chat-log').innerHTML = `<div class="chat-welcome-box"><div class="fw-bold mb-1 text-dark"><i class="bi bi-stars text-amber"></i> ${esc(welcomeTitle)}</div>${esc(welcomeBody)}</div>`;
-    }
-
-    // Chat threads are scoped to a notebook (or the whole workspace) — when the user
-    // switches notebooks, the previously loaded thread/log belongs to the old one and
-    // must not linger, or the chat looks like it's mixing conversations from everywhere.
-    async function refreshChatForNotebookSwitch() {
-      if ($('#chat-scope').value !== 'notebook') return;
-      if (chatStreamActive) {
-        // A /chat/stream request is still being read into the current #chat-log. Wiping it now
-        // wouldn't stop the server from finishing the generation and saving it (confirmed: the
-        // ChatMessage row lands in the DB regardless) -- it would just make the in-progress
-        // answer disappear from the screen with no trace, indistinguishable from the request
-        // having been cut off. Leave the panel showing the in-flight conversation; it re-syncs
-        // to the new notebook's threads on the next scope-affecting action once the stream ends.
-        return;
-      }
-      resetChatView('Asistente de Conocimiento', 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.');
-      await loadThreadsForScope();
     }
 
     // Thread Loading & Switching
@@ -7081,11 +7325,12 @@
         url += `workspace_id=${workspace.id}`;
       }
 
+      let activeThreadId = activeChatContextKey ? getChatContext(activeChatContextKey).threadId : null;
       try {
         let threads = await api(url);
         let selector = $('#thread-selector');
         selector.innerHTML = `<option value="">+ Conversación actual / nueva</option>` +
-          threads.map(t => `<option value="${t.id}" ${t.id === currentThreadId ? 'selected' : ''}>${esc(t.title)} (${new Date(t.created_at).toLocaleDateString()})</option>`).join('');
+          threads.map(t => `<option value="${t.id}" ${t.id === activeThreadId ? 'selected' : ''}>${esc(t.title)} (${new Date(t.created_at).toLocaleDateString()})</option>`).join('');
       } catch (e) {
         console.error('Error loading threads:', e);
       }
@@ -7093,22 +7338,26 @@
 
     $('#thread-selector').onchange = async e => {
       let selectedId = e.target.value;
+      if (!activeChatContextKey) activeChatContextKey = 'workspace';
+      let ctx = getChatContext(activeChatContextKey);
       if (!selectedId) {
         resetChatView('Asistente de Conocimiento', 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.');
         return;
       }
-      currentThreadId = selectedId;
-      await loadThreadHistory(currentThreadId);
+      setContextThread(ctx, activeChatContextKey, selectedId);
+      ctx.loaded = true;
+      await loadThreadHistory(selectedId, ctx.el);
     };
 
     $('#btn-rename-thread').onclick = async () => {
-      if (!currentThreadId) return showToast('Selecciona una conversación guardada primero.', 'warning');
+      let ctx = activeChatContextKey ? getChatContext(activeChatContextKey) : null;
+      if (!ctx?.threadId) return showToast('Selecciona una conversación guardada primero.', 'warning');
       let option = $('#thread-selector').selectedOptions[0];
       let currentTitle = option ? option.textContent.replace(/\s*\(\d{1,2}\/\d{1,2}\/\d{2,4}\)\s*$/, '') : '';
       let newTitle = await openInputModal('Renombrar Conversación', currentTitle, 'Nuevo título');
       if (newTitle && newTitle !== currentTitle) {
         try {
-          await api(`/api/threads/${currentThreadId}`, {
+          await api(`/api/threads/${ctx.threadId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ title: newTitle })
@@ -7121,8 +7370,9 @@
     };
 
     $('#btn-delete-thread').onclick = () => {
-      if (!currentThreadId) return showToast('Selecciona una conversación guardada primero.', 'warning');
-      let tId = currentThreadId;
+      let ctx = activeChatContextKey ? getChatContext(activeChatContextKey) : null;
+      if (!ctx?.threadId) return showToast('Selecciona una conversación guardada primero.', 'warning');
+      let tId = ctx.threadId;
       openDeleteModal(
         'Eliminar Conversación',
         '¿Estás seguro de que deseas eliminar esta conversación y todos sus mensajes?',
@@ -7138,17 +7388,16 @@
       resetChatView('Nueva conversación', 'Escribe tu pregunta o adjunta archivos para comenzar este nuevo hilo.');
     };
 
-    // Switching scope changes which threads even apply — drop the in-progress thread/log (it
-    // belongs to the old scope) and reload the list for the newly selected one.
+    // Switching scope changes which context applies — mount whichever context matches the newly
+    // selected scope (creating/restoring it as needed) instead of wiping the panel.
     $('#chat-scope').onchange = async () => {
-      resetChatView('Asistente de Conocimiento', 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.');
-      await loadThreadsForScope();
+      await syncChatContextToScope();
     };
 
-    async function loadThreadHistory(tId) {
+    async function loadThreadHistory(tId, targetEl) {
       try {
         let data = await api(`/api/threads/${tId}/messages`);
-        let log = $('#chat-log');
+        let log = targetEl;
         log.innerHTML = '';
         for (let m of data.messages) {
           if (m.role === 'user') {
@@ -7217,7 +7466,7 @@
             log.appendChild(aDiv);
           }
         }
-        log.scrollTop = log.scrollHeight;
+        $('#chat-log').scrollTop = $('#chat-log').scrollHeight;
       } catch (e) {
         console.error('Error loading thread messages:', e);
       }
@@ -7501,6 +7750,19 @@
     }
 
     async function openPage(id) {
+      // Flush pending edits on the page being left before tearing down its editor — everything
+      // below rebuilds #page-area unconditionally, destroying the live TipTap instance, and the
+      // only other things that save are the 30s autosave interval and beforeunload (tab close),
+      // neither of which fires on an in-app page switch. Without this, typing something and
+      // switching pages within that 30s window silently dropped the edit with no autosave tick
+      // to catch it. Awaited (not fire-and-forget) so a rapid second navigation can't race a
+      // still-in-flight save for the page before it and write out of order — autoSavePage()
+      // itself reads the editor's content synchronously before its own await, so the outgoing
+      // page's exact state at the moment of navigating is what gets sent either way.
+      if (currentPage && unsavedChanges && editor) {
+        await autoSavePage();
+      }
+
       currentPage = await api('/api/pages/' + id);
       let notebookChanged = currentNotebookId !== currentPage.notebook_id;
       currentNotebookId = currentPage.notebook_id;
@@ -7508,7 +7770,7 @@
       if (notebookChanged) {
         loadSideStudioGallery();
         if (artifactsModal?.classList.contains('active')) loadNotebookArtifactsGallery();
-        refreshChatForNotebookSwitch();
+        syncChatContextToScope();
       }
 
       $('#page-area').innerHTML = `
@@ -7565,17 +7827,6 @@
             <div class="save-indicator-badge ms-auto">
               <div class="status-bulb" id="save-dot"></div>
               <span id="save-status">Guardado</span>
-            </div>
-          </div>
-
-          <!-- Progress Bar for Upload & Indexing -->
-          <div id="upload-progress-container" class="mb-3 p-3 craft-card" style="display:none;">
-            <div class="d-flex justify-content-between align-items-center mb-1">
-              <span class="small fw-bold text-dark" id="upload-progress-label">Subiendo archivo…</span>
-              <span class="small fw-semibold text-secondary" id="upload-progress-percent">0%</span>
-            </div>
-            <div class="progress" style="height: 6px; background-color: #eee9df;">
-              <div class="progress-bar bg-dark progress-bar-striped progress-bar-animated" id="upload-progress-bar" style="width: 0%; transition: width 0.2s ease;"></div>
             </div>
           </div>
 
@@ -7835,16 +8086,11 @@
       // upload+indexing wait -- currentPage may point at a different page entirely by the time
       // this resolves.
       let targetPageId = currentPage.id;
-      let progressContainer = $('#upload-progress-container');
-      let progressBar = $('#upload-progress-bar');
-      let progressLabel = $('#upload-progress-label');
-      let progressPercent = $('#upload-progress-percent');
+      let targetPageTitle = currentPage.title || 'esta página';
       let statusEl = $('#save-status');
 
-      if (progressContainer) progressContainer.style.display = 'block';
-      if (progressBar) progressBar.style.width = '10%';
-      if (progressPercent) progressPercent.textContent = '10%';
-      if (progressLabel) progressLabel.textContent = `Subiendo "${file.name}"…`;
+      let item = createUploadTrayItem(`Subiendo "${file.name}"…`, `Página: ${targetPageTitle}`);
+      item.setPercent(10);
       if (statusEl) statusEl.textContent = 'Subiendo…';
 
       try {
@@ -7861,25 +8107,22 @@
         let crawlTimer = null;
         let result = await new Promise((resolve, reject) => {
           let xhr = new XMLHttpRequest();
-          xhr.open('POST', '/api/pages/' + currentPage.id + '/attachments');
+          xhr.open('POST', '/api/pages/' + targetPageId + '/attachments');
 
           xhr.upload.onprogress = e => {
             if (e.lengthComputable) {
-              let percent = Math.round((e.loaded / e.total) * 70);
-              if (progressBar) progressBar.style.width = percent + '%';
-              if (progressPercent) progressPercent.textContent = percent + '%';
+              item.setPercent(Math.round((e.loaded / e.total) * 70));
             }
           };
 
           xhr.upload.onload = () => {
             // All bytes are on the server now; the request just hasn't resolved yet because
             // it's still indexing. Make that visible instead of leaving the bar looking stuck.
-            if (progressLabel) progressLabel.textContent = 'Procesando e indexando (puede tardar varios minutos en videos largos)…';
+            item.setLabel('Procesando e indexando (puede tardar varios minutos en videos largos)…');
             let percent = 70;
             crawlTimer = setInterval(() => {
               percent = Math.min(percent + 1, 95);
-              if (progressBar) progressBar.style.width = percent + '%';
-              if (progressPercent) progressPercent.textContent = percent + '%';
+              item.setPercent(percent);
             }, 2000);
           };
 
@@ -7889,8 +8132,7 @@
               // Embeddings are already generated and saved by the time the response comes
               // back — the crawl above covered that wait — so jump straight to done instead
               // of dropping back down to a lower, now-inaccurate percentage.
-              if (progressBar) progressBar.style.width = '97%';
-              if (progressPercent) progressPercent.textContent = '97%';
+              item.setPercent(97);
               resolve(JSON.parse(xhr.responseText));
             } else {
               let errText = 'Error en subida';
@@ -7916,13 +8158,7 @@
         // without re-uploading (see attachmentRowHTML's retry button).
         let unindexed = doc.status === 'unindexed';
 
-        if (progressBar) progressBar.style.width = '100%';
-        if (progressPercent) progressPercent.textContent = '100%';
-        if (progressLabel) {
-          progressLabel.textContent = unindexed
-            ? '⚠ Guardado sin indexar (sin conexión o falta la API key)'
-            : '✓ ¡Archivo indexado e insertado!';
-        }
+        item.done(unindexed ? '⚠ Guardado sin indexar' : '✓ Indexado e insertado');
 
         if (currentPage?.id === targetPageId) {
           insertMediaIntoEditor(mediaUrl, mediaType, doc.original_filename, doc.id, doc.byte_size);
@@ -7933,28 +8169,14 @@
           }
         } else if (unindexed) {
           await persistMediaToPage(targetPageId, mediaUrl, mediaType, doc.original_filename, doc.id, doc.byte_size);
-          showToast(`"${doc.original_filename}" se guardó (sin indexar) en la página donde lo subiste. Podrás reintentar el indexado desde Adjuntos.`, 'warning');
+          showToast(`"${doc.original_filename}" se guardó (sin indexar) en "${targetPageTitle}". Podrás reintentar el indexado desde Adjuntos.`, 'warning');
         } else {
           await persistMediaToPage(targetPageId, mediaUrl, mediaType, doc.original_filename, doc.id, doc.byte_size);
-          showToast(`"${doc.original_filename}" se indexó y se insertó en la página donde lo subiste (ya no es la que tienes abierta).`, 'success');
+          showToast(`"${doc.original_filename}" se indexó y se insertó en "${targetPageTitle}".`, 'success');
         }
-
-        setTimeout(() => {
-          if (progressContainer) progressContainer.style.display = 'none';
-        }, 1200);
 
       } catch (err) {
-        if (progressLabel) progressLabel.textContent = 'Error: ' + err.message;
-        if (progressBar) {
-          progressBar.className = 'progress-bar bg-danger';
-          progressBar.style.width = '100%';
-        }
-        setTimeout(() => {
-          if (progressContainer) {
-            progressContainer.style.display = 'none';
-            if (progressBar) progressBar.className = 'progress-bar bg-dark progress-bar-striped progress-bar-animated';
-          }
-        }, 3000);
+        item.fail('Error: ' + err.message);
         showToast('Error al subir archivo: ' + err.message, 'error');
       }
     }
@@ -8368,11 +8590,19 @@
       let q = $('#chat-question').value.trim();
       if (!q) return;
 
+      // Resolve (and mount) the context for whatever's currently selected, then pin it as
+      // sendKey/ctx for the rest of this send — the stream below always writes into ctx.el, even
+      // if the user switches notebooks while it's still generating, so it never mixes into
+      // whichever context ends up on screen later.
+      await syncChatContextToScope();
+      let sendKey = activeChatContextKey;
+      let ctx = getChatContext(sendKey);
+
       let attsToSend = [...pendingChatAttachments];
       pendingChatAttachments = [];
       renderChatAttachmentsPreview();
 
-      let log = $('#chat-log');
+      let log = ctx.el;
       let userMsg = document.createElement('div');
       userMsg.className = 'chat-bubble-user';
       userMsg.innerHTML = `<div class="small fw-bold text-secondary mb-1 text-end">Tú</div><div>${esc(q)}</div>`;
@@ -8410,12 +8640,12 @@
       log.appendChild(asstMsg);
 
       $('#chat-question').value = '';
-      log.scrollTop = log.scrollHeight;
+      scrollChatLogIfActive(sendKey);
 
       let execIndicator = asstMsg.querySelector('#agent-exec-indicator');
       let asstHeader = asstMsg.querySelector('#asst-header-row');
 
-      chatStreamActive = true;
+      ctx.streamActive = true;
       try {
         // "notebook" scope needs a resolvable notebook, which isn't guaranteed (e.g. chatting
         // from the workspace root with nothing open yet), so fall back to "workspace" instead of
@@ -8449,7 +8679,7 @@
             page_id: currentPage?.id || null,
             notebook_id: await getTargetNotebookId(),
             workspace_id: workspace?.id || null,
-            thread_id: currentThreadId,
+            thread_id: ctx.threadId,
             attachments: attsToSend,
             selected_text: selectedText,
             cursor_text: cursorText,
@@ -8473,7 +8703,7 @@
             renderTimer = null;
             let rawHtml = marked.parse(fullAnswerMarkdown);
             ansText.innerHTML = DOMPurify.sanitize(rawHtml);
-            log.scrollTop = log.scrollHeight;
+            scrollChatLogIfActive(sendKey);
           }, 40);
         };
 
@@ -8484,7 +8714,7 @@
           }
           let rawHtml = marked.parse(fullAnswerMarkdown);
           ansText.innerHTML = DOMPurify.sanitize(rawHtml);
-          log.scrollTop = log.scrollHeight;
+          scrollChatLogIfActive(sendKey);
         };
 
         // Mirrors the agent's create_workspace_page/update_page_notes output live into the
@@ -8540,8 +8770,8 @@
             if (!raw.startsWith('data: ')) continue;
             let ev = JSON.parse(raw.slice(6));
             if (ev.type === 'thread_init') {
-              currentThreadId = ev.thread_id;
-              loadThreadsForScope();
+              setContextThread(ctx, sendKey, ev.thread_id);
+              if (sendKey === activeChatContextKey) loadThreadsForScope();
             }
             if (ev.type === 'sources') {
               if (execIndicator) {
@@ -8555,7 +8785,7 @@
                 ${ev.sources.map(s => `<div><span class="badge bg-light text-dark border">${esc(s.citation)}</span> ${esc(s.label)}</div>`).join('')}
               `;
               asstMsg.appendChild(citCard);
-              log.scrollTop = log.scrollHeight;
+              scrollChatLogIfActive(sendKey);
             }
             if (ev.type === 'token') {
               if (execIndicator) execIndicator.style.display = 'none';
@@ -8648,7 +8878,7 @@
         errDiv.textContent = 'Error: ' + err.message;
         asstMsg.appendChild(errDiv);
       } finally {
-        chatStreamActive = false;
+        ctx.streamActive = false;
       }
     };
 

@@ -391,6 +391,57 @@ def update_page(request: HttpRequest, page_id: str) -> JsonResponse:
     })
 
 
+@csrf_exempt
+def append_html_to_page_view(request: HttpRequest, page_id: str) -> JsonResponse:
+    """Appends already-rendered HTML straight to a page's content through the API.
+
+    This is the inline "/ IA" bar's fallback for when its generation finishes after the user has
+    already navigated to a different page: that page's live editor (and the in-memory position it
+    was streaming into) no longer exists in the browser at that point, so the frontend can't just
+    insert the result anymore -- it has to be saved server-side instead, the same way a chat
+    page-write survives navigation because the backend persists it directly rather than relying on
+    whatever happens to be on screen when the stream ends.
+
+    Takes HTML rather than raw markdown (unlike create_workspace_page/update_page_notes, which go
+    through markdown_to_tiptap_json) because the caller already ran the generated markdown through
+    the browser's own `marked.parse()` for the live on-page render -- reusing that exact HTML via
+    html_to_tiptap_json keeps this fallback's formatting identical to what would have landed had
+    the user just stayed on the page, instead of re-deriving it from the raw markdown a second time
+    with a different renderer."""
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    try:
+        page = Page.objects.get(id=page_id)
+    except Page.DoesNotExist:
+        return JsonResponse({"detail": "Page not found."}, status=404)
+
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"detail": "Invalid JSON"}, status=400)
+
+    html_text = (body.get("html") or "").strip()
+    if not html_text:
+        return JsonResponse({"detail": "html no puede estar vacío."}, status=422)
+    plain_text_addition = (body.get("plain_text") or "").strip() or html_text
+
+    from knowledge.markdown_tiptap import html_to_tiptap_json
+
+    new_nodes = html_to_tiptap_json(html_text)["content"]
+    doc_json = page.content_json if isinstance(page.content_json, dict) and "content" in page.content_json else {"type": "doc", "content": []}
+    doc_json["content"] = [*doc_json["content"], *new_nodes]
+    page.content_json = doc_json
+    page.plain_text = (page.plain_text or "").strip() + "\n\n" + plain_text_addition
+    page.content_hash = calculate_content_hash(page.title, page.plain_text)
+    page.save()
+
+    return JsonResponse({
+        "id": page.id,
+        "notebook_id": page.notebook_id,
+        "title": page.title,
+    })
+
+
 def workspace_tree(request: HttpRequest, workspace_id: str) -> JsonResponse:
     try:
         workspace = Workspace.objects.get(id=workspace_id)

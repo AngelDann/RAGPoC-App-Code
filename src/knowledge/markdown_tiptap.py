@@ -234,8 +234,27 @@ def markdown_to_tiptap_json(markdown_text: str) -> dict:
     text node full of `**`/`#`/`-` characters.
     """
     html = _md.render((markdown_text or "").strip())
+    return html_to_tiptap_json(html)
+
+
+def html_to_tiptap_json(html_text: str) -> dict:
+    """Converts an already-rendered HTML string straight into a TipTap-compatible
+    ProseMirror JSON doc, skipping the markdown-it render step markdown_to_tiptap_json
+    does first. _TiptapBuilder is the safety boundary either way -- it only recognizes a
+    fixed tag whitelist and silently drops anything else (script tags included) while
+    still walking their text as inert content, so feeding it raw HTML directly is no
+    less safe than feeding it markdown-it's own output.
+
+    Callers that already have real HTML on hand (e.g. the browser's own `marked.parse()`
+    output, used to live-stream generated markdown into the open editor) should use this
+    instead of markdown_to_tiptap_json: round-tripping that HTML back through markdown-it
+    -- which runs with `html: False` and escapes literal tags on purpose, to keep actual
+    markdown source safe from injected markup -- would turn any literal HTML the source
+    text happens to contain (a model emitting `<p>` instead of blank-line paragraphs, for
+    instance) into visible `&lt;p&gt;` text instead of a real paragraph break.
+    """
     builder = _TiptapBuilder()
-    builder.feed(html)
+    builder.feed(html_text or "")
     builder.close()
     content = builder.doc
     if not content:
