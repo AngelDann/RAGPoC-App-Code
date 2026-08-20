@@ -16,6 +16,7 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from pydantic_ai import BinaryContent
+from pydantic_ai.messages import ModelMessagesTypeAdapter, ModelRequest
 
 from knowledge.models import (
     AgentMemory,
@@ -1744,6 +1745,26 @@ def thread_detail_dispatch(request: HttpRequest, thread_id: str) -> JsonResponse
     return JsonResponse({"detail": "Method not allowed"}, status=405)
 
 
+MAX_HISTORY_TURNS = 12
+
+
+def _trim_message_history(messages: list, max_turns: int = MAX_HISTORY_TURNS) -> list:
+    """Keep only the last `max_turns` user turns, cut on whole-turn boundaries.
+
+    A turn's ModelRequest/ModelResponse pairs can span multiple messages when tools are
+    involved (tool call -> tool return -> ... -> final text), and pydantic-ai requires those
+    to stay together. Only a ModelRequest carrying a real UserPromptPart marks the start of a
+    new turn, so those are the only safe places to cut.
+    """
+    boundaries = [
+        i for i, m in enumerate(messages)
+        if isinstance(m, ModelRequest) and any(getattr(p, "part_kind", None) == "user-prompt" for p in m.parts)
+    ]
+    if len(boundaries) <= max_turns:
+        return messages
+    return messages[boundaries[-max_turns]:]
+
+
 @csrf_exempt
 def chat_stream_view(request: HttpRequest) -> HttpResponse:
     if request.method != "POST":
@@ -1873,6 +1894,7 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                     # agent's own search_knowledge_base tool calls to a single notebook.
                     notebook_id=selected.get("notebook_id"),
                     workspace_id=workspace_id,
+                    thread_id=thread.id,
                     attached_docs_context="",
                     on_tool_event=lambda evt: q.put(evt),
                 )
@@ -1946,7 +1968,21 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                     # chat token. Captured once the tool fires and not re-read per token: a
                     # second write-tool call mid-turn is not a real flow this UI exposes today.
                     write_state: dict | None = None
-                    async with agent_instance.run_stream(prompt_parts if len(prompt_parts) > 1 else question, deps=deps) as result:
+
+                    prior_messages = []
+                    if thread.history_json:
+                        try:
+                            prior_messages = _trim_message_history(
+                                ModelMessagesTypeAdapter.validate_json(thread.history_json)
+                            )
+                        except Exception:
+                            prior_messages = []
+
+                    async with agent_instance.run_stream(
+                        prompt_parts if len(prompt_parts) > 1 else question,
+                        deps=deps,
+                        message_history=prior_messages,
+                    ) as result:
                         async for token in result.stream_text(delta=True):
                             assistant_tokens.append(token)
                             q.put({"type": "token", "text": token})
@@ -1958,6 +1994,7 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                         usage = result.usage
 
                     final_text = "".join(assistant_tokens)
+                    new_history_json = result.all_messages_json().decode("utf-8")
 
                     @sync_to_async
                     def save_assistant_msg():
@@ -1967,6 +2004,7 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                             content=final_text,
                             sources_json=refs,
                         )
+                        thread.history_json = new_history_json
                         thread.save()
                         record_usage(
                             category="chat",

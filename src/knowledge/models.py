@@ -115,6 +115,10 @@ class ChatThread(models.Model):
     page = models.ForeignKey(Page, on_delete=models.CASCADE, related_name="chat_threads", null=True, blank=True)
     scope = models.CharField(max_length=20, default="workspace")
     title = models.CharField(max_length=250, default="Nueva conversación")
+    # Full pydantic-ai message history (ModelMessagesTypeAdapter JSON) after the latest turn --
+    # includes tool calls/returns, not just text, so it round-trips as real message_history on
+    # the next turn instead of being reconstructed as plain UserPromptPart/TextPart guesses.
+    history_json = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 

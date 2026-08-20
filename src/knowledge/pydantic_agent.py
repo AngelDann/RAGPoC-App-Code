@@ -29,6 +29,7 @@ class AgentDeps:
     page_id: str | None = None
     notebook_id: str | None = None
     workspace_id: str | None = None
+    thread_id: str | None = None
     attached_docs_context: str = ""
     # Lets page-writing tools notify the SSE stream so the frontend can refresh the sidebar
     # tree and, if it's the page currently open in the editor, reload it — otherwise a
@@ -59,12 +60,15 @@ HERRAMIENTAS DISPONIBLES:
 6. `create_workspace_page`: Prepara una página nueva (con título) dentro del cuaderno activo o especificado. NO recibe el contenido como argumento: después de llamarla, escribe el contenido en Markdown como tu siguiente respuesta de texto normal — se transmite en vivo a la página y se guarda automáticamente al terminar.
 7. `update_page_notes`: Prepara la página actual (o una especificada) para recibir contenido adicional. Igual que la anterior: no lleva el contenido como argumento, escríbelo como tu siguiente respuesta de texto normal.
 8. `get_workspace_structure`: Explora la jerarquía completa de cuadernos y páginas del espacio de trabajo.
+9. `search_past_conversations`: Lista/busca conversaciones de chat anteriores (distintas de la actual), acotadas al cuaderno o espacio de trabajo activo. Úsala cuando el usuario haga referencia a algo hablado antes que no aparece en el contexto actual.
+10. `get_conversation_messages`: Recupera el contenido completo de una conversación pasada por su `thread_id` (obtenido con `search_past_conversations`) para revisar el detalle exacto de lo que se dijo.
 
 ══════════════════════════════════════════════
 DIRECTIVAS DE OPERACIÓN (HERMES STYLE):
 ══════════════════════════════════════════════
 - **Memoria Declarativa Proactiva:** Cuando el usuario exprese una preferencia estable o descubras un hecho clave del proyecto, invoca proactivamente `manage_memory(action='add', content=...)`.
 - **Memoria Procedimental (Skills):** Si descubres o el usuario te enseña un flujo de trabajo complejo repetible, guárdalo con `manage_skill(action='create', name=..., instructions=...)`.
+- **Contexto de conversaciones pasadas:** Si la pregunta del usuario parece referirse a algo de una conversación anterior (p. ej. "como te dije antes", "eso que hablamos", "revisa la otra conversación de X") y no tienes esa información en el historial actual, usa `search_past_conversations` (y luego `get_conversation_messages` si encuentras un hilo relevante) antes de responder que no lo sabes.
 - Responde siempre en español claro y conciso con formato Markdown (negritas, listas, tablas).
 - Cita las fuentes de la base de conocimiento usando [n].
 - **Después de `create_workspace_page` o `update_page_notes`:** tu siguiente respuesta de texto ES el contenido que se guardará en la página. Escribe ÚNICAMENTE el contenido en Markdown — sin saludos, sin "aquí tienes", sin confirmaciones. Si quieres además comentarle algo al usuario en el chat, hazlo en un mensaje aparte, no mezclado con el contenido de la página.
@@ -481,5 +485,97 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
             return await sync_to_async(_tree)()
         except Exception as e:
             return {"error": f"Error obteniendo estructura: {str(e)}"}
+
+    @agent.tool
+    async def search_past_conversations(
+        ctx: RunContext[AgentDeps],
+        query: str = "",
+        scope: str = "workspace",
+        limit: int = 10,
+    ) -> list[dict] | dict:
+        """Lista o busca conversaciones de chat anteriores (hilos distintos al actual).
+
+        scope: 'notebook' (solo el cuaderno activo), 'workspace' (todo el espacio de trabajo
+        activo, cualquier cuaderno) o 'all' (todos los espacios de trabajo). query: texto
+        opcional para filtrar por título o contenido de los mensajes."""
+        from django.db.models import Q
+
+        from knowledge.models import ChatThread, Notebook
+
+        def _search():
+            qs = ChatThread.objects.all()
+            if scope == "notebook":
+                if not ctx.deps.notebook_id:
+                    return {"error": "No hay un cuaderno activo para acotar la búsqueda a 'notebook'."}
+                qs = qs.filter(notebook_id=ctx.deps.notebook_id)
+            elif scope == "workspace":
+                ws_id = ctx.deps.workspace_id
+                if not ws_id and ctx.deps.notebook_id:
+                    nb = Notebook.objects.filter(id=ctx.deps.notebook_id).first()
+                    ws_id = nb.workspace_id if nb else None
+                if not ws_id:
+                    return {"error": "No hay un espacio de trabajo activo para acotar la búsqueda a 'workspace'."}
+                qs = qs.filter(Q(workspace_id=ws_id) | Q(notebook__workspace_id=ws_id))
+            # scope == "all": sin filtro adicional.
+
+            if ctx.deps.thread_id:
+                qs = qs.exclude(id=ctx.deps.thread_id)  # no listar la conversación en curso
+
+            if query.strip():
+                qs = qs.filter(Q(title__icontains=query) | Q(messages__content__icontains=query)).distinct()
+
+            qs = qs.select_related("notebook", "notebook__workspace", "workspace").order_by("-updated_at")
+            qs = qs[: max(1, min(limit, 30))]
+
+            results = []
+            for t in qs:
+                last_msg = t.messages.order_by("-created_at").first()
+                ws_name = t.workspace.name if t.workspace_id else (t.notebook.workspace.name if t.notebook_id else None)
+                results.append({
+                    "thread_id": t.id,
+                    "title": t.title,
+                    "notebook": t.notebook.name if t.notebook_id else None,
+                    "workspace": ws_name,
+                    "message_count": t.messages.count(),
+                    "updated_at": t.updated_at.isoformat(),
+                    "last_message_preview": (last_msg.content[:200] if last_msg else ""),
+                })
+            return results
+
+        try:
+            return await sync_to_async(_search)()
+        except Exception as e:
+            return {"error": f"Error buscando conversaciones: {str(e)}"}
+
+    @agent.tool
+    async def get_conversation_messages(
+        ctx: RunContext[AgentDeps],
+        thread_id: str,
+        limit: int = 40,
+    ) -> dict:
+        """Recupera los mensajes completos de una conversación pasada, dado el `thread_id`
+        obtenido con `search_past_conversations`."""
+        from knowledge.models import ChatThread
+
+        def _load():
+            t = ChatThread.objects.select_related("notebook", "notebook__workspace", "workspace").filter(id=thread_id).first()
+            if not t:
+                return {"error": f"Conversación con ID {thread_id} no encontrada."}
+            msgs = list(t.messages.order_by("created_at").values("role", "content", "created_at")[: max(1, min(limit, 100))])
+            for m in msgs:
+                m["created_at"] = m["created_at"].isoformat()
+            ws_name = t.workspace.name if t.workspace_id else (t.notebook.workspace.name if t.notebook_id else None)
+            return {
+                "thread_id": t.id,
+                "title": t.title,
+                "notebook": t.notebook.name if t.notebook_id else None,
+                "workspace": ws_name,
+                "messages": msgs,
+            }
+
+        try:
+            return await sync_to_async(_load)()
+        except Exception as e:
+            return {"error": f"Error obteniendo la conversación: {str(e)}"}
 
     return agent
