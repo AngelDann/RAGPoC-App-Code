@@ -12,8 +12,8 @@ from ddgs import DDGS
 from openai import AsyncOpenAI
 from pydantic_ai import Agent, BinaryContent, RunContext
 from pydantic_ai.messages import ToolReturn
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.models.openrouter import OpenRouterModel
+from pydantic_ai.providers.openrouter import OpenRouterProvider
 
 from knowledge.settings_store import get_effective_settings as get_settings
 from ragpoc.config import Settings
@@ -125,9 +125,9 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
         api_key=settings.openrouter_api_key or "sk-dummy",
         http_client=new_async_client(),
     )
-    model = OpenAIChatModel(
+    model = OpenRouterModel(
         settings.chat_model,
-        provider=OpenAIProvider(openai_client=client),
+        provider=OpenRouterProvider(openai_client=client),
     )
 
     agent: Agent[AgentDeps, str] = Agent(
