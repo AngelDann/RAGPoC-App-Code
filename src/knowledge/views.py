@@ -66,6 +66,10 @@ def favicon_view(request: HttpRequest) -> HttpResponse:
 def health_view(request: HttpRequest) -> JsonResponse:
     settings = get_settings()
     return JsonResponse({
+        # desktop_launcher.py probes this endpoint to tell an already-running RAGPoC apart from
+        # an unrelated server that happens to hold the port it wanted, so this marker has to
+        # stay put: without it a second launch cannot recognise the first one.
+        "app": "ragpoc",
         "status": "ok",
         "database": str(settings.database_path),
         "embedding_model": settings.embedding_model,

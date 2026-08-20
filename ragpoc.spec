@@ -6,6 +6,13 @@ block_cipher = None
 
 ROOT = Path.cwd()
 APP_NAME = 'RAGPoC'
+# Shown by Windows itself: the SmartScreen and UAC dialogs a first-time user sees read the
+# publisher and product straight out of the version resource built below. PUBLISHER should stay
+# in step with the subject of the code signing certificate (see the code signing policy in
+# README.md) -- a mismatch between the two is what makes those dialogs look untrustworthy.
+PUBLISHER = 'RAGPoC'
+DESCRIPTION = 'RAGPoC Knowledge Studio'
+COPYRIGHT = 'Copyright (c) 2026 Angel Daniel Lopez Alvarez. MIT License.'
 
 # collect_submodules() below imports our own packages to enumerate their
 # submodules; they live under src/, so it has to be on sys.path before
@@ -100,6 +107,49 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# Windows version resource. Not cosmetic: an exe without one is labelled "Unknown publisher" in
+# the very SmartScreen dialog this is meant to get past, and SignPath Foundation's terms require
+# every signed binary to carry consistent product and version metadata. Generated here rather
+# than checked in as a static file so it always matches the version release.yml stamps into
+# src/ragpoc/__init__.py from the git tag -- a version resource disagreeing with the release it
+# ships in would be worse than none at all.
+from ragpoc import __version__ as APP_VERSION
+
+
+def _version_tuple(version):
+    """(1, 2, 3, 0) from "1.2.3". Windows wants exactly four integers, while our tags are
+    semver-ish and may carry a suffix ("1.2.3-rc1") that has no place in a PE resource."""
+    parts = []
+    for chunk in version.split('.')[:4]:
+        digits = ''.join(c for c in chunk if c.isdigit())
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts + [0] * (4 - len(parts)))
+
+
+# ASCII only on purpose: this text is parsed and then written into PE string resources, where a
+# stray non-ASCII character fails at build time rather than in anything a test would catch.
+_vers = _version_tuple(APP_VERSION)
+version_file = ROOT / 'build' / 'file_version_info.txt'
+version_file.parent.mkdir(parents=True, exist_ok=True)
+version_file.write_text(f"""VSVersionInfo(
+  ffi=FixedFileInfo(filevers={_vers}, prodvers={_vers},
+                    mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
+  kids=[
+    StringFileInfo([StringTable('040904B0', [
+      StringStruct('CompanyName', '{PUBLISHER}'),
+      StringStruct('FileDescription', '{DESCRIPTION}'),
+      StringStruct('FileVersion', '{APP_VERSION}'),
+      StringStruct('InternalName', '{APP_NAME}'),
+      StringStruct('LegalCopyright', '{COPYRIGHT}'),
+      StringStruct('OriginalFilename', '{APP_NAME}.exe'),
+      StringStruct('ProductName', '{DESCRIPTION}'),
+      StringStruct('ProductVersion', '{APP_VERSION}'),
+    ])]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])]),
+  ],
+)
+""", encoding='utf-8')
+
 # --onedir, not --onefile: a onefile build self-extracts to a fresh %TEMP%\_MEI<pid>
 # directory and LoadLibrary()s python313.dll from there on *every* launch, not just
 # after an update -- that extract-then-load step is an inherent race window (a
@@ -132,6 +182,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=str(ROOT / 'assets' / 'ragpoc.ico'),
+    version=str(version_file),
 )
 
 # Produces dist/RAGPoC/RAGPoC.exe + dist/RAGPoC/_internal/... . release.yml zips the

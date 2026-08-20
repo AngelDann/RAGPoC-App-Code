@@ -12,10 +12,19 @@ on:
 
 permissions:
   contents: write
+  # SignPath's connector reads this run's job details and downloads the artifact to be signed
+  # through the GitHub API, using the token passed to its action.
+  actions: read
 
 jobs:
   build-and-release:
     runs-on: windows-latest
+    env:
+      # GitHub does not expose the `secrets` context to a step's `if:` -- only to `env` -- so the
+      # "do we have signing credentials?" decision is made once here and the steps below test the
+      # resulting flag. Written as a plain condition rather than the token itself so the value is
+      # a harmless "true"/"false" string.
+      SIGNING_ENABLED: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -25,7 +34,8 @@ jobs:
 
       # The compiled build always reports whatever version the pushed tag says, regardless of
       # what's committed in src/ragpoc/__init__.py -- avoids a manual "bump the version file
-      # first" step that could drift out of sync with the tag and confuse the updater.
+      # first" step that could drift out of sync with the tag and confuse the updater. It also
+      # feeds the exe's Windows version resource, which ragpoc.spec builds from this same value.
       - name: Stamp version from tag into ragpoc/__init__.py
         shell: pwsh
         run: |
@@ -57,6 +67,58 @@ jobs:
           }
           Write-Host "OK: $config present and enables loadFromRemoteSources"
 
+      # --- Code signing -------------------------------------------------------------------
+      #
+      # Signed by SignPath (free for open source via SignPath Foundation); see the code signing
+      # policy in README.md. SignPath signs *GitHub Actions artifacts*, not loose files, so each
+      # signature is a round trip: upload the binary as an artifact, ask SignPath to sign it, and
+      # unpack the signed result back over the original.
+      #
+      # Every signing step is gated on the API token being present, so a fork -- or this repo
+      # before the SignPath project is provisioned -- still builds and releases, just unsigned,
+      # instead of failing on a secret it was never going to have. Alongside the secret, set
+      # these repository variables: SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG,
+      # SIGNPATH_SIGNING_POLICY_SLUG, SIGNPATH_EXE_ARTIFACT_CONFIGURATION_SLUG and
+      # SIGNPATH_INSTALLER_ARTIFACT_CONFIGURATION_SLUG.
+      #
+      # upload-artifact always wraps its payload in a zip, so both artifact configurations in
+      # SignPath must have a <zip-file> root, e.g.:
+      #   <artifact-configuration><zip-file><pe-file path="RAGPoC.exe"/></zip-file></artifact-configuration>
+      #
+      # The exe is signed here, before the zip and the installer are built, so that both ship
+      # the signed binary rather than a signed wrapper around an unsigned app.
+      - name: Upload unsigned RAGPoC.exe
+        id: unsigned-exe
+        if: env.SIGNING_ENABLED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: RAGPoC-exe-unsigned
+          path: dist/RAGPoC/RAGPoC.exe
+
+      - name: Sign RAGPoC.exe
+        if: env.SIGNING_ENABLED == 'true'
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_EXE_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.unsigned-exe.outputs.artifact-id }}
+          wait-for-completion: true
+          # Unpacks the signed exe straight back over the unsigned one the build produced.
+          output-artifact-directory: dist/RAGPoC
+
+      # A signing request that silently returned the file untouched would produce a release that
+      # looks signed everywhere except on the users' machines, which is the whole point of this.
+      - name: Verify RAGPoC.exe is signed
+        if: env.SIGNING_ENABLED == 'true'
+        shell: pwsh
+        run: |
+          $sig = Get-AuthenticodeSignature "dist/RAGPoC/RAGPoC.exe"
+          if ($sig.Status -ne "Valid") { throw "RAGPoC.exe signature status is $($sig.Status)" }
+          Write-Host "OK: signed by $($sig.SignerCertificate.Subject)"
+
       # Zips the *contents* of dist/RAGPoC/ (RAGPoC.exe + _internal\), not the
       # folder itself -- the in-app updater extracts this directly into the
       # existing install folder (see ragpoc/updater.py), so the paths inside the
@@ -82,6 +144,49 @@ jobs:
           $version = "${{ github.ref_name }}" -replace '^v', ''
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" installer.iss
 
+      # The installer needs its own signature: it is a separate executable, and it is the one
+      # most first-time users actually double-click, so an unsigned installer wrapping a signed
+      # app would still greet them with "Unknown publisher".
+      - name: Upload unsigned installer
+        id: unsigned-installer
+        if: env.SIGNING_ENABLED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: RAGPoC-Setup-unsigned
+          path: dist/installer/RAGPoC-Setup.exe
+
+      - name: Sign installer
+        if: env.SIGNING_ENABLED == 'true'
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_INSTALLER_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist/installer
+
+      - name: Verify installer is signed
+        if: env.SIGNING_ENABLED == 'true'
+        shell: pwsh
+        run: |
+          $sig = Get-AuthenticodeSignature "dist/installer/RAGPoC-Setup.exe"
+          if ($sig.Status -ne "Valid") { throw "RAGPoC-Setup.exe signature status is $($sig.Status)" }
+          Write-Host "OK: signed by $($sig.SignerCertificate.Subject)"
+
+      # Published next to the binaries so anyone can check what they downloaded is byte-for-byte
+      # what this workflow built -- the answer to "SmartScreen warned me, is this file safe?"
+      # that does not depend on reputation having accumulated yet.
+      - name: Compute SHA256 checksums
+        shell: pwsh
+        run: |
+          Get-FileHash dist/RAGPoC-windows.zip, dist/installer/RAGPoC-Setup.exe -Algorithm SHA256 |
+            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
+            Set-Content -Encoding utf8 dist/SHA256SUMS.txt
+          Get-Content dist/SHA256SUMS.txt
+
       # The body is prepended to the auto-generated commit list. Without it both assets look
       # equally like "the download", and the zip is the one that needs Windows to cooperate
       # with an unpacked folder -- the installer route has fewer ways to go wrong for someone
@@ -92,6 +197,7 @@ jobs:
           files: |
             dist/RAGPoC-windows.zip
             dist/installer/RAGPoC-Setup.exe
+            dist/SHA256SUMS.txt
           generate_release_notes: true
           body: |
             ## Descargas
@@ -101,4 +207,8 @@ jobs:
             - **RAGPoC-windows.zip** — versión portable, y el paquete que usa el actualizador
               integrado (Ajustes → Actualizaciones). Descomprímelo en una carpeta con permiso
               de escritura y ejecuta `RAGPoC.exe`.
+            - **SHA256SUMS.txt** — hashes para verificar la descarga.
 
+            Si Windows muestra el aviso de SmartScreen en una versión recién publicada,
+            **Más información → Ejecutar de todas formas**. Los binarios van firmados; el aviso
+            desaparece según se acumula reputación de descarga.
