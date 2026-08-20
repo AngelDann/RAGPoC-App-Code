@@ -8,9 +8,11 @@ os.environ.setdefault("PYDANTIC_DISABLE_PLUGINS", "1")
 
 import asyncio
 import socket
+import subprocess
 import sys
 import threading
 import time
+import traceback
 import webbrowser
 from pathlib import Path
 
@@ -69,10 +71,44 @@ def wait_for_server(host: str, port: int, timeout: float = 20.0) -> None:
     raise RuntimeError("El servidor local no respondió a tiempo.")
 
 
+def open_browser_app_window(url: str) -> bool:
+    """Opens `url` as a Chromium "app window": a normal Edge/Chrome process rendering one
+    chrome-less window with its own taskbar entry -- no tabs, no address bar, no bookmarks
+    bar. Returns False if no such browser is installed.
+
+    This is what the app degrades to when the pywebview/WebView2 path cannot start at all, so
+    that "the native window failed" still means a dedicated desktop window rather than a tab
+    lost somewhere in the user's browsing session. It needs nothing installed beyond the Edge
+    that ships with every supported version of Windows.
+
+    Deliberately no --user-data-dir: reusing the default profile keeps this window's
+    localStorage (where the UI remembers which workspace was open) shared with the plain-tab
+    fallback below, and lets an already-running browser serve the window immediately instead
+    of cold-starting a second, isolated browser process."""
+    if sys.platform != "win32":
+        return False
+    relative = ("Microsoft/Edge/Application/msedge.exe", "Google/Chrome/Application/chrome.exe")
+    roots = [os.environ.get(var) for var in ("PROGRAMFILES(X86)", "PROGRAMFILES", "LOCALAPPDATA")]
+    for root in roots:
+        if not root:
+            continue
+        for name in relative:
+            browser = Path(root) / name
+            if not browser.is_file():
+                continue
+            try:
+                subprocess.Popen([str(browser), f"--app={url}"], close_fds=True)
+                return True
+            except OSError:
+                continue
+    return False
+
+
 def main():
     import django
     from django.core.management import call_command
 
+    from ragpoc.clr_host import ensure_clr_host_config
     from ragpoc.config import get_settings
     from ragpoc.updater import cleanup_stale_update_files, unblock_downloaded_install
 
@@ -80,9 +116,11 @@ def main():
     # lock race (see ragpoc.updater._write_updater_script) — by now that lock is long gone.
     cleanup_stale_update_files()
 
-    # A release zip downloaded via a browser and extracted with Explorer gets every file
-    # tagged as untrusted (see ragpoc.updater.unblock_downloaded_install); left alone, that
-    # breaks the native window below and silently falls back to opening a browser tab instead.
+    # Both of these make the native window below survive being installed from a downloaded
+    # zip, whose files Windows tags as untrusted: the first tells the .NET runtime to load
+    # pythonnet's assemblies anyway, the second strips the tags. They must run before anything
+    # imports webview, since that is what starts the CLR that reads the config file.
+    ensure_clr_host_config()
     unblock_downloaded_install()
 
     # The sqlite file (and uploads/renders/derived dirs) live under a data/
@@ -139,10 +177,17 @@ def main():
         webview.create_window("RAGPoC — Knowledge Studio", url, width=1400, height=900, min_size=(960, 640))
         webview.start()
     except Exception as e:
-        # No native webview backend available (e.g. WebView2 runtime missing) — fall back to
-        # the browser tab behavior instead of leaving the user with no way to reach the app.
-        print(f"No se pudo abrir la ventana nativa ({e}); abriendo en el navegador…")
-        webbrowser.open(url)
+        # No native webview backend available (e.g. the WebView2 runtime really is missing).
+        # Log the whole traceback, not just str(e): every past instance of this has been a
+        # CLR/pythonnet load failure whose one-line message named a symptom rather than a
+        # cause, and this log file is the only diagnostic a user can send back.
+        print(f"No se pudo abrir la ventana nativa ({e}); usando una ventana del navegador…")
+        print(traceback.format_exc())
+        # Still a dedicated, chrome-less window if Edge/Chrome is present; only a plain tab
+        # if neither is, which on Windows means someone removed the bundled Edge.
+        if not open_browser_app_window(url):
+            print("Sin navegador compatible; abriendo una pestaña en el navegador predeterminado…")
+            webbrowser.open(url)
         try:
             while server_thread.is_alive():
                 time.sleep(1)

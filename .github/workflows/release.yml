@@ -41,6 +41,22 @@ jobs:
       - name: Build EXE (onedir)
         run: pyinstaller ragpoc.spec --clean --noconfirm
 
+      # RAGPoC.exe.config is what keeps the desktop window from degrading into a browser tab on
+      # any install Windows has tagged with the Mark of the Web (see ragpoc/clr_host.py). It is
+      # written by a step at the end of ragpoc.spec rather than collected as a data file, so a
+      # refactor there could drop it silently -- and the resulting build would look perfectly
+      # healthy in CI while being broken for exactly the users who download the zip. Fail loudly
+      # here instead of publishing that.
+      - name: Verify the .NET host config shipped next to the exe
+        shell: pwsh
+        run: |
+          $config = "dist/RAGPoC/RAGPoC.exe.config"
+          if (-not (Test-Path $config)) { throw "$config is missing from the build" }
+          if (-not (Select-String -Path $config -Pattern "loadFromRemoteSources" -Quiet)) {
+            throw "$config does not enable loadFromRemoteSources"
+          }
+          Write-Host "OK: $config present and enables loadFromRemoteSources"
+
       # Zips the *contents* of dist/RAGPoC/ (RAGPoC.exe + _internal\), not the
       # folder itself -- the in-app updater extracts this directly into the
       # existing install folder (see ragpoc/updater.py), so the paths inside the
@@ -66,6 +82,10 @@ jobs:
           $version = "${{ github.ref_name }}" -replace '^v', ''
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" installer.iss
 
+      # The body is prepended to the auto-generated commit list. Without it both assets look
+      # equally like "the download", and the zip is the one that needs Windows to cooperate
+      # with an unpacked folder -- the installer route has fewer ways to go wrong for someone
+      # installing by hand, so say so where people actually choose.
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -73,3 +93,12 @@ jobs:
             dist/RAGPoC-windows.zip
             dist/installer/RAGPoC-Setup.exe
           generate_release_notes: true
+          body: |
+            ## Descargas
+
+            - **RAGPoC-Setup.exe** — instalador recomendado. Instala para el usuario actual,
+              sin permisos de administrador, y crea los accesos directos.
+            - **RAGPoC-windows.zip** — versión portable, y el paquete que usa el actualizador
+              integrado (Ajustes → Actualizaciones). Descomprímelo en una carpeta con permiso
+              de escritura y ejecuta `RAGPoC.exe`.
+

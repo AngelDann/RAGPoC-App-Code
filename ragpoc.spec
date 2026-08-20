@@ -5,6 +5,7 @@ import sys
 block_cipher = None
 
 ROOT = Path.cwd()
+APP_NAME = 'RAGPoC'
 
 # collect_submodules() below imports our own packages to enumerate their
 # submodules; they live under src/, so it has to be on sys.path before
@@ -112,11 +113,18 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='RAGPoC',
+    name=APP_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # upx=False deliberately. UPX rewrites the PE headers of everything it packs, which
+    # corrupts managed .NET assemblies -- Python.Runtime.dll and Microsoft.Web.WebView2.Core.dll
+    # among them -- so the CLR fails to load them and the desktop window degrades to a browser
+    # tab, the same symptom (and same hard-to-read error) as the Mark-of-the-Web problem
+    # ragpoc/clr_host.py fixes. Nothing packs today only because the CI runner has no upx on
+    # PATH; that is luck, not a guarantee, and it also spares us the AV false positives packed
+    # executables attract. Size cost is small next to a bundle this size.
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -137,7 +145,23 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,  # see the EXE() call above
     upx_exclude=[],
-    name='RAGPoC',
+    name=APP_NAME,
 )
+
+# pywebview renders through WebView2, which it drives from managed code: importing it starts a
+# .NET Framework CLR in-process via pythonnet. That CLR reads its host configuration from
+# "<full path of the running exe>.config" at startup, and without the loadFromRemoteSources
+# switch in that file it refuses to load pythonnet's own Python.Runtime.dll whenever the
+# install folder carries Windows' Mark of the Web -- which every folder extracted from a
+# downloaded zip does -- leaving the user with a browser tab instead of the desktop window.
+# See ragpoc/clr_host.py for the full story.
+#
+# Written here rather than passed through datas because PyInstaller routes datas into
+# _internal/, and .NET only ever looks for this file directly beside the executable. COLLECT
+# has already populated dist/RAGPoC/ by the time the spec reaches this line, so both the
+# release zip and the Inno Setup installer (which copy dist/RAGPoC/*) pick it up.
+from ragpoc.clr_host import CLR_HOST_CONFIG_XML
+
+(Path(DISTPATH) / APP_NAME / f'{APP_NAME}.exe.config').write_text(CLR_HOST_CONFIG_XML, encoding='utf-8')

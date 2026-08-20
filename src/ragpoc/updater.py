@@ -267,12 +267,10 @@ def _write_updater_script(
         f'for %%A in ("{current_exe}") do set installed_exe_size=%%~zA\r\n'
         f'echo [%date% %time%] Update: new build installed, staged size=%new_exe_size% installed size=%installed_exe_size% >> "{log_path}"\r\n'
         ":relaunch\r\n"
-        # A brief pause before the first launch of the exe that was JUST written to disk. UPX
-        # packs the build (see ragpoc.spec), which some AV/EDR products scan more aggressively
-        # than an uncompressed exe precisely because packers are a common malware-evasion
-        # technique -- a scan (or any other transient handle on the freshly-written files)
-        # overlapping the very first launch is exactly the kind of race this pause, and the
-        # onedir switch itself (no more self-extraction step at all), both guard against.
+        # A brief pause before the first launch of the exe that was JUST written to disk. An
+        # AV/EDR scan (or any other transient handle on the freshly-written files) overlapping
+        # the very first launch is exactly the kind of race this pause, and the onedir switch
+        # itself (no more self-extraction step at all), both guard against.
         "ping -n 4 127.0.0.1 >nul 2>&1\r\n"
         f'start "" "{current_exe}"\r\n'
         ":cleanup\r\n"
@@ -308,26 +306,38 @@ def cleanup_stale_update_files() -> None:
 def unblock_downloaded_install() -> None:
     """A release zip downloaded via a browser and extracted with Windows Explorer gets every
     extracted file tagged with the NTFS "Mark of the Web" (a hidden Zone.Identifier=Internet
-    stream). .NET Framework's legacy security model then refuses to fully load pythonnet's
-    Python.Runtime.dll from that install folder -- pywebview treats that as "no native backend
-    available" and silently falls back to opening the OS browser instead of the desktop window,
-    with no error visible to the user. Stripping the zone tag from every file fixes it without
-    requiring anyone to know to right-click the zip and choose Unblock themselves.
+    stream). .NET Framework then refuses to load pythonnet's Python.Runtime.dll out of that
+    install folder -- pywebview treats that as "no native backend available" and falls back to
+    opening the OS browser instead of the desktop window. Stripping the zone tag from every
+    file fixes it without requiring anyone to know to right-click the zip and choose Unblock.
+
+    Second line of defense, not the primary fix: ragpoc.clr_host ships a host config that
+    makes the CLR load those assemblies whatever zone they carry, which works even where this
+    sweep cannot (a read-only or network install folder, a file re-tagged after startup). This
+    stays because it is nearly free once it has run, and it also clears the tag off everything
+    else in the folder rather than just unblocking the one DLL the CLR happens to need.
 
     Only the initial manual "download from GitHub + extract with Explorer" install is ever
     tagged this way -- the in-app updater writes fresh files via zipfile.extractall(), which
-    never sets this stream -- so the fast path below (checking the exe itself) is a no-op on
-    every later launch."""
+    never sets this stream -- so the probe below short-circuits on every later launch."""
     if sys.platform != "win32" or not getattr(sys, "frozen", False):
         return
-    exe = Path(sys.executable).resolve()
     try:
-        with open(f"{exe}:Zone.Identifier", "rb"):
+        import pythonnet
+    except ImportError:
+        return  # no CLR-backed webview in this build, so no zone tag can break the window
+    # Probe the DLL whose zone tag actually breaks the window, *not* the exe: Windows deletes
+    # the exe's own Zone.Identifier as soon as the user clicks through SmartScreen's "Run
+    # anyway" on first launch, so an exe-based probe reports "nothing to do" on precisely the
+    # runs where the rest of the folder is still tagged -- which is how this went unnoticed.
+    probe = Path(pythonnet.__file__).resolve().parent / "runtime" / "Python.Runtime.dll"
+    try:
+        with open(f"{probe}:Zone.Identifier", "rb"):
             pass
     except OSError:
         return  # not blocked -- nothing to do
     try:
-        for path in exe.parent.rglob("*"):
+        for path in Path(sys.executable).resolve().parent.rglob("*"):
             if not path.is_file():
                 continue
             try:
