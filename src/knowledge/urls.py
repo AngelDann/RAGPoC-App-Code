@@ -5,6 +5,9 @@ from knowledge import views
 urlpatterns = [
     path("", views.console_view, name="console"),
     path("favicon.ico", views.favicon_view, name="favicon"),
+    # The frontend's libraries, served from this process instead of a public CDN: without
+    # this the window still opens offline, but the UI never comes alive.
+    path("vendor/<path:relpath>", views.vendor_view, name="vendor"),
     path("health", views.health_view, name="health"),
     path("api/settings", views.app_settings_view, name="app_settings_view"),
     path("api/workspaces", views.create_workspace, name="create_workspace"),

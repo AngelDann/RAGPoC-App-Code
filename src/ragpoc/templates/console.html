@@ -8,16 +8,76 @@
   <title>RAGPoC · Knowledge Studio</title>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
 
-  <!-- Bootstrap 5 CSS & Icons CDN -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" rel="stylesheet">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
-    rel="stylesheet">
+  <!-- Classic script, not a module, and first in <head> before any other tag: it has to be
+       installed before anything else here gets a chance to fail. This is what used to make the
+       CDN-outage freeze invisible -- the whole app lives in one <script type="module"> below,
+       and a module whose imports fail throws where nothing was listening: no banner, no log
+       line, nothing WebView2 lets the user see (it has no DevTools). Inline styles only and no
+       reference to any class from this page's own stylesheets: the scenario this exists for is
+       precisely the one where those stylesheets never loaded either. -->
+  <script>
+    (function () {
+      var seen = Object.create(null);
+      var banner = null;
+
+      function bannerEl() {
+        if (banner) return banner;
+        banner = document.createElement('div');
+        banner.id = 'ragpoc-fatal-error-banner';
+        Object.assign(banner.style, {
+          position: 'fixed', top: '0', left: '0', right: '0', zIndex: '2147483647',
+          background: '#3d0f0f', color: '#ffe8e8', fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: '13px', lineHeight: '1.5', padding: '10px 14px',
+          borderBottom: '2px solid #ff6b6b', boxShadow: '0 2px 8px rgba(0,0,0,.4)',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '40vh', overflowY: 'auto',
+        });
+        (document.body || document.documentElement).appendChild(banner);
+        return banner;
+      }
+
+      function report(message) {
+        var key = String(message).slice(0, 200);
+        if (seen[key]) {
+          seen[key].count += 1;
+          seen[key].node.textContent = '[x' + seen[key].count + '] ' + key;
+          return;
+        }
+        var node = document.createElement('div');
+        node.textContent = key;
+        node.style.marginTop = '4px';
+        seen[key] = { count: 1, node: node };
+        bannerEl().appendChild(node);
+      }
+
+      // capture: true, not the default bubble phase: a resource load failure (a <script src>
+      // or <link> that 404s or times out) fires a plain 'error' event on that element and does
+      // NOT bubble -- only the capture phase on window sees it. Without this, the handler would
+      // only ever see synchronous JS exceptions, missing exactly the CDN/vendor-file-missing
+      // case this was built for.
+      window.addEventListener('error', function (e) {
+        if (e && e.target && e.target !== window && e.target.tagName) {
+          report('No se pudo cargar: ' + (e.target.src || e.target.href || e.target.tagName));
+        } else {
+          report((e && e.message) || 'Error de JavaScript desconocido');
+        }
+      }, true);
+
+      window.addEventListener('unhandledrejection', function (e) {
+        var reason = e && e.reason;
+        report('Promesa sin manejar: ' + (reason && reason.message ? reason.message : reason));
+      });
+    })();
+  </script>
+
+  <!-- Everything under /vendor/ is served by this same process (see knowledge.views.vendor_view).
+       It used to hang off cdn.jsdelivr.net / esm.sh / fonts.googleapis.com, which left the desktop
+       app unusable without internet: the window opened and painted a fully styled page, but the
+       module below -- which IS the entire application -- never executed a single statement. -->
+  <link href="/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+  <link href="/vendor/bootstrap-icons/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="/vendor/highlight/github-dark.min.css" rel="stylesheet">
+  <link href="/vendor/katex/katex.min.css" rel="stylesheet">
+  <link href="/vendor/fonts/fonts.css" rel="stylesheet">
 
   <style>
     :root {
@@ -3637,28 +3697,23 @@
   </div>
 
   <!-- Scripts -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+  <script src="/vendor/mermaid/mermaid.min.js"></script>
   <script>mermaid.initialize({ startOnLoad: false, theme: 'neutral' });</script>
-  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="/vendor/katex/katex.min.js"></script>
+  <script src="/vendor/chartjs/chart.umd.js"></script>
+  <script src="/vendor/jspdf/jspdf.umd.min.js"></script>
+  <script src="/vendor/html2canvas/html2canvas.min.js"></script>
   <script type="module">
-    import { Editor, Node, Extension } from 'https://esm.sh/@tiptap/core@2.11.5';
-    import { Plugin, PluginKey } from 'https://esm.sh/@tiptap/pm@2.11.5/state';
-    import { generateHTML } from 'https://esm.sh/@tiptap/html@2.11.5';
-    import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.11.5';
-    import Image from 'https://esm.sh/@tiptap/extension-image@2.11.5';
-    import Link from 'https://esm.sh/@tiptap/extension-link@2.11.5';
-    import CodeBlockLowlight from 'https://esm.sh/@tiptap/extension-code-block-lowlight@2.11.5';
-    import Table from 'https://esm.sh/@tiptap/extension-table@2.11.5';
-    import TableRow from 'https://esm.sh/@tiptap/extension-table-row@2.11.5';
-    import TableHeader from 'https://esm.sh/@tiptap/extension-table-header@2.11.5';
-    import TableCell from 'https://esm.sh/@tiptap/extension-table-cell@2.11.5';
-    import { createLowlight, common } from 'https://esm.sh/lowlight@3.1.0';
-    import { marked } from 'https://esm.sh/marked@15.0.7';
-    import DOMPurify from 'https://esm.sh/dompurify@3.2.4';
+    // One local import instead of 14 to esm.sh. The names are unchanged, so the body of this
+    // module is untouched; the bundle is built by scripts/build_vendor.mjs and already has
+    // TipTap 2.11.5 (every extension pinned to that same version), lowlight, marked and
+    // DOMPurify resolved into it, so there is no network request left here that can fail.
+    import {
+      Editor, Node, Extension, Plugin, PluginKey, generateHTML, StarterKit, Image, Link,
+      CodeBlockLowlight, Table, TableRow, TableHeader, TableCell, createLowlight, common,
+      marked, DOMPurify,
+    } from '/vendor/app-deps.js';
 
     marked.setOptions({ gfm: true, breaks: true });
 
@@ -4183,9 +4238,34 @@
     ];
 
     const $ = s => document.querySelector(s);
+    // Default cap on every api() call so a stuck backend request (a dead connection, a proxy
+    // eating the response) doesn't leave the UI waiting forever with no feedback -- the same
+    // "looks frozen, isn't" failure mode the CDN vendoring above fixed, just from the network
+    // side instead of the module-loading side. 30s comfortably covers ordinary navigation
+    // (workspace tree, page loads, settings) without being so tight it fires on a slow disk.
+    // Genuinely long operations opt out explicitly with { timeoutMs: 0 } at their call site --
+    // see /api/updates/apply, /api/artifacts/generate(-stream) and /api/sources (source
+    // ingestion), which legitimately run well past this default.
+    const API_DEFAULT_TIMEOUT_MS = 30000;
+
     const api = async (path, opts = {}) => {
       let url = path.startsWith('http') ? path : `${window.location.protocol}//${window.location.host}${path.startsWith('/') ? '' : '/'}${path}`;
-      let r = await fetch(url, opts);
+      let { timeoutMs = API_DEFAULT_TIMEOUT_MS, signal, ...fetchOpts } = opts;
+      let timeoutSignal = timeoutMs ? AbortSignal.timeout(timeoutMs) : null;
+      // AbortSignal.any (not a plain override) so a caller that someday passes its own signal
+      // (a "cancel this upload" button, say) keeps working alongside the timeout instead of
+      // having it silently discarded.
+      let combinedSignal = signal && timeoutSignal ? AbortSignal.any([signal, timeoutSignal])
+        : (signal || timeoutSignal || undefined);
+      let r;
+      try {
+        r = await fetch(url, { ...fetchOpts, signal: combinedSignal });
+      } catch (e) {
+        if (e.name === 'AbortError' || e.name === 'TimeoutError') {
+          throw Error('La solicitud tardó demasiado y se canceló. Comprueba tu conexión e inténtalo de nuevo.');
+        }
+        throw Error('No se pudo conectar con el servidor local. Comprueba que RAGPoC siga en ejecución.');
+      }
       let d = await r.json();
       if (!r.ok) throw Error(d.detail || 'Error en petición');
       return d;
@@ -6408,7 +6488,8 @@
               instructions: instructions,
               settings: settings,
               notebook_id: targetNbId,
-            })
+            }),
+            timeoutMs: 0, // LLM generation; can legitimately run well past the default cap
           });
           artifact = result.artifact;
         }
@@ -6813,7 +6894,8 @@
           await api('/api/updates/apply', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ download_url: updateInfo.download_url })
+            body: JSON.stringify({ download_url: updateInfo.download_url }),
+            timeoutMs: 0, // downloads the new build's zip; observed taking 60s+ on a slow connection
           });
           $('#update-status').textContent = 'Actualizando y reiniciando…';
         } catch (e) {
@@ -7652,7 +7734,8 @@
             source_type: 'web',
             url: url,
             notebook_id: sourcesModalNotebookId,
-          })
+          }),
+          timeoutMs: 0, // fetches + chunks + embeds the page; length depends on the source, not the request
         });
         statusEl.textContent = result.status === 'unindexed'
           ? `⚠ Fuente "${result.filename}" guardada sin indexar (sin conexión o falta la API key).`
@@ -7682,7 +7765,8 @@
             title: title,
             content: content,
             notebook_id: sourcesModalNotebookId,
-          })
+          }),
+          timeoutMs: 0, // chunks + embeds the pasted text; length depends on the source, not the request
         });
         statusEl.textContent = result.status === 'unindexed'
           ? `⚠ Fuente "${result.filename}" guardada sin indexar (sin conexión o falta la API key).`

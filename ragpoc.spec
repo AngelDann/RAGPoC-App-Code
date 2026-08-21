@@ -22,6 +22,12 @@ if str(ROOT / 'src') not in sys.path:
 
 datas = [
     (str(ROOT / 'src/ragpoc/templates'), 'ragpoc/templates'),
+    # The frontend's third-party libraries (Bootstrap, KaTeX, mermaid, the bundled
+    # TipTap/marked/DOMPurify module, the web fonts). They used to be loaded from
+    # cdn.jsdelivr.net/esm.sh at runtime, which made the compiled desktop app depend on a
+    # working internet connection just to render its own window -- see knowledge.views.vendor_view.
+    # Rebuild with scripts/build_vendor.mjs when a version here needs bumping.
+    (str(ROOT / 'src/ragpoc/static'), 'ragpoc/static'),
     (str(ROOT / '.env.example'), '.'),
     (str(ROOT / 'assets'), 'assets'),
 ]

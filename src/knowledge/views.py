@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import mimetypes
 import re
 import sys
 import time
@@ -15,6 +16,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpRe
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from django.views.static import serve as serve_static_file
 from pydantic_ai import BinaryContent
 from pydantic_ai.messages import ModelMessagesTypeAdapter, ModelRequest
 
@@ -62,6 +64,51 @@ def favicon_view(request: HttpRequest) -> HttpResponse:
             with open(fav, "rb") as f:
                 return HttpResponse(f.read(), content_type="image/x-icon")
     return HttpResponse(status=404)
+
+
+# Windows resolves file types through the registry, and what it answers for ".js" depends on
+# what the user happens to have installed -- plenty of machines report "text/plain". Chromium
+# (and therefore WebView2) enforces a strict MIME check on ES modules and refuses to execute a
+# module served as anything other than a JavaScript type, so a registry quirk on the user's
+# machine would break the editor exactly the way the CDN outage this vendoring replaced did.
+# Pinning the types here overrides the registry lookup for every type we actually serve; fonts
+# get an entry too since Windows has no registry mapping for them at all.
+for _ext, _type in (
+    (".js", "text/javascript"),
+    (".mjs", "text/javascript"),
+    (".css", "text/css"),
+    (".woff2", "font/woff2"),
+    (".woff", "font/woff"),
+    (".ttf", "font/ttf"),
+    (".svg", "image/svg+xml"),
+):
+    mimetypes.add_type(_type, _ext)
+
+
+def _vendor_root() -> Path:
+    """Where the bundled frontend libraries live. Same split as favicon_view: from source they
+    sit next to the package, in a frozen build PyInstaller extracts the spec's static/ datas
+    entry into sys._MEIPASS (i.e. the _internal folder, for the onedir build)."""
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / "ragpoc" / "static" / "vendor"
+    return Path(__file__).resolve().parent.parent / "ragpoc" / "static" / "vendor"
+
+
+def vendor_view(request: HttpRequest, relpath: str) -> HttpResponse:
+    """Serves the frontend's third-party libraries (Bootstrap, KaTeX, mermaid, the bundled
+    TipTap/marked/DOMPurify module, the web fonts) off the local server.
+
+    These used to be <script>/<link> tags pointing at cdn.jsdelivr.net, esm.sh and Google
+    Fonts, which quietly made a desktop app unusable without internet: the whole UI lives in
+    one <script type="module">, and an ES module whose imports fail never executes a single
+    line. The window still opened and still painted -- so it looked like a working app that had
+    frozen, with nothing in ragpoc.log because the failure was entirely browser-side.
+
+    django.views.static.serve rather than a hand-rolled read: it already does the path-traversal
+    containment, the Last-Modified/If-Modified-Since handling and the 404, and the "don't use
+    this in production" caveat in Django's docs is about throughput on a public site, not
+    correctness -- here it serves a few dozen files to one local window."""
+    return serve_static_file(request, relpath, document_root=str(_vendor_root()))
 
 
 def health_view(request: HttpRequest) -> JsonResponse:

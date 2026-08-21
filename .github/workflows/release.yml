@@ -67,6 +67,29 @@ jobs:
           }
           Write-Host "OK: $config present and enables loadFromRemoteSources"
 
+      # The console UI's third-party libraries (Bootstrap, KaTeX, mermaid, the TipTap bundle,
+      # the web fonts) ship inside the build; they used to be fetched from cdn.jsdelivr.net and
+      # esm.sh at runtime. That made the desktop app depend on internet just to draw itself, and
+      # it failed in the worst possible way: the whole UI lives in one <script type="module">,
+      # and an ES module whose imports fail never runs a single statement -- so the window opened,
+      # painted a fully styled page, and sat there completely inert, with nothing in ragpoc.log
+      # because the failure was entirely browser-side. Both halves are checked here because
+      # either one silently reintroduces that bug in the compiled app only: a datas entry dropped
+      # from ragpoc.spec, or a CDN <script>/<link> creeping back into console.html.
+      - name: Verify the frontend has no runtime CDN dependency
+        shell: pwsh
+        run: |
+          $vendor = "dist/RAGPoC/_internal/ragpoc/static/vendor"
+          foreach ($f in @("app-deps.js", "bootstrap/bootstrap.min.css", "mermaid/mermaid.min.js", "fonts/fonts.css")) {
+            if (-not (Test-Path "$vendor/$f")) { throw "$vendor/$f is missing from the build" }
+          }
+          $console = "dist/RAGPoC/_internal/ragpoc/templates/console.html"
+          # Anchored on the quote/paren that starts a src=, href=, import-from or url() value, so
+          # this matches an actual asset load and not the prose above it that names the same hosts.
+          $cdn = Select-String -Path $console -Pattern "[\"'(](https?:)?//(cdn\.jsdelivr\.net|esm\.sh|fonts\.googleapis\.com|fonts\.gstatic\.com)"
+          if ($cdn) { throw "console.html still loads $($cdn.Count) asset(s) from a CDN: $($cdn[0].Line.Trim())" }
+          Write-Host "OK: $((Get-ChildItem -Recurse -File $vendor).Count) vendored files shipped, console.html has no CDN references"
+
       # --- Code signing -------------------------------------------------------------------
       #
       # Signed by SignPath (free for open source via SignPath Foundation); see the code signing
