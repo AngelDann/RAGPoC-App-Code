@@ -86,7 +86,7 @@ jobs:
           $console = "dist/RAGPoC/_internal/ragpoc/templates/console.html"
           # Anchored on the quote/paren that starts a src=, href=, import-from or url() value, so
           # this matches an actual asset load and not the prose above it that names the same hosts.
-          $cdn = Select-String -Path $console -Pattern "[\"'(](https?:)?//(cdn\.jsdelivr\.net|esm\.sh|fonts\.googleapis\.com|fonts\.gstatic\.com)"
+          $cdn = Select-String -Path $console -Pattern "[`"'(](https?:)?//(cdn\.jsdelivr\.net|esm\.sh|fonts\.googleapis\.com|fonts\.gstatic\.com)"
           if ($cdn) { throw "console.html still loads $($cdn.Count) asset(s) from a CDN: $($cdn[0].Line.Trim())" }
           Write-Host "OK: $((Get-ChildItem -Recurse -File $vendor).Count) vendored files shipped, console.html has no CDN references"
 
