@@ -229,6 +229,12 @@ def open_app_window(url: str) -> bool:
     try:
         import webview
 
+        # pywebview's WebView2 backend silently cancels every download (no dialog, no error,
+        # nothing) unless this is turned on -- it's what made "Guardar"/"Descargar" on artifacts
+        # look like it did nothing. With it enabled, WebView2 shows a native SaveFileDialog for
+        # every download the page triggers (the <a download> / blob-URL clicks in console.html).
+        webview.settings["ALLOW_DOWNLOADS"] = True
+
         webview.create_window("RAGPoC — Knowledge Studio", url, width=1400, height=900, min_size=(960, 640))
         webview.start()
         return True

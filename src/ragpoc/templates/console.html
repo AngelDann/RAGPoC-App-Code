@@ -12,6 +12,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" rel="stylesheet">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -878,6 +879,132 @@
       font-size: 13px;
       font-family: var(--font-mono);
       line-height: 1.6;
+    }
+
+    /* Rendered code blocks (Mermaid diagrams, LaTeX formulas, Chart.js charts): each renders its
+       source as something other than highlighted text, with a code/preview toggle. */
+    .rendered-code-block {
+      margin: 1.1em 0;
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-md);
+      background: #ffffff;
+      box-shadow: var(--craft-shadow-sm);
+      overflow: hidden;
+    }
+
+    .rendered-code-block-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border-warm);
+      background: var(--canvas-bg);
+    }
+
+    .rendered-code-block-preview {
+      padding: 16px;
+      overflow-x: auto;
+      display: flex;
+      justify-content: center;
+    }
+
+    .rendered-code-block-preview svg {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .rendered-code-block-source {
+      margin: 0;
+      border-radius: 0;
+    }
+
+    .math-block .rendered-code-block-preview {
+      font-size: 1.1em;
+    }
+
+    .chart-block .rendered-code-block-preview {
+      padding: 16px 16px 8px;
+    }
+
+    .chart-canvas-wrap {
+      width: 100%;
+      max-width: 560px;
+    }
+
+    .chart-canvas-wrap canvas {
+      width: 100%;
+      height: auto;
+    }
+
+    /* Zoom/pan viewport used to display diagram, image, and infographic artifacts
+       in the large artifact viewer modal (see attachArtifactZoom). */
+    .artifact-zoom-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 320px;
+      overflow: hidden;
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-md);
+      background: #ffffff;
+      box-shadow: var(--craft-shadow-sm);
+      touch-action: none;
+      cursor: grab;
+    }
+
+    .artifact-zoom-wrap.panning {
+      cursor: grabbing;
+    }
+
+    .artifact-zoom-inner {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform-origin: center center;
+      transition: transform 0.15s ease-out;
+      will-change: transform;
+    }
+
+    .artifact-zoom-inner.no-transition {
+      transition: none;
+    }
+
+    .artifact-zoom-inner img,
+    .artifact-zoom-inner .mermaid svg {
+      max-width: 100%;
+      max-height: 100%;
+      height: auto;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .artifact-zoom-controls {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--craft-shadow-sm);
+    }
+
+    .artifact-zoom-controls .btn-craft-icon {
+      width: 28px;
+      height: 28px;
+      font-size: 12px;
+    }
+
+    .artifact-zoom-pct {
+      min-width: 38px;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+      color: var(--text-main);
     }
 
     /* Floating language picker for the code block under the cursor (see openCodeBlockLangPicker) */
@@ -3513,6 +3640,8 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <script>mermaid.initialize({ startOnLoad: false, theme: 'neutral' });</script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script type="module">
@@ -3548,9 +3677,197 @@
       { value: 'yaml', label: 'YAML' },
       { value: 'xml', label: 'HTML / XML' },
       { value: 'css', label: 'CSS' },
+      { value: 'mermaid', label: 'Mermaid (diagrama)' },
+      { value: 'math', label: 'Fórmula (LaTeX)' },
+      { value: 'chart', label: 'Gráfica (Chart.js)' },
     ];
 
-    const CodeBlockWithLanguagePicker = CodeBlockLowlight.configure({ lowlight, defaultLanguage: 'plaintext' });
+    // Builds a Tiptap NodeView factory for a code block "language" that renders its source as
+    // something other than highlighted text (a diagram, formula, chart, ...), with a toggle to
+    // flip between the rendered result and the raw editable source. `render(source, preview)`
+    // does the actual work of filling `preview`; it may be async and may throw — a thrown error
+    // (or a promise that never settles) is turned into an inline error message so a bad diagram
+    // /formula/config can never leave the block stuck. `onDestroy(preview)` is an optional extra
+    // cleanup hook for renderers that hold onto external resources (e.g. a Chart.js instance).
+    function createRenderedCodeBlockView({ language, cssClass, placeholderText, render, onDestroy }) {
+      return function nodeView({ node }) {
+        let wrapper = document.createElement('div');
+        wrapper.className = `rendered-code-block ${cssClass}`;
+
+        let toolbar = document.createElement('div');
+        toolbar.className = 'rendered-code-block-toolbar';
+        toolbar.contentEditable = 'false';
+        let toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = 'btn-craft btn-sm';
+        toggleBtn.innerHTML = '<i class="bi bi-code-slash"></i> Ver código';
+        toolbar.appendChild(toggleBtn);
+
+        let preview = document.createElement('div');
+        preview.className = 'rendered-code-block-preview';
+        preview.contentEditable = 'false';
+
+        let pre = document.createElement('pre');
+        pre.className = 'rendered-code-block-source';
+        pre.style.display = 'none';
+        let code = document.createElement('code');
+        code.className = `language-${language}`;
+        pre.appendChild(code);
+
+        wrapper.appendChild(toolbar);
+        wrapper.appendChild(preview);
+        wrapper.appendChild(pre);
+
+        let showingCode = false;
+        toggleBtn.onclick = () => {
+          showingCode = !showingCode;
+          pre.style.display = showingCode ? '' : 'none';
+          preview.style.display = showingCode ? 'none' : '';
+          toggleBtn.innerHTML = showingCode
+            ? '<i class="bi bi-eye"></i> Ver resultado'
+            : '<i class="bi bi-code-slash"></i> Ver código';
+          if (showingCode) setTimeout(() => code.focus(), 0);
+        };
+
+        let renderTimer = null;
+        let renderSeq = 0;
+        let renderInFlight = false;
+        let pendingSource = null;
+        async function doRender(source) {
+          if (renderInFlight) {
+            // Renderers here have no cancellation API, so a second call started before the
+            // first settles would just leave the first one running forever in the background.
+            // Remember the latest source and pick it up once the in-flight one is done.
+            pendingSource = source;
+            return;
+          }
+          let seq = ++renderSeq;
+          if (!source.trim()) {
+            preview.innerHTML = `<span class="text-secondary small">${placeholderText}</span>`;
+            return;
+          }
+          renderInFlight = true;
+          try {
+            // No render() call here is trusted to resolve on its own; a malformed input must
+            // never be able to leave the block stuck on "rendering" forever.
+            let timedOut = Symbol('timeout');
+            let result = await Promise.race([
+              render(source, preview),
+              new Promise(resolve => setTimeout(() => resolve(timedOut), 8000)),
+            ]);
+            if (result === timedOut) throw new Error('Tiempo de espera agotado al renderizar.');
+          } catch (e) {
+            if (seq === renderSeq) {
+              preview.innerHTML = `<div class="text-danger small">Error: ${esc(e.message || String(e))}</div>`;
+            }
+          } finally {
+            renderInFlight = false;
+            if (pendingSource !== null) {
+              let next = pendingSource;
+              pendingSource = null;
+              doRender(next);
+            }
+          }
+        }
+        function scheduleRender(source) {
+          clearTimeout(renderTimer);
+          renderTimer = setTimeout(() => doRender(source), 350);
+        }
+
+        doRender(node.textContent);
+
+        return {
+          dom: wrapper,
+          contentDOM: code,
+          update(updatedNode) {
+            if (updatedNode.type.name !== node.type.name) return false;
+            if (updatedNode.attrs.language !== language) return false;
+            scheduleRender(updatedNode.textContent);
+            return true;
+          },
+          destroy() {
+            clearTimeout(renderTimer);
+            onDestroy?.(preview);
+          },
+        };
+      };
+    }
+
+    // `mermaid` and `Chart` are the globals loaded via <script> at the top of the page; `katex`
+    // likewise. Mermaid rendering reuses the exact same mermaid.run() call the artifact-card
+    // preview panels already use elsewhere in this file.
+    const mermaidNodeView = createRenderedCodeBlockView({
+      language: 'mermaid',
+      cssClass: 'mermaid-block',
+      placeholderText: 'Diagrama vacío — escribe sintaxis Mermaid en "Ver código".',
+      async render(source, preview) {
+        // A fresh <div class="mermaid"> per render (rather than reusing one) sidesteps
+        // mermaid.run()'s data-processed marker, which otherwise skips re-rendering a node
+        // it already processed once.
+        let mermaidDiv = document.createElement('div');
+        mermaidDiv.className = 'mermaid';
+        mermaidDiv.textContent = source;
+        preview.replaceChildren(mermaidDiv);
+        await mermaid.run({ nodes: [mermaidDiv] });
+      },
+    });
+
+    const mathNodeView = createRenderedCodeBlockView({
+      language: 'math',
+      cssClass: 'math-block',
+      placeholderText: 'Fórmula vacía — escribe LaTeX en "Ver código" (ej. E = mc^2).',
+      render(source, preview) {
+        let container = document.createElement('div');
+        container.className = 'math-render';
+        katex.render(source, container, { throwOnError: true, displayMode: true });
+        preview.replaceChildren(container);
+      },
+    });
+
+    const chartNodeView = createRenderedCodeBlockView({
+      language: 'chart',
+      cssClass: 'chart-block',
+      placeholderText: 'Gráfica vacía — escribe una configuración de Chart.js en JSON en "Ver código".',
+      render(source, preview) {
+        let config;
+        try {
+          config = JSON.parse(source);
+        } catch (e) {
+          throw new Error('JSON inválido: ' + e.message);
+        }
+        let canvasWrap = document.createElement('div');
+        canvasWrap.className = 'chart-canvas-wrap';
+        let canvas = document.createElement('canvas');
+        // Fixed pixel size + responsive/animation off: Chart.js's responsive mode drives
+        // sizing off a ResizeObserver on the canvas's container, which inside a rich-text
+        // editor's constantly-reflowing DOM is an unnecessary source of flicker and stalls.
+        // A fixed canvas still scales visually via the CSS on .chart-canvas-wrap.
+        canvas.width = 480;
+        canvas.height = 300;
+        canvasWrap.appendChild(canvas);
+        preview.__chartInstance?.destroy();
+        preview.replaceChildren(canvasWrap);
+        preview.__chartInstance = new Chart(canvas.getContext('2d'), {
+          ...config,
+          options: { responsive: false, animation: false, ...config.options },
+        });
+      },
+      onDestroy(preview) {
+        preview.__chartInstance?.destroy();
+      },
+    });
+
+    const RENDERED_CODE_BLOCK_VIEWS = { mermaid: mermaidNodeView, math: mathNodeView, chart: chartNodeView };
+
+    const CodeBlockWithLanguagePicker = CodeBlockLowlight.extend({
+      addNodeView() {
+        let defaultNodeView = this.parent?.();
+        return (props) => {
+          let view = RENDERED_CODE_BLOCK_VIEWS[props.node.attrs.language];
+          return view ? view(props) : defaultNodeView?.(props);
+        };
+      },
+    }).configure({ lowlight, defaultLanguage: 'plaintext' });
 
     const FileBlock = Node.create({
       name: 'fileBlock',
@@ -5384,6 +5701,15 @@
       clone.style.height = 'auto';
       clone.style.maxHeight = 'none';
       clone.style.overflow = 'visible';
+      // The zoom/pan wrapper (see attachArtifactZoom) clips content and may be mid-pan/zoom on
+      // screen — undo both so the export always captures the full diagram at its natural scale.
+      let zoomWrap = clone.querySelector('.artifact-zoom-wrap');
+      if (zoomWrap) {
+        zoomWrap.style.overflow = 'visible';
+        zoomWrap.style.minHeight = '0';
+        let zoomInner = zoomWrap.querySelector('.artifact-zoom-inner');
+        if (zoomInner) zoomInner.style.transform = 'none';
+      }
       document.body.appendChild(clone);
 
       try {
@@ -5653,8 +5979,11 @@
 
       if (isMermaid) {
         let code = artifact.content.replace(/```mermaid/g, '').replace(/```/g, '').trim();
-        container.innerHTML = `<div class="craft-card p-4 d-flex justify-content-center align-items-center bg-white" style="min-height:300px;"><div class="mermaid text-center w-100" style="font-size:16px;">${esc(code)}</div></div>`;
-        setTimeout(() => mermaid.run({ nodes: container.querySelectorAll('.mermaid') }), 50);
+        container.innerHTML = artifactZoomMarkup(`<div class="mermaid text-center w-100" style="font-size:16px;">${esc(code)}</div>`);
+        setTimeout(() => {
+          mermaid.run({ nodes: container.querySelectorAll('.mermaid') });
+          attachArtifactZoom(container.querySelector('.artifact-zoom-wrap'));
+        }, 50);
         return;
       }
 
@@ -5689,15 +6018,131 @@
               ${transcript ? `<div class="text-start small" style="max-height:260px; overflow:auto;">${transcript}</div>` : ''}
             </div>`;
         } else {
-          container.innerHTML = `
-            <div class="craft-card p-3 bg-white text-center">
-              <img src="${url}" alt="${esc(artifact.title)}" style="max-width:100%; border-radius:8px;">
-            </div>`;
+          container.innerHTML = artifactZoomMarkup(`<img src="${url}" alt="${esc(artifact.title)}">`);
+          attachArtifactZoom(container.querySelector('.artifact-zoom-wrap'));
         }
         return;
       }
 
       container.innerHTML = `<div class="ans-text" style="line-height:1.7; font-size:15px;">${DOMPurify.sanitize(marked.parse(artifact.content))}</div>`;
+    }
+
+    // Wraps diagram/image/infographic content in a zoomable, pannable viewport
+    // (wheel to zoom, drag or pinch to pan, buttons for click-based control).
+    function artifactZoomMarkup(innerHtml) {
+      return `
+        <div class="artifact-zoom-wrap">
+          <div class="artifact-zoom-inner">${innerHtml}</div>
+          <div class="artifact-zoom-controls">
+            <button class="btn-craft-icon" data-zoom-out title="Alejar" type="button"><i class="bi bi-zoom-out"></i></button>
+            <span class="artifact-zoom-pct">100%</span>
+            <button class="btn-craft-icon" data-zoom-in title="Acercar" type="button"><i class="bi bi-zoom-in"></i></button>
+            <button class="btn-craft-icon" data-zoom-reset title="Restablecer zoom" type="button"><i class="bi bi-arrow-counterclockwise"></i></button>
+          </div>
+        </div>`;
+    }
+
+    // Wires wheel-zoom, drag-to-pan, pinch-to-zoom, and the +/-/reset buttons onto a
+    // .artifact-zoom-wrap produced by artifactZoomMarkup(). Zooms toward the cursor/pinch
+    // midpoint so the content under the pointer stays put as the scale changes.
+    function attachArtifactZoom(wrap) {
+      if (!wrap) return;
+      let inner = wrap.querySelector('.artifact-zoom-inner');
+      let pctEl = wrap.querySelector('.artifact-zoom-pct');
+      if (!inner) return;
+
+      const MIN_SCALE = 1;
+      const MAX_SCALE = 6;
+      let state = { scale: 1, tx: 0, ty: 0 };
+
+      function apply(withTransition) {
+        inner.classList.toggle('no-transition', !withTransition);
+        inner.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`;
+        if (pctEl) pctEl.textContent = Math.round(state.scale * 100) + '%';
+      }
+
+      function setScale(nextScale, originX, originY) {
+        nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale));
+        if (originX !== undefined && nextScale !== state.scale) {
+          let rect = wrap.getBoundingClientRect();
+          let cx = originX - rect.left - rect.width / 2;
+          let cy = originY - rect.top - rect.height / 2;
+          let ratio = nextScale / state.scale;
+          state.tx = cx - (cx - state.tx) * ratio;
+          state.ty = cy - (cy - state.ty) * ratio;
+        }
+        state.scale = nextScale;
+        if (state.scale === MIN_SCALE) { state.tx = 0; state.ty = 0; }
+        apply(true);
+      }
+
+      wrap.addEventListener('wheel', e => {
+        e.preventDefault();
+        setScale(state.scale * (1 - e.deltaY * 0.0015), e.clientX, e.clientY);
+      }, { passive: false });
+
+      wrap.addEventListener('dblclick', e => {
+        if (e.target.closest('.artifact-zoom-controls')) return;
+        setScale(state.scale > 1 ? 1 : 2.5, e.clientX, e.clientY);
+      });
+
+      let pointers = new Map();
+      let panStart = null;
+      let pinchStart = null;
+
+      wrap.addEventListener('pointerdown', e => {
+        if (e.target.closest('.artifact-zoom-controls')) return;
+        try { wrap.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size === 1 && state.scale > 1) {
+          panStart = { x: e.clientX, y: e.clientY, tx: state.tx, ty: state.ty };
+          wrap.classList.add('panning');
+        } else if (pointers.size === 2) {
+          panStart = null;
+          let pts = [...pointers.values()];
+          pinchStart = {
+            dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+            scale: state.scale,
+            midX: (pts[0].x + pts[1].x) / 2,
+            midY: (pts[0].y + pts[1].y) / 2,
+          };
+        }
+      });
+
+      wrap.addEventListener('pointermove', e => {
+        if (!pointers.has(e.pointerId)) return;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size === 2 && pinchStart) {
+          let pts = [...pointers.values()];
+          let dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+          setScale(pinchStart.scale * (dist / pinchStart.dist), pinchStart.midX, pinchStart.midY);
+        } else if (panStart) {
+          state.tx = panStart.tx + (e.clientX - panStart.x);
+          state.ty = panStart.ty + (e.clientY - panStart.y);
+          apply(false);
+        }
+      });
+
+      function endPointer(e) {
+        pointers.delete(e.pointerId);
+        if (pointers.size < 2) pinchStart = null;
+        if (pointers.size === 0) {
+          panStart = null;
+          wrap.classList.remove('panning');
+        }
+      }
+      wrap.addEventListener('pointerup', endPointer);
+      wrap.addEventListener('pointercancel', endPointer);
+      wrap.addEventListener('pointerleave', e => { if (pointers.size <= 1) endPointer(e); });
+
+      let zoomInBtn = wrap.querySelector('[data-zoom-in]');
+      let zoomOutBtn = wrap.querySelector('[data-zoom-out]');
+      let zoomResetBtn = wrap.querySelector('[data-zoom-reset]');
+      if (zoomInBtn) zoomInBtn.onclick = () => setScale(state.scale + 0.5);
+      if (zoomOutBtn) zoomOutBtn.onclick = () => setScale(state.scale - 0.5);
+      if (zoomResetBtn) zoomResetBtn.onclick = () => setScale(1);
+
+      apply(false);
     }
 
     function renderArtifactGalleryContent(a, i) {
