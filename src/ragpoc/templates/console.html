@@ -3717,6 +3717,63 @@
 
     marked.setOptions({ gfm: true, breaks: true });
 
+    // Ensures HTML produced by marked.parse() conforms strictly to ProseMirror/TipTap schemas,
+    // avoiding "RangeError: Invalid content for node listItem: <>" and similar errors when
+    // empty or partial list items, blockquotes, or tables are rendered mid-stream.
+    function sanitizeHtmlForTiptap(html) {
+      if (!html || typeof html !== 'string') return html || '';
+      let doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+      let body = doc.body;
+
+      // 1. Ensure all <li> have at least one block child (<p></p>) if empty
+      body.querySelectorAll('li').forEach(li => {
+        if (!li.textContent.trim() && !li.querySelector('img, audio, video, iframe, input, canvas, svg, p, div, table, blockquote, pre, ul, ol')) {
+          li.innerHTML = '<p></p>';
+        }
+      });
+
+      // 2. Ensure all <blockquote> have at least one block child (<p></p>) if empty
+      body.querySelectorAll('blockquote').forEach(bq => {
+        if (!bq.textContent.trim() && !bq.querySelector('img, audio, video, iframe, input, canvas, svg, p, div, table, blockquote, pre, ul, ol')) {
+          bq.innerHTML = '<p></p>';
+        }
+      });
+
+      // 3. Ensure all <td> and <th> have at least one block child (<p></p>) if empty
+      body.querySelectorAll('td, th').forEach(cell => {
+        if (!cell.textContent.trim() && !cell.querySelector('img, audio, video, iframe, input, canvas, svg, p, div, table, blockquote, pre')) {
+          cell.innerHTML = '<p></p>';
+        }
+      });
+
+      // 4. Ensure all <ul> and <ol> have at least one <li>
+      body.querySelectorAll('ul, ol').forEach(list => {
+        if (list.children.length === 0) {
+          list.innerHTML = '<li><p></p></li>';
+        }
+      });
+
+      // 5. Ensure all <tr> have at least one cell, and <table> has rows
+      body.querySelectorAll('tr').forEach(tr => {
+        if (tr.children.length === 0) {
+          tr.innerHTML = '<td><p></p></td>';
+        }
+      });
+      body.querySelectorAll('table').forEach(tbl => {
+        if (tbl.children.length === 0) {
+          tbl.innerHTML = '<tbody><tr><td><p></p></td></tr></tbody>';
+        }
+      });
+
+      return body.innerHTML;
+    }
+
+    function renderMarkdownToHtml(md) {
+      if (!md) return '';
+      let rawHtml = marked.parse(md);
+      return sanitizeHtmlForTiptap(rawHtml);
+    }
+
     const lowlight = createLowlight(common);
 
     // Common syntaxes for the code block's language picker (Markdown, Python, JSON, etc.)
@@ -4726,7 +4783,7 @@
           editor.commands.insertContent(`<img src="${artifactMediaUrl(art)}" alt="${esc(art.title)}"><p></p>`);
         }
       } else {
-        editor.commands.insertContent(marked.parse(art.content));
+        editor.commands.insertContent(renderMarkdownToHtml(art.content));
       }
     }
 
@@ -5364,10 +5421,14 @@
           if (!bgItem) bgItem = createUploadTrayItem('Generando texto con IA…', `Página: ${targetPageTitle}`);
           return;
         }
-        let sizeBefore = editor.state.doc.content.size;
-        let html = marked.parse(rawText);
-        editor.chain().insertContentAt({ from: startPos, to: endPos }, html).run();
-        endPos += editor.state.doc.content.size - sizeBefore;
+        try {
+          let sizeBefore = editor.state.doc.content.size;
+          let html = renderMarkdownToHtml(rawText);
+          editor.chain().insertContentAt({ from: startPos, to: endPos }, html).run();
+          endPos += editor.state.doc.content.size - sizeBefore;
+        } catch (e) {
+          console.warn('[AI inline renderBuffer] transient render error ignored:', e);
+        }
       }
       function scheduleRender() {
         if (renderTimer) return;
@@ -5416,11 +5477,11 @@
         if (onTargetPage()) {
           await savePage();
         } else if (rawText.trim()) {
-          // Send the same HTML the live editor would have received (marked.parse output), not
+          // Send the same HTML the live editor would have received (renderMarkdownToHtml output), not
           // the raw markdown -- keeps this fallback's formatting identical to the on-page path
           // instead of re-deriving it server-side with a different renderer (see
           // html_to_tiptap_json's docstring for why that distinction matters).
-          let html = marked.parse(rawText);
+          let html = renderMarkdownToHtml(rawText);
           let plainTextDiv = document.createElement('div');
           plainTextDiv.innerHTML = html;
           await api(`/api/pages/${targetPageId}/append-html`, {
@@ -7981,7 +8042,7 @@
             aDiv.querySelector('[data-copy-chat-note]').onclick = () => copyTextToClipboard(rawText);
             aDiv.querySelector('[data-insert-chat-note]').onclick = async () => {
               editor.chain().focus();
-              editor.commands.insertContent(marked.parse(rawText));
+              editor.commands.insertContent(renderMarkdownToHtml(rawText));
               await savePage();
               showToast('Respuesta insertada en la nota activa.', 'success');
             };
@@ -8000,7 +8061,7 @@
               });
               await openPage(newP.id);
               editor.chain().focus();
-              editor.commands.insertContent(marked.parse(rawText));
+              editor.commands.insertContent(renderMarkdownToHtml(rawText));
               await savePage();
             };
             if (m.sources_json && m.sources_json.length) {
@@ -9263,10 +9324,14 @@
         }
         function renderPageWriteBuffer() {
           if (!pageWriteOnTargetPage()) return;
-          let sizeBefore = editor.state.doc.content.size;
-          let html = marked.parse(pageWriteBuffer);
-          editor.chain().insertContentAt({ from: pageWriteStartPos, to: pageWriteEndPos }, html).run();
-          pageWriteEndPos += editor.state.doc.content.size - sizeBefore;
+          try {
+            let sizeBefore = editor.state.doc.content.size;
+            let html = renderMarkdownToHtml(pageWriteBuffer);
+            editor.chain().insertContentAt({ from: pageWriteStartPos, to: pageWriteEndPos }, html).run();
+            pageWriteEndPos += editor.state.doc.content.size - sizeBefore;
+          } catch (e) {
+            console.warn('[PageWrite renderBuffer] transient render error ignored:', e);
+          }
         }
         function schedulePageWriteRender() {
           if (pageWriteRenderTimer) return;
@@ -9367,7 +9432,7 @@
                 if (insBtn) {
                   insBtn.onclick = async () => {
                     editor.chain().focus();
-                    editor.commands.insertContent(marked.parse(fullAnswerMarkdown));
+                    editor.commands.insertContent(renderMarkdownToHtml(fullAnswerMarkdown));
                     await savePage();
                     showToast('Respuesta insertada en la nota activa.', 'success');
                   };
@@ -9388,7 +9453,7 @@
                     });
                     await openPage(newP.id);
                     editor.chain().focus();
-                    editor.commands.insertContent(marked.parse(fullAnswerMarkdown));
+                    editor.commands.insertContent(renderMarkdownToHtml(fullAnswerMarkdown));
                     await savePage();
                   };
                 }

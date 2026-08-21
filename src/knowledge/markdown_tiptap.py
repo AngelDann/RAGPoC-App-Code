@@ -201,6 +201,16 @@ class _TiptapBuilder(HTMLParser):
             return
         if tag in _BLOCK_CONTAINER_TAGS:
             self._close_implicit()
+            top_content = self._top()
+            if not top_content:
+                if tag in ("li", "blockquote", "th", "td"):
+                    top_content.append({"type": "paragraph"})
+                elif tag in ("ul", "ol"):
+                    top_content.append({"type": "listItem", "content": [{"type": "paragraph"}]})
+                elif tag == "tr":
+                    top_content.append({"type": "tableCell", "content": [{"type": "paragraph"}]})
+                elif tag == "table":
+                    top_content.append({"type": "tableRow", "content": [{"type": "tableCell", "content": [{"type": "paragraph"}]}]})
             self._pop_frame()
             return
         if tag == "a":
