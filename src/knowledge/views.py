@@ -34,7 +34,7 @@ from knowledge.models import (
     Workspace,
     calculate_content_hash,
 )
-from knowledge.pydantic_agent import AgentDeps, create_pydantic_rag_agent, evidence_media_parts
+from knowledge.pydantic_agent import AgentDeps, create_pydantic_rag_agent
 from knowledge.services import get_rag_service, reset_rag_service
 from knowledge.settings_store import (
     get_api_key_status,
@@ -961,8 +961,9 @@ def _collect_notebook_context(notebook: Notebook, custom_instructions: str, rag)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
+        retriever = getattr(rag, "retriever", rag)
         sources = loop.run_until_complete(
-            rag.retriever.search(query=f"conceptos clave {custom_instructions}", top_k=6, notebook_id=notebook.id)
+            retriever.search(query=f"conceptos clave {custom_instructions}", top_k=6, notebook_id=notebook.id)
         )
         for s in sources:
             s_name = s.get("filename", "")
@@ -1751,7 +1752,7 @@ def list_or_create_threads(request: HttpRequest) -> JsonResponse:
             "created_at": t.created_at.isoformat(),
             "updated_at": t.updated_at.isoformat(),
         }
-        for t in qs[:30]
+        for t in qs.order_by("-updated_at")
     ]
     return JsonResponse(threads_data, safe=False)
 
@@ -1942,20 +1943,6 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                     pass
             started = time.perf_counter()
             try:
-                # Fetch relevant RAG sources for citations card
-                sources = loop.run_until_complete(rag.retriever.search(question, top_k=5, **selected))
-                refs = [
-                    {
-                        "citation": f"[{i}]",
-                        "label": s["filename"],
-                        "filename": s["filename"],
-                        "media_type": s.get("media_type"),
-                    }
-                    for i, s in enumerate(sources, 1)
-                ]
-                if refs:
-                    q.put({"type": "sources", "sources": refs})
-
                 # Check if OPENROUTER_API_KEY is present
                 if not settings.openrouter_api_key:
                     q.put({"type": "token", "text": "OPENROUTER_API_KEY no está configurada."})
@@ -1967,10 +1954,10 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                     retriever=rag.retriever,
                     settings=settings,
                     page_id=page_id,
-                    # Derived from `selected` (the same scope resolution used for the citations
-                    # search above), not the raw body value — otherwise a stale/irrelevant
-                    # notebook_id sent alongside scope="workspace" would wrongly narrow the
-                    # agent's own search_knowledge_base tool calls to a single notebook.
+                    # Derived from `selected` (the same scope resolution used for notebook/workspace),
+                    # not the raw body value — otherwise a stale/irrelevant notebook_id sent alongside
+                    # scope="workspace" would wrongly narrow the agent's own search_knowledge_base
+                    # tool calls to a single notebook.
                     notebook_id=selected.get("notebook_id"),
                     workspace_id=workspace_id,
                     thread_id=thread.id,
@@ -1999,27 +1986,6 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                 
                 if page_direct_text:
                     prompt_parts.append(page_direct_text)
-                
-                # If there are sources found in this scope, pre-inject evidence snippets AND BinaryContent for images
-                if sources:
-                    rag_context_text = "\n[EVIDENCIA RECUPERADA DE LA BASE DE CONOCIMIENTO]:\n"
-                    for idx, s in enumerate(sources, 1):
-                        s_text = s.get("text") or ""
-                        s_name = s.get("filename") or "Documento"
-                        s_type = s.get("media_type") or "desconocido"
-                        rag_context_text += f"[{idx}] Fuente: {s_name} (Tipo: {s_type})"
-                        if s_text:
-                            rag_context_text += f":\n{s_text[:1000]}\n\n"
-                        else:
-                            rag_context_text += " (Archivo binario/visual indexado)\n\n"
-                    prompt_parts.append(rag_context_text)
-
-                    # INJECT MULTIMODAL BYTES FOR NON-TEXT EVIDENCE (image / PDF page / video clip /
-                    # audio). See evidence_media_parts: none of these get a transcription or caption
-                    # at ingestion time, so without the raw bytes the model only sees the "(Archivo
-                    # binario/visual indexado)" placeholder above and can't describe the content.
-                    for s in sources:
-                        prompt_parts.extend(evidence_media_parts(s))
 
                 prompt_parts.append(f"\nPregunta del usuario: {question}")
                 
@@ -2081,7 +2047,7 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                             thread=thread,
                             role="assistant",
                             content=final_text,
-                            sources_json=refs,
+                            sources_json=deps.collected_sources,
                         )
                         thread.history_json = new_history_json
                         thread.save()

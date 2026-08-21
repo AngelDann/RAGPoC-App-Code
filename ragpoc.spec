@@ -93,6 +93,9 @@ hiddenimports = own_packages + [
     'webview.platforms.winforms',
     'webview.platforms.edgechromium',
     'clr_loader',
+    'docx',
+    'openpyxl',
+    'pptx',
 ]
 
 a = Analysis(

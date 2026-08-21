@@ -1,0 +1,191 @@
+import asyncio
+import json
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from asgiref.sync import sync_to_async
+from django.core.management import call_command
+from django.db import connections
+from pydantic_ai import RunContext
+from pydantic_ai.models.test import TestModel
+
+from knowledge.models import Notebook, NotebookArtifact, Workspace
+from knowledge.pydantic_agent import AgentDeps, create_pydantic_rag_agent
+from knowledge.services import get_rag_service
+from ragpoc.config import Settings
+from ragpoc.embeddings import FakeEmbeddingProvider
+from ragpoc.retrieval import Retriever
+
+
+@pytest.fixture(autouse=True)
+def setup_test_env(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    uploads_dir = data_dir / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    test_settings = Settings(
+        data_dir=data_dir,
+        allowed_upload_dir=uploads_dir,
+        ui_password="test-password",
+        openrouter_api_key="test-key",
+    )
+    from ragpoc import config
+    monkeypatch.setattr(config, "get_settings", lambda: test_settings)
+
+    rag_service = get_rag_service(test_settings, FakeEmbeddingProvider())
+    from knowledge import views
+    monkeypatch.setattr(views, "get_rag_service", lambda: rag_service)
+
+    call_command("migrate", verbosity=0)
+    yield
+    connections.close_all()
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_agentic_rag_search_invocation_and_events():
+    """Verify that when the agent invokes search_knowledge_base:
+    1. The retriever is queried with the right parameters and scope.
+    2. The 'sources' event is emitted live via on_tool_event.
+    3. Retrieved sources are collected in deps.collected_sources.
+    """
+    mock_retriever = MagicMock(spec=Retriever)
+    mock_retriever.search = AsyncMock(return_value=[
+        {
+            "chunk_id": "c1",
+            "document_id": "d1",
+            "filename": "manual_usuario.pdf",
+            "media_type": "pdf",
+            "page_number": 3,
+            "text": "Contenido del manual sobre configuración.",
+            "derived_path": None,
+            "source_path": None,
+            "metadata": {},
+        },
+        {
+            "chunk_id": "c2",
+            "document_id": "d2",
+            "filename": "notas_reunion.txt",
+            "media_type": "text",
+            "page_number": None,
+            "text": "Acuerdos del equipo para el sprint.",
+            "derived_path": None,
+            "source_path": None,
+            "metadata": {},
+        },
+    ])
+
+    emitted_events = []
+    deps = AgentDeps(
+        retriever=mock_retriever,
+        settings=Settings(),
+        notebook_id="nb-123",
+        on_tool_event=lambda evt: emitted_events.append(evt),
+    )
+
+    agent = create_pydantic_rag_agent(Settings())
+    agent.model = TestModel(call_tools=["search_knowledge_base"])
+
+    result = await agent.run("Consulta el manual del usuario", deps=deps)
+    assert result is not None
+
+    # 1. Verify retriever was called
+    assert mock_retriever.search.await_count >= 1
+    call_args = mock_retriever.search.call_args
+    assert call_args.kwargs.get("notebook_id") == "nb-123"
+
+    # 2. Verify sources event was emitted live to on_tool_event
+    assert len(emitted_events) >= 1
+    sources_event = next(e for e in emitted_events if e.get("type") == "sources")
+    assert len(sources_event["sources"]) == 2
+    assert sources_event["sources"][0]["label"] == "manual_usuario.pdf"
+    assert sources_event["sources"][0]["citation"] == "[1]"
+
+    # 3. Verify deps.collected_sources accumulated the sources
+    assert len(deps.collected_sources) == 2
+    assert deps.collected_sources[0]["filename"] == "manual_usuario.pdf"
+    assert deps.collected_sources[1]["filename"] == "notas_reunion.txt"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_conversational_query_does_not_invoke_search_tool():
+    """Verify that pure conversational queries don't trigger vector search tool."""
+    mock_retriever = MagicMock(spec=Retriever)
+    mock_retriever.search = AsyncMock()
+
+    emitted_events = []
+    deps = AgentDeps(
+        retriever=mock_retriever,
+        settings=Settings(),
+        notebook_id="nb-123",
+        on_tool_event=lambda evt: emitted_events.append(evt),
+    )
+
+    agent = create_pydantic_rag_agent(Settings())
+    agent.model = TestModel(call_tools=[])
+
+    result = await agent.run("¡Hola! ¿Cómo estás?", deps=deps)
+    assert result is not None
+
+    # Retriever must not have been called
+    assert mock_retriever.search.await_count == 0
+    assert len(emitted_events) == 0
+    assert len(deps.collected_sources) == 0
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_generate_notebook_artifact_tool_direct_and_events():
+    """Verify that generate_notebook_artifact tool generates artifacts and emits SSE events."""
+    ws = await sync_to_async(Workspace.objects.create)(name="Workspace Test")
+    nb = await sync_to_async(Notebook.objects.create)(workspace=ws, name="Arquitectura")
+
+    mock_retriever = MagicMock(spec=Retriever)
+    mock_retriever.search = AsyncMock(return_value=[])
+
+    emitted_events = []
+    deps = AgentDeps(
+        retriever=mock_retriever,
+        settings=Settings(openrouter_api_key="test-key"),
+        notebook_id=str(nb.id),
+        on_tool_event=lambda evt: emitted_events.append(evt),
+    )
+
+    agent = create_pydantic_rag_agent(deps.settings)
+    tool_def = agent._function_toolset.tools["generate_notebook_artifact"]
+
+    ctx = RunContext(
+        deps=deps,
+        model=TestModel(),
+        usage=MagicMock(),
+        prompt="Genera un diagrama",
+    )
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "```mermaid\ngraph TD; A-->B;\n```"
+    mock_completion = MagicMock()
+    mock_completion.choices = [mock_choice]
+
+    with patch("openai.resources.chat.AsyncCompletions.create", AsyncMock(return_value=mock_completion)):
+        res = await tool_def.function(
+            ctx,
+            artifact_type="diagram",
+            instructions="Diagrama de flujo principal",
+        )
+
+    assert res["status"] == "success"
+    assert "Diagrama" in res["title"]
+
+    # Check NotebookArtifact in DB
+    artifact = await sync_to_async(lambda: NotebookArtifact.objects.filter(notebook=nb).first())()
+    assert artifact is not None
+    assert artifact.artifact_type == "diagram"
+    assert "Arquitectura" in artifact.title
+
+    # Check SSE event emitted
+    assert len(emitted_events) >= 1
+    art_event = next(e for e in emitted_events if e.get("type") == "artifact_created")
+    assert art_event["artifact_id"] == str(artifact.id)
+    assert art_event["artifact_type"] == "diagram"

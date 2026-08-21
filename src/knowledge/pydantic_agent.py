@@ -3,9 +3,21 @@ from __future__ import annotations
 import asyncio
 import re
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
+
+ArtifactType = Literal[
+    "podcast",
+    "diagram",
+    "mindmap",
+    "quiz",
+    "flashcards",
+    "study_guide",
+    "summary",
+    "infographic",
+    "timeline",
+]
 
 from asgiref.sync import sync_to_async
 from ddgs import DDGS
@@ -44,6 +56,7 @@ class AgentDeps:
     # already exposes token-by-token via stream_text) is mirrored live into that page as it
     # arrives, and persisted once the turn's text stream ends. See chat_stream_view.
     page_write_state: dict | None = None
+    collected_sources: list[dict] = field(default_factory=list)
 
 
 SYSTEM_PROMPT = """Eres el asistente de conocimiento y copiloto operativo RAGPoC potenciado por PydanticAI (inspirado en Hermes Agent).
@@ -52,7 +65,7 @@ Cuentas con memoria declarativa persistente (AgentMemory), memoria procedimental
 ══════════════════════════════════════════════
 HERRAMIENTAS DISPONIBLES:
 ══════════════════════════════════════════════
-1. `search_knowledge_base`: Busca evidencia en notas, documentos (PDFs, imágenes, videos, texto) del cuaderno actual.
+1. `search_knowledge_base`: Busca evidencia en notas, documentos (PDFs, imágenes, videos, texto) del cuaderno o espacio de trabajo.
 2. `search_web`: Búsquedas en tiempo real en internet.
 3. `add_source_to_knowledge_base`: Guarda e indexa URLs o notas de texto en la base vectorial, a nivel de cuaderno.
 4. `manage_memory`: Guarda, actualiza o elimina hechos duraderos sobre el usuario, preferencias, convenciones y lecciones aprendidas (estilo Hermes memory).
@@ -62,15 +75,19 @@ HERRAMIENTAS DISPONIBLES:
 8. `get_workspace_structure`: Explora la jerarquía completa de cuadernos y páginas del espacio de trabajo.
 9. `search_past_conversations`: Lista/busca conversaciones de chat anteriores (distintas de la actual), acotadas al cuaderno o espacio de trabajo activo. Úsala cuando el usuario haga referencia a algo hablado antes que no aparece en el contexto actual.
 10. `get_conversation_messages`: Recupera el contenido completo de una conversación pasada por su `thread_id` (obtenido con `search_past_conversations`) para revisar el detalle exacto de lo que se dijo.
+11. `generate_notebook_artifact`: Genera artefactos multimedia y de conocimiento para el cuaderno actual (podcasts de audio .wav con 2 locutores, diagramas Mermaid, mapas mentales, cuestionarios interactivos, flashcards, guías de estudio, resúmenes ejecutivos, infografías y líneas de tiempo) y los guarda en la galería Studio.
 
 ══════════════════════════════════════════════
 DIRECTIVAS DE OPERACIÓN (HERMES STYLE):
 ══════════════════════════════════════════════
+- **Búsqueda Vectorial Agéntica (100% Tool-Driven):** Tu contexto inicial no incluye fragmentos pre-cargados de la base de conocimiento. Por lo tanto, DEBES invocar proactivamente `search_knowledge_base` siempre que la pregunta del usuario requiera información, hechos, documentos (PDFs, imágenes, videos, texto) o notas del cuaderno/espacio de trabajo.
+- **Consultas Semánticas Precisas:** Al invocar `search_knowledge_base`, formula términos de búsqueda y conceptos clave concretos y descriptivos (en lugar de copiar literalmente preguntas conversacionales completas del usuario). Puedes invocar la herramienta múltiples veces si necesitas contrastar información o profundizar en diferentes temas.
+- **Generación de Artefactos (Studio Artifacts):** Cuando el usuario te pida crear o generar un podcast, diagrama, mapa mental, quiz, tarjetas de estudio (flashcards), infografía, línea de tiempo o guía, invoca proactivamente `generate_notebook_artifact` con el tipo (`podcast`, `diagram`, `mindmap`, `quiz`, `flashcards`, `study_guide`, `summary`, `infographic`, `timeline`) e instrucciones pertinentes.
 - **Memoria Declarativa Proactiva:** Cuando el usuario exprese una preferencia estable o descubras un hecho clave del proyecto, invoca proactivamente `manage_memory(action='add', content=...)`.
 - **Memoria Procedimental (Skills):** Si descubres o el usuario te enseña un flujo de trabajo complejo repetible, guárdalo con `manage_skill(action='create', name=..., instructions=...)`.
 - **Contexto de conversaciones pasadas:** Si la pregunta del usuario parece referirse a algo de una conversación anterior (p. ej. "como te dije antes", "eso que hablamos", "revisa la otra conversación de X") y no tienes esa información en el historial actual, usa `search_past_conversations` (y luego `get_conversation_messages` si encuentras un hilo relevante) antes de responder que no lo sabes.
 - Responde siempre en español claro y conciso con formato Markdown (negritas, listas, tablas).
-- Cita las fuentes de la base de conocimiento usando [n].
+- Cita las fuentes de la base de conocimiento usando [n] cuando utilices información recuperada de `search_knowledge_base`.
 - **Después de `create_workspace_page` o `update_page_notes`:** tu siguiente respuesta de texto ES el contenido que se guardará en la página. Escribe ÚNICAMENTE el contenido en Markdown — sin saludos, sin "aquí tienes", sin confirmaciones. Si quieres además comentarle algo al usuario en el chat, hazlo en un mensaje aparte, no mezclado con el contenido de la página.
 """
 
@@ -173,16 +190,33 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
                 notebook_ids=notebook_ids,
             )
             formatted = []
+            refs = []
             media_parts: list[str | BinaryContent] = []
             for idx, r in enumerate(results, 1):
+                filename = r.get("filename") or "Documento"
+                media_type = r.get("media_type")
                 formatted.append({
                     "citation": f"[{idx}]",
-                    "filename": r.get("filename"),
-                    "media_type": r.get("media_type"),
+                    "filename": filename,
+                    "media_type": media_type,
                     "page_number": r.get("page_number"),
                     "text_excerpt": (r.get("text") or "")[:800],
                 })
+                refs.append({
+                    "citation": f"[{idx}]",
+                    "label": filename,
+                    "filename": filename,
+                    "media_type": media_type,
+                })
                 media_parts.extend(evidence_media_parts(r))
+
+            if refs and ctx.deps.on_tool_event:
+                ctx.deps.on_tool_event({"type": "sources", "sources": refs})
+
+            for ref in refs:
+                if not any(existing.get("filename") == ref.get("filename") for existing in ctx.deps.collected_sources):
+                    ctx.deps.collected_sources.append(ref)
+
             if media_parts:
                 return ToolReturn(return_value=formatted, content=media_parts)
             return formatted
@@ -577,5 +611,137 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
             return await sync_to_async(_load)()
         except Exception as e:
             return {"error": f"Error obteniendo la conversación: {str(e)}"}
+
+    @agent.tool
+    async def generate_notebook_artifact(
+        ctx: RunContext[AgentDeps],
+        artifact_type: ArtifactType,
+        instructions: str = "",
+        render_mode: str | None = None,
+        notebook_id: str | None = None,
+    ) -> dict:
+        """Genera un artefacto de conocimiento para el cuaderno actual y lo guarda en la galería del Studio.
+        Tipos soportados:
+        - 'podcast': Genera un podcast de audio (.wav) con guion conversacional entre 2 locutores (Ana y Marco).
+        - 'diagram': Genera un diagrama de arquitectura o flujo en formato Mermaid.js.
+        - 'mindmap': Genera un mapa mental jerárquico (Mermaid.js o imagen ilustrada si render_mode='image').
+        - 'quiz': Genera un cuestionario interactivo de opción múltiple con respuestas y explicaciones.
+        - 'flashcards': Genera tarjetas de repaso y memoria activa en JSON.
+        - 'study_guide': Genera una guía de estudio estructurada en Markdown.
+        - 'summary': Genera un resumen ejecutivo de 1 página con viñetas y tablas.
+        - 'infographic': Genera una infografía visual completa basada en IA.
+        - 'timeline': Genera una línea de tiempo cronológica visual.
+        """
+        from knowledge.models import Notebook, NotebookArtifact, Page
+        from knowledge.views import ARTIFACT_SYSTEM_PROMPTS, ARTIFACT_TITLES, _collect_notebook_context
+        from knowledge.artifact_media import build_media_artifact, describe_artifact_settings
+
+        target_nb_id = notebook_id or ctx.deps.notebook_id
+        if not target_nb_id and ctx.deps.page_id:
+            @sync_to_async
+            def _find_nb():
+                p = Page.objects.filter(id=ctx.deps.page_id).first()
+                return p.notebook_id if p else None
+            target_nb_id = await _find_nb()
+        elif not target_nb_id and ctx.deps.workspace_id:
+            @sync_to_async
+            def _find_first_nb():
+                nb = Notebook.objects.filter(workspace_id=ctx.deps.workspace_id).first()
+                return nb.id if nb else None
+            target_nb_id = await _find_first_nb()
+
+        if not target_nb_id:
+            return {"error": "No se pudo determinar el cuaderno activo para generar el artefacto."}
+
+        @sync_to_async
+        def _get_nb():
+            return Notebook.objects.filter(id=target_nb_id).first()
+
+        notebook = await _get_nb()
+        if not notebook:
+            return {"error": f"Cuaderno con ID {target_nb_id} no encontrado."}
+
+        try:
+            @sync_to_async
+            def _get_context():
+                return _collect_notebook_context(notebook, instructions, ctx.deps.retriever)
+
+            full_context = await _get_context()
+
+            preferences: dict = {}
+            if render_mode:
+                preferences["render_mode"] = render_mode
+
+            is_media = artifact_type in {"podcast", "infographic", "timeline"} or (artifact_type == "mindmap" and render_mode == "image")
+
+            if is_media:
+                def on_progress(msg: str):
+                    if ctx.deps.on_tool_event:
+                        ctx.deps.on_tool_event({"type": "status", "message": msg})
+
+                title, content, metadata = await build_media_artifact(
+                    artifact_type=artifact_type,
+                    notebook=notebook,
+                    full_context=full_context,
+                    custom_instructions=instructions,
+                    settings=ctx.deps.settings,
+                    on_progress=on_progress,
+                    preferences=preferences,
+                )
+            else:
+                settings_directive = describe_artifact_settings(artifact_type, preferences)
+                default_counts = {"quiz": "4", "flashcards": "5"}
+                count = default_counts.get(artifact_type, "")
+                chosen_system = ARTIFACT_SYSTEM_PROMPTS.get(artifact_type, ARTIFACT_SYSTEM_PROMPTS["study_guide"]).format(count=count)
+                user_prompt = f"Contenido del cuaderno '{notebook.name}':\n{full_context}\n\nInstrucciones adicionales del usuario: {instructions}"
+                if settings_directive:
+                    user_prompt += f"\n\nPreferencias de formato: {settings_directive}"
+
+                client = AsyncOpenAI(
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=ctx.deps.settings.openrouter_api_key or "sk-dummy",
+                    http_client=new_async_client(),
+                )
+                completion = await client.chat.completions.create(
+                    model=ctx.deps.settings.chat_model,
+                    messages=[
+                        {"role": "system", "content": chosen_system},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=0.2,
+                )
+                content = completion.choices[0].message.content or ""
+                title = f"{ARTIFACT_TITLES.get(artifact_type, 'Artefacto')} · {notebook.name}"
+                metadata = {"render_mode": "mermaid"} if artifact_type == "mindmap" else {}
+
+            @sync_to_async
+            def _save():
+                return NotebookArtifact.objects.create(
+                    notebook=notebook,
+                    artifact_type=artifact_type,
+                    title=title,
+                    content=content,
+                    metadata_json=metadata,
+                )
+
+            saved_artifact = await _save()
+
+            if ctx.deps.on_tool_event:
+                ctx.deps.on_tool_event({
+                    "type": "artifact_created",
+                    "artifact_id": str(saved_artifact.id),
+                    "artifact_type": saved_artifact.artifact_type,
+                    "title": saved_artifact.title,
+                })
+
+            return {
+                "status": "success",
+                "artifact_id": str(saved_artifact.id),
+                "artifact_type": saved_artifact.artifact_type,
+                "title": saved_artifact.title,
+                "message": f"Artefacto '{saved_artifact.title}' generado con éxito y guardado en la galería Studio del cuaderno.",
+            }
+        except Exception as e:
+            return {"error": f"Error generando artefacto: {str(e)}"}
 
     return agent

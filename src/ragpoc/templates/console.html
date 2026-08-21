@@ -387,10 +387,325 @@
       transition: grid-template-columns 0.18s ease;
     }
 
+    .app-shell #sidebar-drawer { order: 1; }
+    .app-shell #page-area      { order: 2; }
+    .app-shell #chat-drawer    { order: 3; }
+
     .app-shell.sidebar-collapsed { grid-template-columns: 52px minmax(0, 1fr) var(--chat-w, 360px); }
     .app-shell.chat-collapsed { grid-template-columns: var(--sidebar-w, 280px) minmax(0, 1fr) 52px; }
     .app-shell.sidebar-collapsed.chat-collapsed { grid-template-columns: 52px minmax(0, 1fr) 52px; }
     .app-shell.resizing-panel { transition: none; }
+
+    /* Modo Chat (NotebookLM Style: Chat centered as primary canvas, Note in side panel) */
+    .app-shell.chat-focus-mode {
+      grid-template-columns: var(--sidebar-w, 280px) minmax(0, 1fr) var(--editor-side-w, 380px);
+    }
+    .app-shell.chat-focus-mode.sidebar-collapsed {
+      grid-template-columns: 52px minmax(0, 1fr) var(--editor-side-w, 380px);
+    }
+    .app-shell.chat-focus-mode.chat-collapsed {
+      grid-template-columns: var(--sidebar-w, 280px) minmax(0, 1fr) 52px;
+    }
+    .app-shell.chat-focus-mode.sidebar-collapsed.chat-collapsed {
+      grid-template-columns: 52px minmax(0, 1fr) 52px;
+    }
+
+    .app-shell.chat-focus-mode #sidebar-drawer { order: 1; }
+    .app-shell.chat-focus-mode #chat-drawer    { order: 2; }
+    .app-shell.chat-focus-mode #page-area      { order: 3; }
+
+    /* Centered Chat in Modo Chat */
+    .app-shell.chat-focus-mode #chat-drawer {
+      background: var(--card-bg);
+      border: 1px solid var(--border-warm);
+      box-shadow: var(--craft-shadow-md);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .app-shell.chat-focus-mode #chat-drawer .chat-header {
+      background: var(--card-bg);
+      flex-shrink: 0;
+    }
+
+    .app-shell.chat-focus-mode #chat-view-container {
+      flex: 1 1 0%;
+      min-height: 0;
+      display: flex !important;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100%;
+    }
+
+    .app-shell.chat-focus-mode .chat-stream {
+      flex: 1 1 0%;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 20px;
+    }
+
+    .app-shell.chat-focus-mode .chat-stream > * {
+      max-width: 840px;
+      width: 100%;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .app-shell.chat-focus-mode .chat-input-dock {
+      margin-top: auto;
+      flex-shrink: 0;
+      max-width: 840px;
+      width: 100%;
+      margin-left: auto;
+      margin-right: auto;
+      background: transparent;
+      border-top: none;
+      padding: 12px 16px 16px;
+    }
+
+    .app-shell.chat-focus-mode #studio-view-container {
+      max-width: 900px;
+      width: 100%;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* Compact Side Editor in Modo Chat: Floating Document Sheet Style */
+    .app-shell.chat-focus-mode #page-area {
+      background: var(--sidebar-bg);
+      border: 1px solid var(--border-warm);
+      box-shadow: var(--craft-shadow-sm);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .app-shell.chat-focus-mode .side-editor-header {
+      padding: 10px 12px 6px;
+      flex-shrink: 0;
+    }
+
+    .app-shell.chat-focus-mode .editor-container {
+      background: #ffffff;
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-md);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+      margin: 6px 12px 14px;
+      padding: 18px 18px 36px;
+      max-width: calc(100% - 24px);
+      flex: 1 1 0%;
+      min-height: 0;
+      overflow-y: auto;
+      scroll-behavior: smooth;
+    }
+
+    .app-shell.chat-focus-mode .page-title-input {
+      font-size: 19px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--text-main);
+      background: transparent;
+    }
+
+    .app-shell.chat-focus-mode .editor-toolbar {
+      display: flex !important;
+      flex-wrap: nowrap !important;
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
+      scrollbar-width: thin;
+      align-items: center !important;
+      gap: 4px !important;
+      padding: 4px 6px !important;
+      margin-bottom: 14px !important;
+      background: #ffffff !important;
+      border: 1px solid var(--border-warm) !important;
+      border-radius: var(--radius-sm) !important;
+      position: sticky !important;
+      top: -18px !important;
+      z-index: 20 !important;
+      height: 38px !important;
+      min-height: 38px !important;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04) !important;
+    }
+
+    .app-shell.chat-focus-mode .editor-toolbar::-webkit-scrollbar {
+      height: 3px;
+    }
+    .app-shell.chat-focus-mode .editor-toolbar::-webkit-scrollbar-thumb {
+      background: #d4cebe;
+      border-radius: 3px;
+    }
+
+    .app-shell.chat-focus-mode .editor-toolbar .btn-craft {
+      padding: 2px 7px !important;
+      font-size: 11.5px !important;
+      background: #f8f6f0 !important;
+      border: 1px solid var(--border-warm) !important;
+      height: 26px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      flex-shrink: 0 !important;
+      white-space: nowrap !important;
+    }
+
+    .app-shell.chat-focus-mode .editor-toolbar .btn-craft:hover {
+      background: #ffffff !important;
+      border-color: #8c867a !important;
+    }
+
+    .app-shell.chat-focus-mode .save-indicator-badge {
+      flex-shrink: 0 !important;
+      font-size: 11px !important;
+      padding: 2px 8px !important;
+      margin-left: 4px !important;
+    }
+
+    .app-shell.chat-focus-mode .editor-body {
+      font-size: 13.5px;
+      line-height: 1.65;
+      color: var(--text-main);
+    }
+
+    .app-shell.chat-focus-mode .editor-body h1 {
+      font-size: 1.35em;
+      margin: 0.8em 0 0.25em;
+    }
+
+    .app-shell.chat-focus-mode .editor-body h2 {
+      font-size: 1.2em;
+      margin: 0.7em 0 0.2em;
+    }
+
+    .app-shell.chat-focus-mode .editor-body h3 {
+      font-size: 1.05em;
+      margin: 0.6em 0 0.15em;
+    }
+
+    .app-shell.chat-focus-mode .editor-body pre,
+    .app-shell.chat-focus-mode .editor-body table {
+      max-width: 100%;
+      overflow-x: auto;
+    }
+
+    .app-shell.chat-focus-mode .block-hovered::before {
+      display: none;
+    }
+
+    .app-shell.chat-focus-mode .block-plus-btn {
+      display: none;
+    }
+
+    /* Center Mode Pill Switch (NotebookLM Style [ Chat | Notas ]) */
+    .center-mode-segmented-control {
+      display: inline-flex;
+      background: #ece8de;
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-full);
+      padding: 3px;
+      gap: 2px;
+      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+
+    .center-mode-seg-btn {
+      border: none;
+      background: transparent;
+      padding: 5px 18px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+
+    .center-mode-seg-btn:hover {
+      color: var(--text-main);
+    }
+
+    .center-mode-seg-btn.active {
+      background: #ffffff;
+      color: var(--text-main);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+      font-weight: 700;
+    }
+
+    .editor-top-nav {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 8px 16px 4px;
+      width: 100%;
+      margin-bottom: 6px;
+    }
+
+    .chat-center-top-row {
+      display: none;
+      justify-content: center;
+      align-items: center;
+      padding: 8px 16px 4px;
+      width: 100%;
+      margin-bottom: 6px;
+    }
+
+    .side-editor-header {
+      display: none;
+    }
+
+    /* In Editor Mode:
+       - Center (Editor) shows .editor-top-nav [ Chat | Notas ]
+       - Center (Editor) hides .side-editor-header
+       - Right (Chat) hides .chat-center-top-row
+       - Right (Chat) shows .chat-header-top-row [ Chat | Studio | Adjuntos ]
+    */
+    .app-shell:not(.chat-focus-mode) .editor-top-nav {
+      display: flex !important;
+    }
+    .app-shell:not(.chat-focus-mode) .side-editor-header {
+      display: none !important;
+    }
+    .app-shell:not(.chat-focus-mode) .chat-center-top-row {
+      display: none !important;
+    }
+    .app-shell:not(.chat-focus-mode) .chat-header-top-row {
+      display: flex !important;
+    }
+
+    /* In Modo Chat:
+       - Center (Chat) shows .chat-center-top-row [ Chat | Notas ]
+       - Center (Chat) hides .chat-header-top-row (Studio & Adjuntos are on the right panel)
+       - Right (Note) hides .editor-top-nav
+       - Right (Note) shows .side-editor-header [ Notas | Studio | Adjuntos ]
+    */
+    .app-shell.chat-focus-mode .editor-top-nav {
+      display: none !important;
+    }
+    .app-shell.chat-focus-mode .chat-center-top-row {
+      display: flex !important;
+    }
+    .app-shell.chat-focus-mode .chat-header-top-row {
+      display: none !important;
+    }
+    .app-shell.chat-focus-mode .side-editor-header {
+      display: flex !important;
+      padding: 10px 14px 6px;
+      border-bottom: 1px solid var(--border-warm);
+      margin-bottom: 8px;
+    }
 
     /* Drag handles between panels — positioned in JS (setupPanelResizers) so they track
        the actual panel edges regardless of the grid's gap/padding math. Absolutely
@@ -539,12 +854,15 @@
       align-items: center;
       justify-content: space-between;
       border-radius: var(--radius-sm);
-      padding: 2px 4px;
-      transition: background 0.12s ease;
+      padding: 2px 6px;
+      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+      position: relative;
+      user-select: none;
     }
 
     .notebook-row:hover {
-      background: #ebe7de;
+      background: #eae5d8;
     }
 
     .notebook-row:hover .row-actions {
@@ -554,7 +872,18 @@
     .notebook-row.active {
       background: #ffffff;
       border: 1px solid var(--border-warm);
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    .notebook-row.active::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 4px;
+      bottom: 4px;
+      width: 3px;
+      border-radius: 2px;
+      background: var(--accent, #9e5b23);
     }
 
     .notebook-toggle-btn {
@@ -562,7 +891,7 @@
       text-align: left;
       background: transparent;
       border: none;
-      padding: 6px 6px;
+      padding: 6px 4px;
       min-height: 32px;
       cursor: pointer;
       display: flex;
@@ -574,12 +903,14 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      outline: none;
     }
 
     .chevron-icon {
-      transition: transform 0.2s ease;
+      transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
       font-size: 11px;
       opacity: 0.6;
+      display: inline-block;
     }
 
     .chevron-icon.collapsed {
@@ -608,8 +939,6 @@
       color: var(--text-secondary);
       cursor: pointer;
       transition: all 0.12s ease;
-      /* Fixed-size icon button: never let a sibling with more content (e.g. a long thread
-         name in a select next to it) squeeze this one out of its own space. */
       flex-shrink: 0;
     }
 
@@ -637,12 +966,14 @@
       overflow: hidden;
       max-height: 1200px;
       opacity: 1;
-      transition: max-height 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, margin-top 0.28s ease;
+      transform: translateY(0);
+      transition: max-height 0.26s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, transform 0.2s ease;
     }
 
     .pages-container.collapsed {
       max-height: 0;
       opacity: 0;
+      transform: translateY(-4px);
       pointer-events: none;
     }
 
@@ -652,11 +983,13 @@
       justify-content: space-between;
       border-radius: var(--radius-sm);
       padding: 2px 4px 2px 18px;
-      transition: all 0.12s ease;
+      transition: all 0.14s ease;
+      cursor: pointer;
     }
 
     .page-row:hover {
-      background: #ebe7de;
+      background: #eae5d8;
+      transform: translateX(2px);
     }
 
     .page-row:hover .row-actions {
@@ -667,6 +1000,7 @@
       background: #ffffff;
       border: 1px solid var(--border-warm);
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+      font-weight: 600;
     }
 
     .page-select-btn {
@@ -826,13 +1160,11 @@
       background: #faf9f6;
       border: 1px solid var(--border-warm);
       border-radius: var(--radius-md);
-      margin-bottom: 26px;
+      margin-bottom: 20px;
       position: sticky;
       top: 0;
       z-index: 10;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
-      overflow-x: auto;
-      white-space: nowrap;
     }
 
     .save-indicator-badge {
@@ -1414,18 +1746,130 @@
     .chat-pane {
       display: flex;
       flex-direction: column;
+      height: 100%;
+      min-height: 0;
       overflow: hidden;
       z-index: 60;
     }
 
+    #chat-view-container {
+      flex: 1 1 0%;
+      min-height: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+
     .chat-header {
-      padding: 14px 16px;
+      padding: 0;
       border-bottom: 1px solid var(--border-warm);
       background: var(--sidebar-bg);
+      flex-shrink: 0;
+      overflow: visible !important;
+      position: relative;
+      z-index: 20;
+    }
+
+    .chat-header-top-row {
+      padding: 10px 14px;
+      overflow: visible !important;
+    }
+
+    .chat-controls-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: nowrap;
+      gap: 8px;
+      padding: 8px 12px;
+      border-top: 1px solid var(--border-warm);
+      background: var(--sidebar-bg);
+      flex-shrink: 0;
+      width: 100%;
+      overflow: visible !important;
+      position: relative;
+      z-index: 25;
+    }
+
+    .app-shell.chat-focus-mode .chat-controls-bar {
+      background: var(--card-bg);
+      padding: 8px 16px;
+      border-top: 1px solid var(--border-warm);
+    }
+
+    .dropdown-menu {
+      animation: dropdownFadeScale 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+      transform-origin: top right;
+      z-index: 1050 !important;
+    }
+
+    .dropdown-menu.show {
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    @keyframes dropdownFadeScale {
+      from {
+        opacity: 0;
+        transform: scale(0.96) translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    .dropdown-item {
+      transition: all 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+      border-radius: var(--radius-sm);
+    }
+
+    .dropdown-item:hover {
+      background: #f4efe4;
+      transform: translateX(2px);
+    }
+
+    .dropdown-item.active-scope {
+      background: #eee8d8;
+      font-weight: 600;
+    }
+
+    .thread-item-row {
+      transition: all 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+    }
+
+    .thread-item-row:hover {
+      background: #f4efe4;
+      transform: translateX(2px);
+    }
+
+    .thread-item-row.active-thread {
+      background: #eee8d8;
+      border-left: 2px solid var(--accent, #9e5b23);
+    }
+
+    .thread-item-row.fade-in {
+      animation: threadItemSlide 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes threadItemSlide {
+      from {
+        opacity: 0;
+        transform: translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .chat-stream {
-      flex: 1;
+      flex: 1 1 0%;
+      min-height: 0;
       padding: 16px;
       overflow-y: auto;
       display: flex;
@@ -1442,6 +1886,44 @@
       color: var(--text-secondary);
       line-height: 1.6;
       box-shadow: var(--craft-shadow-sm);
+    }
+
+    /* Suggested Question Buttons / Quick Prompts */
+    .suggested-questions-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .btn-suggested-question {
+      background: #f8f6f0;
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-md);
+      padding: 5px 9px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-main);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      text-align: left;
+      transition: all 0.15s ease;
+      line-height: 1.3;
+    }
+
+    .btn-suggested-question:hover {
+      background: #ffffff;
+      border-color: #8c867a;
+      box-shadow: var(--craft-shadow-sm);
+      transform: translateY(-1px);
+      color: #111827;
+    }
+
+    .btn-suggested-question i {
+      font-size: 12px;
+      flex-shrink: 0;
     }
 
     /* Notion Slash Command Floating Menu */
@@ -1599,27 +2081,35 @@
       transform: scale(0.96);
     }
 
+    .studio-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
     .studio-artifact-pill {
       background: #ffffff;
       border: 1px solid var(--border-warm);
-      border-radius: var(--radius-full);
-      padding: 10px 16px;
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
       display: flex;
-      align-items: center;
-      gap: 12px;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 56px;
       cursor: pointer;
       user-select: none;
       transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-      box-shadow: var(--craft-shadow-sm);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
       text-decoration: none;
       color: var(--text-main);
     }
 
     .studio-artifact-pill:hover {
       background: #faf9f6;
-      border-color: #cfc9bd;
+      border-color: #8c867a;
       transform: translateY(-1px);
-      box-shadow: var(--craft-shadow-md);
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.05);
     }
 
     .studio-artifact-pill:active {
@@ -1709,6 +2199,43 @@
       width: 100%;
     }
 
+    /* ── Streaming animation: blinking typing cursor ── */
+    .ans-text.streaming {
+      /* Keep the cursor at the very end of flowing text */
+      overflow-wrap: break-word;
+    }
+    .ans-text.streaming > :last-child::after,
+    .ans-text.streaming:empty::after {
+      content: '▍';
+      display: inline;
+      color: #b45309;
+      animation: cursorBlink 0.7s steps(2) infinite;
+      font-weight: 300;
+      margin-left: 1px;
+      vertical-align: baseline;
+    }
+    @keyframes cursorBlink {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0; }
+    }
+
+    /* ── Streaming animation: new block reveal ── */
+    @keyframes tokenReveal {
+      from {
+        opacity: 0;
+        filter: blur(1.5px);
+        transform: translateY(2px);
+      }
+      to {
+        opacity: 1;
+        filter: blur(0);
+        transform: translateY(0);
+      }
+    }
+    .ans-text [data-new] {
+      animation: tokenReveal 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
     .chat-bubble-asst .ans-text p {
       margin-bottom: 0.6em;
     }
@@ -1783,6 +2310,8 @@
     }
 
     .chat-input-dock {
+      margin-top: auto;
+      flex-shrink: 0;
       padding: 12px 14px;
       background: var(--sidebar-bg);
       border-top: 1px solid var(--border-warm);
@@ -1818,7 +2347,7 @@
       position: fixed;
       inset: 0;
       background: rgba(28, 27, 24, 0.4);
-      z-index: 200;
+      z-index: 2000 !important;
       backdrop-filter: blur(4px);
       place-items: center;
       padding: 16px;
@@ -2474,7 +3003,7 @@
             <div class="craft-card p-3">
               <div class="fw-bold small text-dark d-flex align-items-center justify-content-between mb-2">
                 <span class="d-flex align-items-center gap-2">
-                  <i class="bi bi-file-earmark-arrow-up text-primary fs-6"></i> Subir Archivo Local (.pdf, .txt, .md, audio, video, imagen)
+                  <i class="bi bi-file-earmark-arrow-up text-primary fs-6"></i> Subir Archivo Local (Office, Código, Datos, Multimedia)
                 </span>
                 <span class="badge bg-light text-secondary border" style="font-size:10px;">Deduplicado SHA-256</span>
               </div>
@@ -2482,8 +3011,8 @@
               <div id="modal-file-dropzone" class="source-file-dropzone d-flex flex-column align-items-center justify-content-center p-3 text-center">
                 <i class="bi bi-cloud-arrow-up fs-2 text-secondary mb-1"></i>
                 <div class="fw-bold small text-dark">Arrastra archivos aquí o haz clic para explorar</div>
-                <div class="text-muted" style="font-size:11px;">Soporta PDF (hasta 500MB), Markdown, Texto, Audios, Videos e Imágenes</div>
-                <input type="file" id="modal-source-file-input" multiple accept=".pdf,.txt,.md,.markdown,.png,.jpg,.jpeg,.webp,.mp4,.mov,.mkv,.webm,.mp3,.wav,.m4a,.ogg,.flac" hidden>
+                <div class="text-muted" style="font-size:11px;">Soporta PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), Markdown, CSV, JSON, Jupyter (.ipynb), Código, Audio, Video e Imágenes</div>
+                <input type="file" id="modal-source-file-input" multiple accept=".pdf,.docx,.xlsx,.xls,.pptx,.txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.yaml,.yml,.xml,.html,.htm,.sql,.ipynb,.py,.js,.ts,.tsx,.jsx,.c,.cpp,.h,.cs,.java,.go,.rs,.php,.rb,.swift,.kt,.sh,.bat,.ps1,.png,.jpg,.jpeg,.webp,.mp4,.mov,.mkv,.webm,.mp3,.wav,.m4a,.ogg,.flac" hidden>
               </div>
 
               <div id="modal-file-upload-progress" class="mt-2" style="display:none;">
@@ -3003,7 +3532,7 @@
         </div>
 
         <div class="d-flex justify-content-end gap-2">
-          <button class="btn-craft btn-craft-primary" id="btn-save-settings-key">
+          <button class="btn-craft btn-craft-primary" id="btn-save-settings-key" title="Guardar Cambios (Ctrl+S)">
             <i class="bi bi-save2"></i> Guardar Cambios
           </button>
         </div>
@@ -3433,6 +3962,16 @@
     <!-- Center: Notion-style Tiptap Canvas -->
     <main class="editor-pane craft-canvas" id="page-area">
       <div class="empty-state text-center my-auto p-4">
+        <div class="d-flex justify-content-center w-100 mb-4" id="empty-state-toggle-row">
+          <div class="center-mode-segmented-control">
+            <button type="button" class="center-mode-seg-btn" data-switch-mode="chat">
+              <i class="bi bi-chat-quote-fill"></i> Chat
+            </button>
+            <button type="button" class="center-mode-seg-btn active" data-switch-mode="editor">
+              <i class="bi bi-journal-text"></i> Notas
+            </button>
+          </div>
+        </div>
         <i class="bi bi-journal-text display-3 text-muted mb-3 d-block"></i>
         <h1 class="fw-bold">Tu Base de Conocimiento</h1>
         <p class="text-muted">Selecciona una página en el panel lateral o crea un nuevo espacio de trabajo para
@@ -3448,6 +3987,18 @@
         </button>
       </div>
       <div class="chat-header">
+        <!-- Center Pill when Chat is centered (in Modo Chat) -->
+        <div class="chat-center-top-row mb-2 justify-content-center" id="chat-center-nav-row">
+          <div class="center-mode-segmented-control">
+            <button type="button" class="center-mode-seg-btn active" data-switch-mode="chat">
+              <i class="bi bi-chat-quote-fill"></i> Chat
+            </button>
+            <button type="button" class="center-mode-seg-btn" data-switch-mode="editor">
+              <i class="bi bi-journal-text"></i> Notas
+            </button>
+          </div>
+        </div>
+
         <!-- NotebookLM Style Switch: Chat vs Studio Artifacts -->
         <div class="chat-header-top-row">
           <div class="studio-segmented-control">
@@ -3467,29 +4018,90 @@
           </button>
         </div>
 
-        <!-- Chat Controls Sub-Header -->
-        <div id="chat-controls-subhdr">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <span class="small fw-bold text-secondary">Chat con evidencia</span>
-            <div class="d-flex gap-1 align-items-center">
-              <button class="btn-craft btn-sm" id="new-thread-btn" title="Iniciar nueva conversación">
-                <i class="bi bi-plus-circle"></i> Nuevo
+        <!-- Modern Single-Row Chat Controls Sub-Header -->
+        <div id="chat-controls-subhdr" class="chat-controls-bar">
+          <!-- Left: Grounded Scope Selector & Active Thread Banner -->
+          <div class="d-flex align-items-center gap-1 flex-1 position-relative">
+            <select id="chat-scope" style="display:none;">
+              <option value="notebook" selected>Este cuaderno</option>
+              <option value="workspace">Todo el espacio</option>
+            </select>
+            <div class="dropdown position-relative flex-shrink-0">
+              <button class="btn-craft btn-sm dropdown-toggle d-flex align-items-center gap-1 text-truncate" type="button" id="chat-scope-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Cambiar ámbito de búsqueda" style="padding: 3px 6px; font-size:11px;">
+                <i class="bi bi-journal-bookmark-fill text-primary" id="chat-scope-icon" style="font-size:12px;"></i>
+                <span id="chat-scope-label" class="fw-semibold small text-truncate">Este cuaderno</span>
               </button>
-              <select id="chat-scope" class="form-select-craft">
-                <option value="notebook">Este cuaderno</option>
-                <option value="workspace">Todo el espacio</option>
-              </select>
+              <ul class="dropdown-menu shadow border-0 p-1" style="font-size:12px; min-width:240px; z-index:1050;">
+                <li>
+                  <button type="button" class="dropdown-item d-flex align-items-center justify-content-between py-2 active-scope" data-scope-val="notebook" onclick="window.setChatScope('notebook')">
+                    <div class="d-flex align-items-center gap-2">
+                      <i class="bi bi-journal-bookmark-fill text-primary fs-6"></i>
+                      <div>
+                        <div class="fw-bold text-dark">Este cuaderno</div>
+                        <div class="text-muted" style="font-size:10.5px;">Responde con notas y adjuntos del cuaderno</div>
+                      </div>
+                    </div>
+                    <i class="bi bi-check2 text-primary fw-bold scope-check-icon" style="font-size:16px;"></i>
+                  </button>
+                </li>
+                <li>
+                  <button type="button" class="dropdown-item d-flex align-items-center justify-content-between py-2" data-scope-val="workspace" onclick="window.setChatScope('workspace')">
+                    <div class="d-flex align-items-center gap-2">
+                      <i class="bi bi-globe2 text-success fs-6"></i>
+                      <div>
+                        <div class="fw-bold text-dark">Todo el espacio</div>
+                        <div class="text-muted" style="font-size:10.5px;">Busca en todos los cuadernos del workspace</div>
+                      </div>
+                    </div>
+                    <i class="bi bi-check2 text-success fw-bold scope-check-icon" style="display:none; font-size:16px;"></i>
+                  </button>
+                </li>
+              </ul>
+            </div>
+
+            <!-- Active Thread Title -->
+            <div class="d-flex align-items-center gap-1 overflow-hidden" id="active-thread-banner" style="max-width: 180px;">
+              <span class="text-muted small text-truncate" id="active-thread-title" style="font-size:11px; font-weight:500;" title="Conversación actual">Nueva conversación</span>
+              <button type="button" class="action-mini-btn" id="btn-rename-thread-header" title="Renombrar conversación" style="display:none; padding:1px 4px;">
+                <i class="bi bi-pencil" style="font-size:10px;"></i>
+              </button>
             </div>
           </div>
-          <div class="d-flex align-items-center gap-1">
-            <select id="thread-selector" class="form-select-craft w-100">
-              <option value="">Conversación actual</option>
-            </select>
-            <button class="action-mini-btn" id="btn-rename-thread" title="Renombrar conversación">
-              <i class="bi bi-pencil" style="font-size:11px;"></i>
-            </button>
-            <button class="action-mini-btn danger" id="btn-delete-thread" title="Eliminar conversación">
-              <i class="bi bi-trash3" style="font-size:11px;"></i>
+
+          <!-- Right: History Menu & New Thread -->
+          <div class="d-flex align-items-center gap-1 flex-shrink-0">
+            <div class="dropdown position-relative">
+              <button class="btn-craft btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" id="threads-history-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Historial de conversaciones" style="padding: 3px 6px; font-size:11px;">
+                <i class="bi bi-clock-history text-secondary" style="font-size:12px;"></i>
+                <span class="small" id="threads-history-count">Historial</span>
+              </button>
+              <div class="dropdown-menu dropdown-menu-end shadow border-0 p-2" style="width: 270px; max-width: min(290px, 90vw); max-height: 380px; z-index: 1050;">
+                <div class="d-flex justify-content-between align-items-center px-2 py-1 mb-1 border-bottom">
+                  <span class="fw-bold small text-secondary" style="font-size:11px;">Historial de Chats</span>
+                  <span class="badge rounded-pill bg-light text-muted border" id="threads-badge-total" style="font-size:10px; font-weight:500;">0</span>
+                </div>
+
+                <!-- Chat History Search Input -->
+                <div class="px-1 py-1 mb-2 border-bottom" onclick="event.stopPropagation();">
+                  <div class="input-group input-group-sm rounded bg-light px-2 py-1 border" style="border-color: var(--border-warm) !important;">
+                    <span class="input-group-text bg-transparent border-0 p-0 pe-2 text-muted" style="font-size:11px;">
+                      <i class="bi bi-search"></i>
+                    </span>
+                    <input type="text" id="chat-thread-search" class="form-control border-0 bg-transparent shadow-none p-0" placeholder="Buscar conversación..." style="font-size:11.5px;">
+                    <button type="button" class="btn btn-sm text-muted p-0" id="chat-thread-search-clear" style="display:none;" title="Limpiar búsqueda">
+                      <i class="bi bi-x-circle-fill" style="font-size:11px;"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <div id="threads-history-list" class="d-flex flex-column gap-1 overflow-auto flex-1" style="max-height: 250px;">
+                  <!-- Dynamic thread items -->
+                </div>
+              </div>
+            </div>
+
+            <button class="btn-craft btn-craft-primary btn-sm d-flex align-items-center gap-1" id="new-thread-btn" title="Iniciar nueva conversación en blanco" style="padding: 3px 8px; font-size:11px;">
+              <i class="bi bi-plus-lg"></i> <span>Nuevo</span>
             </button>
           </div>
         </div>
@@ -3534,8 +4146,30 @@
             <div class="fw-bold mb-1 d-flex align-items-center gap-2 text-dark">
               <i class="bi bi-stars text-amber"></i> Asistente de Conocimiento
             </div>
-            Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de
-            internet en tiempo real.
+            <div class="text-muted small mb-2">
+              Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información en tiempo real.
+            </div>
+
+            <div class="suggested-questions-container pt-2 border-top">
+              <div class="small fw-bold text-secondary mb-1" style="font-size:11px;">Preguntas sugeridas:</div>
+              <div class="suggested-questions-grid">
+                <button type="button" class="btn-suggested-question" data-question="¿Qué temas y notas principales contiene este espacio de trabajo?">
+                  <i class="bi bi-compass text-primary"></i> <span>¿Qué contiene este espacio?</span>
+                </button>
+                <button type="button" class="btn-suggested-question" data-question="Haz un resumen ejecutivo con los puntos clave más importantes.">
+                  <i class="bi bi-file-text text-success"></i> <span>Resumen de puntos clave</span>
+                </button>
+                <button type="button" class="btn-suggested-question" data-question="¿Cuáles son los conceptos más importantes y cómo se relacionan entre sí?">
+                  <i class="bi bi-diagram-3 text-warning"></i> <span>Conceptos principales</span>
+                </button>
+                <button type="button" class="btn-suggested-question" data-question="Genera 3 preguntas de repaso con sus respuestas para autoevaluar mi comprensión.">
+                  <i class="bi bi-patch-question text-danger"></i> <span>Preguntas de repaso</span>
+                </button>
+                <button type="button" class="btn-suggested-question" data-question="¿Qué conclusiones o próximos pasos se pueden extraer de esta información?">
+                  <i class="bi bi-lightbulb text-info"></i> <span>Conclusiones y pasos</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -3573,107 +4207,88 @@
 
       <!-- VIEW 2: NotebookLM Style Studio Artifacts View -->
       <div id="studio-view-container" class="flex-column flex-1 overflow-auto p-3 gap-3" style="display:none;">
-        <div class="small fw-bold text-secondary mb-1">Generar Guía de Estudio o Artefacto:</div>
+        <div class="small fw-bold text-secondary mb-2">Crear Guía o Artefacto:</div>
 
-        <!-- Studio Pill Action Grid (NotebookLM Style) -->
-        <div class="d-flex flex-column gap-2 mb-3 stagger-list">
+        <!-- Studio 2-Column Action Grid (NotebookLM Style) -->
+        <div class="studio-grid">
+          <div class="studio-artifact-pill" data-quick-gen="podcast">
+            <div class="d-flex justify-content-between align-items-center w-100 mb-1">
+              <i class="bi bi-mic-fill" style="color:#db2777; font-size:16px;"></i>
+              <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
+            </div>
+            <div class="fw-bold small text-truncate">Audio Podcast</div>
+          </div>
+
           <div class="studio-artifact-pill" data-quick-gen="diagram">
-            <div class="file-icon-box" style="width:34px; height:34px; font-size:16px;">
-              <i class="bi bi-diagram-3-fill text-primary"></i>
+            <div class="d-flex justify-content-between align-items-center w-100 mb-1">
+              <i class="bi bi-diagram-3-fill text-primary" style="font-size:16px;"></i>
+              <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="flex-1">
-              <div class="fw-bold small">Diagrama Mermaid</div>
-              <div class="text-muted" style="font-size:11px;">Flujos y arquitectura visual</div>
-            </div>
-            <i class="bi bi-chevron-right text-muted"></i>
-          </div>
-
-          <div class="studio-artifact-pill" data-quick-gen="quiz">
-            <div class="file-icon-box" style="width:34px; height:34px; font-size:16px;">
-              <i class="bi bi-patch-question-fill text-warning"></i>
-            </div>
-            <div class="flex-1">
-              <div class="fw-bold small">Cuestionario / Quiz</div>
-              <div class="text-muted" style="font-size:11px;">Test de opción múltiple</div>
-            </div>
-            <i class="bi bi-chevron-right text-muted"></i>
-          </div>
-
-          <div class="studio-artifact-pill" data-quick-gen="study_guide">
-            <div class="file-icon-box" style="width:34px; height:34px; font-size:16px;">
-              <i class="bi bi-journal-check text-success"></i>
-            </div>
-            <div class="flex-1">
-              <div class="fw-bold small">Guía de Estudio</div>
-              <div class="text-muted" style="font-size:11px;">Resumen, conceptos y glosario</div>
-            </div>
-            <i class="bi bi-chevron-right text-muted"></i>
-          </div>
-
-          <div class="studio-artifact-pill" data-quick-gen="flashcards">
-            <div class="file-icon-box" style="width:34px; height:34px; font-size:16px;">
-              <i class="bi bi-card-text text-danger"></i>
-            </div>
-            <div class="flex-1">
-              <div class="fw-bold small">Tarjetas Didácticas</div>
-              <div class="text-muted" style="font-size:11px;">Flashcards de repaso rápido</div>
-            </div>
-            <i class="bi bi-chevron-right text-muted"></i>
-          </div>
-
-          <div class="studio-artifact-pill" data-quick-gen="summary">
-            <div class="file-icon-box" style="width:34px; height:34px; font-size:16px;">
-              <i class="bi bi-file-earmark-spreadsheet text-info"></i>
-            </div>
-            <div class="flex-1">
-              <div class="fw-bold small">Resumen Ejecutivo</div>
-              <div class="text-muted" style="font-size:11px;">1 página estructurada</div>
-            </div>
-            <i class="bi bi-chevron-right text-muted"></i>
+            <div class="fw-bold small text-truncate">Diagrama</div>
           </div>
 
           <div class="studio-artifact-pill" data-quick-gen="mindmap">
-            <div class="file-icon-box" style="width:34px; height:34px; font-size:16px;">
-              <i class="bi bi-diagram-2-fill" style="color:#7c3aed;"></i>
+            <div class="d-flex justify-content-between align-items-center w-100 mb-1">
+              <i class="bi bi-diagram-2-fill" style="color:#7c3aed; font-size:16px;"></i>
+              <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="flex-1">
-              <div class="fw-bold small">Mapa Mental</div>
-              <div class="text-muted" style="font-size:11px;">Jerarquía de conceptos</div>
+            <div class="fw-bold small text-truncate">Mapa Mental</div>
+          </div>
+
+          <div class="studio-artifact-pill" data-quick-gen="study_guide">
+            <div class="d-flex justify-content-between align-items-center w-100 mb-1">
+              <i class="bi bi-journal-check text-success" style="font-size:16px;"></i>
+              <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <i class="bi bi-chevron-right text-muted"></i>
+            <div class="fw-bold small text-truncate">Guía Estudio</div>
+          </div>
+
+          <div class="studio-artifact-pill" data-quick-gen="flashcards">
+            <div class="d-flex justify-content-between align-items-center w-100 mb-1">
+              <i class="bi bi-card-text text-danger" style="font-size:16px;"></i>
+              <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
+            </div>
+            <div class="fw-bold small text-truncate">Flashcards</div>
+          </div>
+
+          <div class="studio-artifact-pill" data-quick-gen="quiz">
+            <div class="d-flex justify-content-between align-items-center w-100 mb-1">
+              <i class="bi bi-patch-question-fill text-warning" style="font-size:16px;"></i>
+              <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
+            </div>
+            <div class="fw-bold small text-truncate">Cuestionario</div>
+          </div>
+
+          <div class="studio-artifact-pill" data-quick-gen="summary">
+            <div class="d-flex justify-content-between align-items-center w-100 mb-1">
+              <i class="bi bi-file-earmark-spreadsheet text-info" style="font-size:16px;"></i>
+              <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
+            </div>
+            <div class="fw-bold small text-truncate">Resumen</div>
           </div>
 
           <div class="studio-artifact-pill" data-quick-gen="infographic">
-            <div class="file-icon-box" style="width:34px; height:34px; font-size:16px;">
-              <i class="bi bi-easel2-fill" style="color:#8b5cf6;"></i>
+            <div class="d-flex justify-content-between align-items-center w-100 mb-1">
+              <i class="bi bi-easel2-fill" style="color:#8b5cf6; font-size:16px;"></i>
+              <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="flex-1">
-              <div class="fw-bold small">Infografía</div>
-              <div class="text-muted" style="font-size:11px;">Póster visual generado</div>
-            </div>
-            <i class="bi bi-chevron-right text-muted"></i>
+            <div class="fw-bold small text-truncate">Infografía</div>
           </div>
 
           <div class="studio-artifact-pill" data-quick-gen="timeline">
-            <div class="file-icon-box" style="width:34px; height:34px; font-size:16px;">
-              <i class="bi bi-clock-history" style="color:#0d9488;"></i>
+            <div class="d-flex justify-content-between align-items-center w-100 mb-1">
+              <i class="bi bi-clock-history" style="color:#0d9488; font-size:16px;"></i>
+              <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="flex-1">
-              <div class="fw-bold small">Línea de Tiempo</div>
-              <div class="text-muted" style="font-size:11px;">Hitos cronológicos</div>
-            </div>
-            <i class="bi bi-chevron-right text-muted"></i>
+            <div class="fw-bold small text-truncate">Línea Tiempo</div>
           </div>
 
-          <div class="studio-artifact-pill" data-quick-gen="podcast">
-            <div class="file-icon-box" style="width:34px; height:34px; font-size:16px;">
-              <i class="bi bi-mic-fill" style="color:#db2777;"></i>
+          <div class="studio-artifact-pill" data-quick-gen="table">
+            <div class="d-flex justify-content-between align-items-center w-100 mb-1">
+              <i class="bi bi-table text-primary" style="font-size:16px;"></i>
+              <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="flex-1">
-              <div class="fw-bold small">Podcast</div>
-              <div class="text-muted" style="font-size:11px;">Diálogo en audio</div>
-            </div>
-            <i class="bi bi-chevron-right text-muted"></i>
+            <div class="fw-bold small text-truncate">Tabla Datos</div>
           </div>
         </div>
 
@@ -4395,6 +5010,70 @@
       }
     }
 
+    // ── Smooth streaming helpers ──────────────────────────────────────────────
+    // TokenDripBuffer normalises the irregular bursts that arrive from the SSE
+    // stream into a steady character flow rendered at screen-refresh rate.
+    // Instead of dumping a whole chunk to the UI the instant it lands, text is
+    // held in a small internal buffer and drained via requestAnimationFrame at
+    // an adaptive rate: small buffers drain instantly (no perceptible lag),
+    // while large bursts are spread across frames for a natural typing feel.
+    class TokenDripBuffer {
+      constructor(onDrain) {
+        this._buf = '';
+        this._onDrain = onDrain;
+        this._raf = null;
+        this._active = false;
+      }
+      push(text) {
+        this._buf += text;
+        if (!this._active) {
+          this._active = true;
+          this._raf = requestAnimationFrame(() => this._tick());
+        }
+      }
+      _tick() {
+        if (!this._buf.length) { this._active = false; return; }
+        // Adaptive drain: at most 1/3 of buffer per frame, minimum 4 chars,
+        // maximum 160 chars.  Keeps latency low while smoothing big bursts.
+        let n = Math.max(4, Math.min(160, Math.ceil(this._buf.length / 3)));
+        let chunk = this._buf.slice(0, n);
+        this._buf = this._buf.slice(n);
+        this._onDrain(chunk);
+        if (this._buf.length) {
+          this._raf = requestAnimationFrame(() => this._tick());
+        } else {
+          this._active = false;
+        }
+      }
+      flush() {
+        if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
+        if (this._buf.length) {
+          let rest = this._buf; this._buf = '';
+          this._onDrain(rest);
+        }
+        this._active = false;
+      }
+      get pending() { return this._buf.length > 0; }
+    }
+
+    // Updates `container.innerHTML` with `newHtml` and applies a short reveal
+    // animation (`tokenReveal` keyframes via `[data-new]`) to any top-level
+    // child elements that didn't exist before the update.  This masks the
+    // visual "pop" of new paragraphs, list items, or code blocks appearing all
+    // at once when the debounced render fires.
+    function updateAnsTextAnimated(container, newHtml) {
+      let prevCount = container.children.length;
+      container.innerHTML = newHtml;
+      let newCount = container.children.length;
+      for (let i = prevCount; i < newCount; i++) {
+        let el = container.children[i];
+        el.setAttribute('data-new', '');
+        // Remove the marker once the CSS animation ends so it doesn't replay
+        // if the browser re-lays-out the element later.
+        el.addEventListener('animationend', () => el.removeAttribute('data-new'), { once: true });
+      }
+    }
+
     // Replaces a native <select> with an app-styled dropdown, so its option list never
     // renders via browser/OS chrome. The original <select> stays in the DOM (invisible) as
     // the single source of truth: existing code can keep reading/setting `.value` and
@@ -4496,8 +5175,6 @@
     }
 
     craftifySelect($('#mem-category-select'));
-    craftifySelect($('#chat-scope'));
-    craftifySelect($('#thread-selector'));
     craftifySelect($('#codeblock-lang-select'), { dark: true });
 
     // Non-blocking toast notifications (replaces native alert() throughout the app).
@@ -4860,7 +5537,37 @@
     }
 
     function chatWelcomeHTML(title, body) {
-      return `<div class="chat-welcome-box"><div class="fw-bold mb-1 text-dark"><i class="bi bi-stars text-amber"></i> ${esc(title)}</div>${esc(body)}</div>`;
+      return `
+        <div class="chat-welcome-box">
+          <div class="fw-bold mb-1 d-flex align-items-center gap-2 text-dark">
+            <i class="bi bi-stars text-amber"></i> ${esc(title || 'Asistente de Conocimiento')}
+          </div>
+          <div class="text-muted small mb-2">
+            ${esc(body || 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información en tiempo real.')}
+          </div>
+
+          <div class="suggested-questions-container pt-2 border-top">
+            <div class="small fw-bold text-secondary mb-1" style="font-size:11px;">Preguntas sugeridas:</div>
+            <div class="suggested-questions-grid">
+              <button type="button" class="btn-suggested-question" data-question="¿Qué temas y notas principales contiene este espacio de trabajo?">
+                <i class="bi bi-compass text-primary"></i> <span>¿Qué contiene este espacio?</span>
+              </button>
+              <button type="button" class="btn-suggested-question" data-question="Haz un resumen ejecutivo con los puntos clave más importantes.">
+                <i class="bi bi-file-text text-success"></i> <span>Resumen de puntos clave</span>
+              </button>
+              <button type="button" class="btn-suggested-question" data-question="¿Cuáles son los conceptos más importantes y cómo se relacionan entre sí?">
+                <i class="bi bi-diagram-3 text-warning"></i> <span>Conceptos principales</span>
+              </button>
+              <button type="button" class="btn-suggested-question" data-question="Genera 3 preguntas de repaso con sus respuestas para autoevaluar mi comprensión.">
+                <i class="bi bi-patch-question text-danger"></i> <span>Preguntas de repaso</span>
+              </button>
+              <button type="button" class="btn-suggested-question" data-question="¿Qué conclusiones o próximos pasos se pueden extraer de esta información?">
+                <i class="bi bi-lightbulb text-info"></i> <span>Conclusiones y pasos</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
     }
 
     // Only auto-scrolls the real scrollable element (#chat-log itself) when the context doing the
@@ -4869,7 +5576,7 @@
     function scrollChatLogIfActive(key) {
       if (key !== activeChatContextKey) return;
       let outer = $('#chat-log');
-      outer.scrollTop = outer.scrollHeight;
+      outer.scrollTo({ top: outer.scrollHeight, behavior: 'smooth' });
     }
 
     // Resolves the chat context key for the currently selected scope, mirroring the same
@@ -4902,7 +5609,6 @@
           }
         }
         ctx.el.style.display = 'contents';
-        $('#thread-selector').value = ctx.threadId || '';
       }
       await loadThreadsForScope();
     }
@@ -4979,9 +5685,13 @@
       currentPaneView = view;
       Object.entries(paneViews).forEach(([name, v]) => {
         let active = name === view;
-        v.btn.classList.toggle('active', active);
-        v.sub.style.display = active ? 'block' : 'none';
-        v.container.style.setProperty('display', active ? 'flex' : 'none', 'important');
+        v.btn?.classList.toggle('active', active);
+        if (v.sub) {
+          v.sub.style.setProperty('display', active ? (name === 'chat' ? 'flex' : 'block') : 'none', 'important');
+        }
+        if (v.container) {
+          v.container.style.setProperty('display', active ? 'flex' : 'none', 'important');
+        }
       });
       paneViews[view]?.onShow?.();
     }
@@ -5013,27 +5723,57 @@
         currentNotebookId = currentPage.notebook_id;
         return currentNotebookId;
       }
+      let firstNbRow = document.querySelector('.notebook-row[data-notebook-id]');
+      if (firstNbRow?.dataset.notebookId) {
+        currentNotebookId = firstNbRow.dataset.notebookId;
+        return currentNotebookId;
+      }
       if (workspace) {
-        let tree = await api('/api/workspaces/' + workspace.id + '/tree');
-        if (tree.notebooks.length) {
-          currentNotebookId = tree.notebooks[0].id;
-          return currentNotebookId;
-        }
+        try {
+          let tree = await api('/api/workspaces/' + workspace.id + '/tree');
+          if (tree.notebooks && tree.notebooks.length) {
+            currentNotebookId = tree.notebooks[0].id;
+            return currentNotebookId;
+          }
+        } catch (e) {}
       }
       return null;
     }
 
-    // Explicit notebook selection from the sidebar — updates the shared context used by both
-    // artifact galleries and the generate flow, and reflects the selection visually.
     function selectNotebook(nbId) {
-      let notebookChanged = currentNotebookId !== nbId;
-      currentNotebookId = nbId;
-      document.querySelectorAll('.notebook-row.active').forEach(r => r.classList.remove('active'));
-      document.querySelector(`[data-notebook-id="${nbId}"] .notebook-row`)?.classList.add('active');
+      if (!nbId) return;
+      let notebookChanged = String(currentNotebookId) !== String(nbId);
+      currentNotebookId = String(nbId);
+      document.querySelectorAll('.notebook-row').forEach(r => {
+        let rId = r.dataset.notebookId || r.closest('[data-notebook-id]')?.dataset.notebookId;
+        if (String(rId) === String(nbId)) {
+          r.classList.add('active');
+        } else {
+          r.classList.remove('active');
+        }
+      });
       loadSideStudioGallery();
       if (artifactsModal?.classList.contains('active')) loadNotebookArtifactsGallery();
       if (notebookChanged) syncChatContextToScope();
     }
+    window.selectNotebook = selectNotebook;
+
+    window.onNotebookRowClick = function (e, nbId) {
+      if (e && e.target && e.target.closest('.row-actions')) return;
+      if (e && e.stopPropagation) e.stopPropagation();
+      selectNotebook(nbId);
+      let container = document.querySelector(`[data-pages-for="${nbId}"]`);
+      let chevron = document.querySelector(`[data-chevron="${nbId}"]`);
+      if (collapsedNotebooks.has(String(nbId))) {
+        collapsedNotebooks.delete(String(nbId));
+        container?.classList.remove('collapsed');
+        chevron?.classList.remove('collapsed');
+      } else {
+        collapsedNotebooks.add(String(nbId));
+        container?.classList.add('collapsed');
+        chevron?.classList.add('collapsed');
+      }
+    };
 
     // Compact card shown in place of a real artifact while its generation is still in flight —
     // idPrefix keeps the two galleries' status-text element ids from colliding, since both live in
@@ -5065,6 +5805,7 @@
 
     async function loadSideStudioGallery() {
       let listEl = $('#side-studio-gallery-list');
+      if (!listEl) return;
       let targetNbId = await getTargetNotebookId();
 
       if (!targetNbId) {
@@ -5449,6 +6190,12 @@
         let fullContext = editor.getText();
         let streamErr = null;
 
+        // ── Smooth streaming: drip buffer for inline editor ──
+        const inlineDrip = new TokenDripBuffer((chunk) => {
+          rawText += chunk;
+          scheduleRender();
+        });
+
         for await (let ev of postEventStream('/api/ai/inline-action-stream', {
           action: action,
           prompt: prompt,
@@ -5462,13 +6209,13 @@
                 endPos = startPos;
               }
               firstToken = false;
-              rawText += ev.text;
-              scheduleRender();
+              inlineDrip.push(ev.text);
             }
             if (ev.type === 'error') {
               streamErr = ev.message;
             }
             if (ev.type === 'done') {
+              inlineDrip.flush();
               flushRender();
             }
         }
@@ -6361,6 +7108,7 @@
 
     async function loadNotebookArtifactsGallery() {
       let listEl = $('#notebook-artifacts-gallery-list');
+      if (!listEl) return;
       let targetNbId = await getTargetNotebookId();
 
       if (!targetNbId) {
@@ -7373,6 +8121,7 @@
 
     // Mobile Drawers Controls
     const sidebar = $('#sidebar-drawer');
+    const pageArea = $('#page-area');
     const chatDrawer = $('#chat-drawer');
     const overlay = $('#mobile-overlay');
 
@@ -7399,6 +8148,352 @@
     // --- Desktop collapsible panels (left workspace nav / right chat) ---
     const appShell = $('.app-shell');
 
+    // Layout Modes: 'editor' (Editor in center, Chat in right drawer) vs 'chat' (NotebookLM style: Chat in center, Note in right panel)
+    let currentLayoutMode = localStorage.getItem('ragpocLayoutMode') || 'editor';
+
+    function updateLayoutButtons() {
+      let isChatMode = currentLayoutMode === 'chat';
+      document.querySelectorAll('[data-switch-mode]').forEach(btn => {
+        let mode = btn.dataset.switchMode;
+        btn.classList.toggle('active', mode === currentLayoutMode);
+      });
+      let chatLabel = $('#pane-switch-chat-label');
+      if (chatLabel) {
+        chatLabel.textContent = isChatMode ? 'Notas' : 'Chat';
+      }
+      let chatIcon = $('#pane-switch-chat i');
+      if (chatIcon) {
+        chatIcon.className = isChatMode ? 'bi bi-journal-text' : 'bi bi-chat-quote-fill';
+      }
+    }
+
+    let currentSideRightTab = 'notes';
+
+    function preparePageAreaForRender() {
+      let studioContainer = $('#studio-view-container');
+      let attachContainer = $('#attachments-view-container');
+      let chatDrawer = $('#chat-drawer');
+      if (chatDrawer) {
+        if (studioContainer && studioContainer.parentElement !== chatDrawer) {
+          chatDrawer.appendChild(studioContainer);
+        }
+        if (attachContainer && attachContainer.parentElement !== chatDrawer) {
+          chatDrawer.appendChild(attachContainer);
+        }
+      }
+    }
+    window.preparePageAreaForRender = preparePageAreaForRender;
+
+    function setSideRightTab(tab) {
+      currentSideRightTab = tab;
+      document.querySelectorAll('#side-editor-header [data-side-tab]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.sideTab === tab);
+      });
+      
+      let editorContainer = document.querySelector('.editor-container') || document.querySelector('.empty-state');
+      let studioContainer = $('#studio-view-container');
+      let attachContainer = $('#attachments-view-container');
+      let pageArea = $('#page-area');
+
+      if (currentLayoutMode === 'chat' && pageArea) {
+        if (studioContainer && studioContainer.parentElement !== pageArea) {
+          pageArea.appendChild(studioContainer);
+        }
+        if (attachContainer && attachContainer.parentElement !== pageArea) {
+          pageArea.appendChild(attachContainer);
+        }
+        
+        if (editorContainer) editorContainer.style.display = tab === 'notes' ? '' : 'none';
+        if (studioContainer) {
+          studioContainer.style.setProperty('display', tab === 'studio' ? 'flex' : 'none', 'important');
+          if (tab === 'studio') loadSideStudioGallery();
+        }
+        if (attachContainer) {
+          attachContainer.style.setProperty('display', tab === 'attachments' ? 'flex' : 'none', 'important');
+        }
+      }
+    }
+    window.setSideRightTab = setSideRightTab;
+
+    function setLayoutMode(mode) {
+      currentLayoutMode = mode;
+      localStorage.setItem('ragpocLayoutMode', mode);
+      let isChatMode = mode === 'chat';
+      appShell.classList.toggle('chat-focus-mode', isChatMode);
+
+      let studioContainer = $('#studio-view-container');
+      let attachContainer = $('#attachments-view-container');
+      let chatDrawer = $('#chat-drawer');
+      let editorContainer = document.querySelector('.editor-container') || document.querySelector('.empty-state');
+
+      if (isChatMode) {
+        // Center is Chat: ensure chat-view is visible in center
+        $('#chat-view-container').style.setProperty('display', 'flex', 'important');
+        setSideRightTab(currentSideRightTab || 'notes');
+      } else {
+        // Return studio and attach containers to chat-drawer
+        if (studioContainer && studioContainer.parentElement !== chatDrawer) {
+          chatDrawer.appendChild(studioContainer);
+        }
+        if (attachContainer && attachContainer.parentElement !== chatDrawer) {
+          chatDrawer.appendChild(attachContainer);
+        }
+        if (editorContainer) editorContainer.style.display = '';
+        setActivePaneView(currentPaneView);
+      }
+
+      updateLayoutButtons();
+      window.dispatchEvent(new Event('resize'));
+    }
+
+    function toggleLayoutMode() {
+      setLayoutMode(currentLayoutMode === 'chat' ? 'editor' : 'chat');
+    }
+
+    window.toggleLayoutMode = toggleLayoutMode;
+    window.setLayoutMode = setLayoutMode;
+
+    // Global keyboard shortcut: Alt + M to toggle between Editor Mode and Chat Mode
+    window.addEventListener('keydown', e => {
+      if (e.altKey && (e.key === 'm' || e.key === 'M')) {
+        e.preventDefault();
+        toggleLayoutMode();
+      }
+    });
+
+    // Global keyboard shortcut: Ctrl+S / Cmd+S to save changes
+    window.addEventListener('keydown', async e => {
+      let isSave = (e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.code === 'KeyS');
+      if (!isSave) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      // 1. If Settings modal is open and active
+      let settingsModal = $('#settings-modal-backdrop');
+      if (settingsModal && settingsModal.classList.contains('active')) {
+        let btnSaveSettings = $('#btn-save-settings-key');
+        if (btnSaveSettings) {
+          btnSaveSettings.click();
+          return;
+        }
+      }
+
+      // 2. If Agent/Skill modal is open and active
+      let agentModal = $('#agent-modal-backdrop');
+      if (agentModal && agentModal.classList.contains('active')) {
+        let skillTab = $('#agent-tab-skills');
+        if (skillTab && skillTab.style.display !== 'none') {
+          let btnSaveSkill = $('#btn-save-skill');
+          if (btnSaveSkill) {
+            btnSaveSkill.click();
+            return;
+          }
+        }
+        let memTab = $('#agent-tab-memories');
+        if (memTab && memTab.style.display !== 'none') {
+          let memInput = $('#mem-content-input');
+          if (memInput && memInput.value.trim()) {
+            let btnAddMem = $('#btn-add-memory');
+            if (btnAddMem) {
+              btnAddMem.click();
+              return;
+            }
+          }
+        }
+      }
+
+      // 3. If currently editing a page (currentPage is open and editor exists)
+      if (currentPage && editor) {
+        await savePage();
+        return;
+      }
+
+      // 4. Fallback: if #save-page button is present in DOM
+      let savePageBtn = $('#save-page');
+      if (savePageBtn && savePageBtn.offsetParent !== null) {
+        savePageBtn.click();
+      }
+    }, true);
+
+    // Global delegated click for toggle buttons, switch mode pills, right panel tabs, suggested questions, studio quick-gen, scope dropdown, thread actions & notebook tree
+    document.addEventListener('click', async e => {
+      let nbRow = e.target.closest('.notebook-row');
+      if (nbRow && !e.target.closest('.row-actions')) {
+        let nbId = nbRow.dataset.notebookId || nbRow.closest('[data-notebook-id]')?.dataset.notebookId;
+        if (nbId) {
+          selectNotebook(nbId);
+          let container = document.querySelector(`[data-pages-for="${nbId}"]`);
+          let chevron = document.querySelector(`[data-chevron="${nbId}"]`);
+          if (collapsedNotebooks.has(String(nbId))) {
+            collapsedNotebooks.delete(String(nbId));
+            container?.classList.remove('collapsed');
+            chevron?.classList.remove('collapsed');
+          } else {
+            collapsedNotebooks.add(String(nbId));
+            container?.classList.add('collapsed');
+            chevron?.classList.add('collapsed');
+          }
+        }
+        return;
+      }
+      let scopeItem = e.target.closest('[data-scope-val]');
+      if (scopeItem) {
+        e.preventDefault();
+        let val = scopeItem.dataset.scopeVal;
+        let select = $('#chat-scope');
+        if (select) select.value = val;
+        updateScopeButtonUI(val);
+        await syncChatContextToScope();
+        return;
+      }
+      let switchThread = e.target.closest('[data-switch-thread]');
+      if (switchThread) {
+        e.preventDefault();
+        let tId = switchThread.dataset.switchThread;
+        if (!activeChatContextKey) activeChatContextKey = 'workspace';
+        let ctx = getChatContext(activeChatContextKey);
+        setContextThread(ctx, activeChatContextKey, tId);
+        ctx.loaded = true;
+        if (typeof window.hideDropdown === 'function') window.hideDropdown('#threads-history-btn');
+        await loadThreadHistory(tId, ctx.el);
+        await loadThreadsForScope();
+        return;
+      }
+      let renameThread = e.target.closest('[data-rename-thread-id]');
+      if (renameThread) {
+        e.preventDefault();
+        e.stopPropagation();
+        let tId = renameThread.getAttribute('data-rename-thread-id') || renameThread.dataset.renameThreadId;
+        let currentTitle = renameThread.getAttribute('data-thread-title') || renameThread.dataset.threadTitle || '';
+        if (typeof window.hideDropdown === 'function') window.hideDropdown('#threads-history-btn');
+        let newTitle = await openInputModal('Renombrar Conversación', currentTitle, 'Nuevo título');
+        if (newTitle && newTitle !== currentTitle) {
+          try {
+            await api(`/api/threads/${tId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title: newTitle })
+            });
+            showToast('Conversación renombrada', 'success');
+            await loadThreadsForScope();
+          } catch (err) {
+            showToast('Error al renombrar: ' + err.message, 'error');
+          }
+        }
+        return;
+      }
+      let deleteThread = e.target.closest('[data-delete-thread-id]');
+      if (deleteThread) {
+        e.preventDefault();
+        e.stopPropagation();
+        let tId = deleteThread.getAttribute('data-delete-thread-id') || deleteThread.dataset.deleteThreadId;
+        console.log('[DEBUG] Clicked delete button for thread ID:', tId);
+        if (typeof window.hideDropdown === 'function') window.hideDropdown('#threads-history-btn');
+        openDeleteModal(
+          'Eliminar Conversación',
+          '¿Estás seguro de que deseas eliminar esta conversación y todos sus mensajes?',
+          async () => {
+            try {
+              console.log('[DEBUG] Executing DELETE API for thread ID:', tId);
+              let res = await api(`/api/threads/${tId}`, { method: 'DELETE' });
+              console.log('[DEBUG] DELETE API response:', res);
+              showToast('Conversación eliminada', 'success');
+              let ctx = activeChatContextKey ? getChatContext(activeChatContextKey) : null;
+              if (ctx?.threadId === tId) {
+                resetChatView('Asistente de Conocimiento', 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.');
+              }
+              await loadThreadsForScope();
+              console.log('[DEBUG] loadThreadsForScope completed after delete');
+            } catch (err) {
+              console.error('[DEBUG] DELETE error:', err);
+              showToast('Error al eliminar: ' + err.message, 'error');
+            }
+          }
+        );
+        return;
+      }
+      let quickGen = e.target.closest('[data-quick-gen]');
+      if (quickGen) {
+        e.preventDefault();
+        artifactsModal.classList.add('active');
+        switchArtifactTab('generate');
+        selectArtifactType(quickGen.dataset.quickGen);
+        return;
+      }
+      let qBtn = e.target.closest('.btn-suggested-question');
+      if (qBtn) {
+        e.preventDefault();
+        let q = qBtn.dataset.question || qBtn.textContent.trim();
+        let input = $('#chat-question');
+        if (input) {
+          input.value = q;
+          input.focus();
+          let form = $('#chat-form');
+          if (form) {
+            form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit', { cancelable: true }));
+          }
+        }
+        return;
+      }
+      let sideTabBtn = e.target.closest('#side-editor-header [data-side-tab]');
+      if (sideTabBtn) {
+        e.preventDefault();
+        setSideRightTab(sideTabBtn.dataset.sideTab);
+        return;
+      }
+      let switchBtn = e.target.closest('[data-switch-mode]');
+      if (switchBtn) {
+        e.preventDefault();
+        setLayoutMode(switchBtn.dataset.switchMode);
+        return;
+      }
+    });
+
+    function renderEmptyStateHTML() {
+      let isChatMode = currentLayoutMode === 'chat';
+      return `
+        <!-- Top Pill in Center Mode (Modo Editor) -->
+        <div class="editor-top-nav" id="page-center-nav">
+          <div class="center-mode-segmented-control">
+            <button type="button" class="center-mode-seg-btn ${isChatMode ? 'active' : ''}" data-switch-mode="chat">
+              <i class="bi bi-chat-quote-fill"></i> Chat
+            </button>
+            <button type="button" class="center-mode-seg-btn ${!isChatMode ? 'active' : ''}" data-switch-mode="editor">
+              <i class="bi bi-journal-text"></i> Notas
+            </button>
+          </div>
+        </div>
+
+        <!-- Right Panel Tabs in Side Mode (Modo Chat) -->
+        <div class="side-editor-header" id="side-editor-header">
+          <div class="studio-segmented-control" style="width:100%;">
+            <button type="button" class="studio-seg-btn active" id="side-pane-switch-notes" data-side-tab="notes">
+              <i class="bi bi-journal-text"></i> Notas
+            </button>
+            <button type="button" class="studio-seg-btn" id="side-pane-switch-studio" data-side-tab="studio">
+              <i class="bi bi-stars"></i> Studio
+            </button>
+            <button type="button" class="studio-seg-btn" id="side-pane-switch-attachments" data-side-tab="attachments">
+              <i class="bi bi-paperclip"></i> Adjuntos
+            </button>
+          </div>
+        </div>
+
+        <div class="empty-state text-center my-auto p-4">
+          <i class="bi bi-journal-text display-3 text-muted mb-3 d-block"></i>
+          <h1 class="fw-bold">Tu Base de Conocimiento</h1>
+          <p class="text-muted">Selecciona una página en el panel lateral o crea un nuevo espacio de trabajo para comenzar.</p>
+        </div>
+      `;
+    }
+    window.renderEmptyStateHTML = renderEmptyStateHTML;
+
+    if (currentLayoutMode === 'chat') {
+      appShell.classList.add('chat-focus-mode');
+    }
+    updateLayoutButtons();
+
     function setSidebarCollapsed(collapsed) {
       sidebar.classList.toggle('panel-collapsed', collapsed);
       appShell.classList.toggle('sidebar-collapsed', collapsed);
@@ -7413,7 +8508,8 @@
       // (see setActivePaneView), which otherwise outranks the .panel-collapsed CSS rule
       // and keeps the chat input / studio artifacts visible over the collapsed rail.
       if (collapsed) {
-        paneViews[currentPaneView]?.container.style.setProperty('display', 'none', 'important');
+        paneViews[currentPaneView]?.container?.style.setProperty('display', 'none', 'important');
+        paneViews[currentPaneView]?.sub?.style.setProperty('display', 'none', 'important');
       } else {
         setActivePaneView(currentPaneView);
       }
@@ -7427,18 +8523,19 @@
     setSidebarCollapsed(localStorage.getItem('ragpocSidebarCollapsed') === '1');
     setChatCollapsed(localStorage.getItem('ragpocChatCollapsed') === '1');
 
-    // --- Drag-to-resize for both side panels, so their width is the user's call instead
-    // of a fixed 280px/360px. Widths live on CSS vars read by .app-shell's grid-template-
-    // columns and persist in localStorage across sessions.
+    // --- Drag-to-resize for side panels, supporting both Editor Mode and Chat Mode.
+    // Widths live on CSS vars read by .app-shell's grid-template-columns and persist in localStorage.
     (function setupPanelResizers() {
       const MIN_SIDEBAR = 220, MAX_SIDEBAR = 480;
-      const MIN_CHAT = 280, MAX_CHAT = 620;
+      const MIN_SIDE_PANEL = 280, MAX_SIDE_PANEL = 640;
       const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
       let savedSidebar = clamp(parseInt(localStorage.getItem('ragpocSidebarWidth'), 10) || 280, MIN_SIDEBAR, MAX_SIDEBAR);
-      let savedChat = clamp(parseInt(localStorage.getItem('ragpocChatWidth'), 10) || 360, MIN_CHAT, MAX_CHAT);
+      let savedChat = clamp(parseInt(localStorage.getItem('ragpocChatWidth'), 10) || 360, MIN_SIDE_PANEL, MAX_SIDE_PANEL);
+      let savedEditorSide = clamp(parseInt(localStorage.getItem('ragpocEditorSideWidth'), 10) || 380, MIN_SIDE_PANEL, MAX_SIDE_PANEL);
       appShell.style.setProperty('--sidebar-w', savedSidebar + 'px');
       appShell.style.setProperty('--chat-w', savedChat + 'px');
+      appShell.style.setProperty('--editor-side-w', savedEditorSide + 'px');
 
       const leftHandle = $('#sidebar-resizer');
       const rightHandle = $('#chat-resizer');
@@ -7446,19 +8543,23 @@
       function positionHandles() {
         let shellRect = appShell.getBoundingClientRect();
         let sbRect = sidebar.getBoundingClientRect();
-        let chatRect = chatDrawer.getBoundingClientRect();
+        let isChatFocus = appShell.classList.contains('chat-focus-mode');
+        let rightPanelRect = isChatFocus ? pageArea.getBoundingClientRect() : chatDrawer.getBoundingClientRect();
+
         leftHandle.style.left = (sbRect.right - shellRect.left) + 'px';
         leftHandle.style.height = shellRect.height + 'px';
-        rightHandle.style.left = (chatRect.left - shellRect.left) + 'px';
+        rightHandle.style.left = (rightPanelRect.left - shellRect.left) + 'px';
         rightHandle.style.height = shellRect.height + 'px';
+
         // A collapsed panel is a fixed 52px rail, not something to resize.
         leftHandle.style.display = appShell.classList.contains('sidebar-collapsed') ? 'none' : '';
-        rightHandle.style.display = appShell.classList.contains('chat-collapsed') ? 'none' : '';
+        rightHandle.style.display = (isChatFocus && appShell.classList.contains('chat-collapsed')) || (!isChatFocus && appShell.classList.contains('chat-collapsed')) ? 'none' : '';
       }
 
-      function bindDrag(handle, { edge, varName, min, max, storageKey }) {
+      function bindDrag(handle, getOpts) {
         handle.addEventListener('mousedown', e => {
           e.preventDefault();
+          let opts = typeof getOpts === 'function' ? getOpts() : getOpts;
           handle.classList.add('resizing');
           appShell.classList.add('resizing-panel');
           document.body.style.userSelect = 'none';
@@ -7466,8 +8567,8 @@
           let shellRect = appShell.getBoundingClientRect();
 
           function onMove(ev) {
-            let px = edge === 'left' ? ev.clientX - shellRect.left : shellRect.right - ev.clientX;
-            appShell.style.setProperty(varName, clamp(Math.round(px), min, max) + 'px');
+            let px = opts.edge === 'left' ? ev.clientX - shellRect.left : shellRect.right - ev.clientX;
+            appShell.style.setProperty(opts.varName, clamp(Math.round(px), opts.min, opts.max) + 'px');
             positionHandles();
           }
           function onUp() {
@@ -7477,15 +8578,20 @@
             document.body.style.cursor = '';
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onUp);
-            localStorage.setItem(storageKey, parseInt(getComputedStyle(appShell).getPropertyValue(varName), 10));
+            localStorage.setItem(opts.storageKey, parseInt(getComputedStyle(appShell).getPropertyValue(opts.varName), 10));
           }
           document.addEventListener('mousemove', onMove);
           document.addEventListener('mouseup', onUp);
         });
       }
 
-      bindDrag(leftHandle, { edge: 'left', varName: '--sidebar-w', min: MIN_SIDEBAR, max: MAX_SIDEBAR, storageKey: 'ragpocSidebarWidth' });
-      bindDrag(rightHandle, { edge: 'right', varName: '--chat-w', min: MIN_CHAT, max: MAX_CHAT, storageKey: 'ragpocChatWidth' });
+      bindDrag(leftHandle, () => ({ edge: 'left', varName: '--sidebar-w', min: MIN_SIDEBAR, max: MAX_SIDEBAR, storageKey: 'ragpocSidebarWidth' }));
+      bindDrag(rightHandle, () => {
+        let isChatFocus = appShell.classList.contains('chat-focus-mode');
+        return isChatFocus
+          ? { edge: 'right', varName: '--editor-side-w', min: MIN_SIDE_PANEL, max: MAX_SIDE_PANEL, storageKey: 'ragpocEditorSideWidth' }
+          : { edge: 'right', varName: '--chat-w', min: MIN_SIDE_PANEL, max: MAX_SIDE_PANEL, storageKey: 'ragpocChatWidth' };
+      });
 
       window.addEventListener('resize', positionHandles);
       appShell.addEventListener('transitionend', e => { if (e.propertyName === 'grid-template-columns') positionHandles(); });
@@ -7917,15 +9023,56 @@
       ctx.loaded = true;
       ctx.el.style.display = 'contents';
       ctx.el.innerHTML = chatWelcomeHTML(welcomeTitle, welcomeBody);
-      $('#thread-selector').value = '';
+      let titleEl = $('#active-thread-title');
+      if (titleEl) titleEl.textContent = 'Nueva conversación';
+      let renameBtn = $('#btn-rename-thread-header');
+      if (renameBtn) renameBtn.style.display = 'none';
+      let scope = $('#chat-scope')?.value || 'notebook';
+      updateScopeButtonUI(scope);
     }
+
+    function updateScopeButtonUI(scope) {
+      let icon = $('#chat-scope-icon');
+      let label = $('#chat-scope-label');
+      if (scope === 'notebook') {
+        if (icon) icon.className = 'bi bi-journal-bookmark-fill text-primary';
+        if (label) label.textContent = 'Este cuaderno';
+      } else {
+        if (icon) icon.className = 'bi bi-globe2 text-success';
+        if (label) label.textContent = 'Todo el espacio';
+      }
+
+      // Update checkmarks and active class in scope dropdown items
+      document.querySelectorAll('[data-scope-val]').forEach(btn => {
+        let isMatch = btn.dataset.scopeVal === scope;
+        btn.classList.toggle('active-scope', isMatch);
+        let check = btn.querySelector('.scope-check-icon');
+        if (check) check.style.display = isMatch ? 'inline-block' : 'none';
+      });
+    }
+
+    window.hideDropdown = function (btnElOrId) {
+      let btn = typeof btnElOrId === 'string' ? $(btnElOrId) : btnElOrId;
+      if (!btn) return;
+      try {
+        if (window.bootstrap && bootstrap.Dropdown) {
+          bootstrap.Dropdown.getOrCreateInstance(btn).hide();
+        }
+      } catch (e) {}
+    };
+
+    window.setChatScope = async function (val) {
+      let select = $('#chat-scope');
+      if (select) select.value = val;
+      updateScopeButtonUI(val);
+      window.hideDropdown('#chat-scope-btn');
+      await syncChatContextToScope();
+    };
 
     // Thread Loading & Switching
     async function loadThreadsForScope() {
-      // Mirrors the same scope resolution used to send a chat message, so the thread list
-      // actually reflects whichever scope is selected instead of always preferring "current page"
-      // regardless of what's picked in #chat-scope.
-      let scope = $('#chat-scope').value;
+      let scope = $('#chat-scope')?.value || 'notebook';
+      updateScopeButtonUI(scope);
       let url = '/api/threads?';
       if (scope === 'notebook') {
         let nbId = await getTargetNotebookId();
@@ -7937,32 +9084,128 @@
       let activeThreadId = activeChatContextKey ? getChatContext(activeChatContextKey).threadId : null;
       try {
         let threads = await api(url);
-        let selector = $('#thread-selector');
-        selector.innerHTML = `<option value="">+ Conversación actual / nueva</option>` +
-          threads.map(t => `<option value="${t.id}" ${t.id === activeThreadId ? 'selected' : ''}>${esc(t.title)} (${new Date(t.created_at).toLocaleDateString()})</option>`).join('');
+        let countEl = $('#threads-history-count');
+        if (countEl) countEl.textContent = threads.length ? `Historial (${threads.length})` : 'Historial';
+        let badgeEl = $('#threads-badge-total');
+        if (badgeEl) badgeEl.textContent = threads.length;
+
+        let listEl = $('#threads-history-list');
+        if (listEl) {
+          if (!threads.length) {
+            listEl.innerHTML = '<div class="text-muted small p-2 text-center" style="font-size:11px;">No hay conversaciones guardadas aún.</div>';
+          } else {
+            listEl.innerHTML = threads.map(t => {
+              let isActive = t.id === activeThreadId;
+              return `
+                <div class="thread-item-row d-flex justify-content-between align-items-center p-2 rounded ${isActive ? 'active-thread' : ''}" data-thread-title="${esc(t.title)}">
+                  <div class="d-flex align-items-center gap-2 overflow-hidden flex-1" style="cursor:pointer;" data-switch-thread="${t.id}">
+                    <i class="bi bi-chat-left-text-fill ${isActive ? 'text-primary' : 'text-muted'}" style="font-size:12px;"></i>
+                    <div class="overflow-hidden">
+                      <div class="fw-bold small text-truncate text-dark" style="font-size:11.5px;">${esc(t.title)}</div>
+                      <div class="text-muted" style="font-size:10px;">${new Date(t.created_at).toLocaleDateString()}</div>
+                    </div>
+                  </div>
+                  <div class="d-flex gap-1 ms-1">
+                    <button type="button" class="action-mini-btn" data-rename-thread-id="${t.id}" data-thread-title="${esc(t.title)}" title="Renombrar" style="padding:2px 4px;">
+                      <i class="bi bi-pencil" style="font-size:10px;"></i>
+                    </button>
+                    <button type="button" class="action-mini-btn danger" data-delete-thread-id="${t.id}" title="Eliminar" style="padding:2px 4px;">
+                      <i class="bi bi-trash3" style="font-size:10px;"></i>
+                    </button>
+                  </div>
+                </div>
+              `;
+            }).join('');
+          }
+        }
+
+        // Reapply current search filter if any
+        let searchInput = $('#chat-thread-search');
+        if (searchInput && searchInput.value) {
+          filterThreadsHistory(searchInput.value);
+        }
+
+        let activeThread = threads.find(t => t.id === activeThreadId);
+        let titleEl = $('#active-thread-title');
+        let renameBtn = $('#btn-rename-thread-header');
+        if (activeThread) {
+          if (titleEl) titleEl.textContent = activeThread.title;
+          if (renameBtn) renameBtn.style.display = 'inline-flex';
+        } else {
+          if (titleEl) titleEl.textContent = 'Nueva conversación';
+          if (renameBtn) renameBtn.style.display = 'none';
+        }
       } catch (e) {
         console.error('Error loading threads:', e);
       }
     }
 
-    $('#thread-selector').onchange = async e => {
-      let selectedId = e.target.value;
-      if (!activeChatContextKey) activeChatContextKey = 'workspace';
-      let ctx = getChatContext(activeChatContextKey);
-      if (!selectedId) {
-        resetChatView('Asistente de Conocimiento', 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.');
-        return;
-      }
-      setContextThread(ctx, activeChatContextKey, selectedId);
-      ctx.loaded = true;
-      await loadThreadHistory(selectedId, ctx.el);
-    };
+    function filterThreadsHistory(query) {
+      query = (query || '').toLowerCase().trim();
+      let clearBtn = $('#chat-thread-search-clear');
+      if (clearBtn) clearBtn.style.display = query ? 'inline-block' : 'none';
 
-    $('#btn-rename-thread').onclick = async () => {
+      let listEl = $('#threads-history-list');
+      if (!listEl) return;
+
+      let items = listEl.querySelectorAll('.thread-item-row');
+      let matches = 0;
+      items.forEach(row => {
+        let title = (row.dataset.threadTitle || row.textContent).toLowerCase();
+        if (!query || title.includes(query)) {
+          row.style.display = 'flex';
+          row.classList.add('fade-in');
+          matches++;
+        } else {
+          row.style.display = 'none';
+        }
+      });
+
+      let noRes = listEl.querySelector('#threads-search-empty');
+      if (items.length > 0 && matches === 0 && query) {
+        if (!noRes) {
+          noRes = document.createElement('div');
+          noRes.id = 'threads-search-empty';
+          noRes.className = 'text-muted small p-3 text-center';
+          noRes.style.fontSize = '11px';
+          listEl.appendChild(noRes);
+        }
+        noRes.innerHTML = `<i class="bi bi-search mb-1 d-block text-secondary"></i> Sin resultados para "<b>${esc(query)}</b>"`;
+        noRes.style.display = 'block';
+      } else if (noRes) {
+        noRes.style.display = 'none';
+      }
+    }
+
+    let searchInput = $('#chat-thread-search');
+    if (searchInput) {
+      searchInput.oninput = e => filterThreadsHistory(e.target.value);
+    }
+    let searchClearBtn = $('#chat-thread-search-clear');
+    if (searchClearBtn) {
+      searchClearBtn.onclick = () => {
+        let input = $('#chat-thread-search');
+        if (input) {
+          input.value = '';
+          input.focus();
+          filterThreadsHistory('');
+        }
+      };
+    }
+
+    $('#threads-history-btn')?.addEventListener('show.bs.dropdown', () => {
+      window.hideDropdown('#chat-scope-btn');
+      loadThreadsForScope();
+    });
+
+    $('#chat-scope-btn')?.addEventListener('show.bs.dropdown', () => {
+      window.hideDropdown('#threads-history-btn');
+    });
+
+    $('#btn-rename-thread-header').onclick = async () => {
       let ctx = activeChatContextKey ? getChatContext(activeChatContextKey) : null;
-      if (!ctx?.threadId) return showToast('Selecciona una conversación guardada primero.', 'warning');
-      let option = $('#thread-selector').selectedOptions[0];
-      let currentTitle = option ? option.textContent.replace(/\s*\(\d{1,2}\/\d{1,2}\/\d{2,4}\)\s*$/, '') : '';
+      if (!ctx?.threadId) return;
+      let currentTitle = $('#active-thread-title')?.textContent || '';
       let newTitle = await openInputModal('Renombrar Conversación', currentTitle, 'Nuevo título');
       if (newTitle && newTitle !== currentTitle) {
         try {
@@ -7976,21 +9219,6 @@
           showToast('Error al renombrar: ' + err.message, 'error');
         }
       }
-    };
-
-    $('#btn-delete-thread').onclick = () => {
-      let ctx = activeChatContextKey ? getChatContext(activeChatContextKey) : null;
-      if (!ctx?.threadId) return showToast('Selecciona una conversación guardada primero.', 'warning');
-      let tId = ctx.threadId;
-      openDeleteModal(
-        'Eliminar Conversación',
-        '¿Estás seguro de que deseas eliminar esta conversación y todos sus mensajes?',
-        async () => {
-          await api(`/api/threads/${tId}`, { method: 'DELETE' });
-          resetChatView('Asistente de Conocimiento', 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información actualizada de internet en tiempo real.');
-          await loadThreadsForScope();
-        }
-      );
     };
 
     $('#new-thread-btn').onclick = () => {
@@ -8192,11 +9420,12 @@
 
       let html = '';
       for (let n of t.notebooks) {
-        let isCollapsed = collapsedNotebooks.has(n.id);
+        let isCollapsed = collapsedNotebooks.has(String(n.id));
+        let isActive = String(n.id) === String(currentNotebookId);
         html += `
           <li class="tree-item" data-notebook-id="${n.id}">
-            <div class="notebook-row ${n.id === currentNotebookId ? 'active' : ''}">
-              <button class="notebook-toggle-btn" data-toggle-notebook="${n.id}" title="Desplegar o colapsar cuaderno">
+            <div class="notebook-row ${isActive ? 'active' : ''}" data-notebook-id="${n.id}" onclick="window.onNotebookRowClick(event, '${n.id}')">
+              <button type="button" class="notebook-toggle-btn" data-toggle-notebook="${n.id}" onclick="window.onNotebookRowClick(event, '${n.id}')" title="Desplegar o colapsar cuaderno">
                 <i class="bi bi-chevron-down chevron-icon ${isCollapsed ? 'collapsed' : ''}" data-chevron="${n.id}"></i>
                 <i class="bi bi-journal-bookmark text-secondary"></i>
                 <span class="text-truncate">${esc(n.name)}</span>
@@ -8220,7 +9449,7 @@
             <div class="pages-container ${isCollapsed ? 'collapsed' : ''}" data-pages-for="${n.id}">
               ${n.pages.map(p => `
                 <div class="page-row ${p.id === currentPage?.id ? 'active' : ''}">
-                  <button class="page-select-btn" data-p="${p.id}" title="${esc(p.title)}">
+                  <button type="button" class="page-select-btn" data-p="${p.id}" title="${esc(p.title)}">
                     <i class="bi bi-file-earmark-text text-muted"></i>
                     <span class="text-truncate">${esc(p.title)}</span>
                   </button>
@@ -8244,27 +9473,6 @@
       document.querySelectorAll('[data-p]').forEach(b => b.onclick = () => {
         openPage(b.dataset.p);
         closeDrawers();
-      });
-
-      // Bind Notebook Toggle — also selects this notebook as the current artifact/Studio context,
-      // since clicking a notebook's row is the only way the sidebar lets you say "this one".
-      document.querySelectorAll('[data-toggle-notebook]').forEach(btn => {
-        btn.onclick = e => {
-          e.stopPropagation();
-          let nbId = btn.dataset.toggleNotebook;
-          selectNotebook(nbId);
-          let container = document.querySelector(`[data-pages-for="${nbId}"]`);
-          let chevron = document.querySelector(`[data-chevron="${nbId}"]`);
-          if (collapsedNotebooks.has(nbId)) {
-            collapsedNotebooks.delete(nbId);
-            container?.classList.remove('collapsed');
-            chevron?.classList.remove('collapsed');
-          } else {
-            collapsedNotebooks.add(nbId);
-            container?.classList.add('collapsed');
-            chevron?.classList.add('collapsed');
-          }
-        };
       });
 
       // Bind Sources for Notebook
@@ -8343,13 +9551,11 @@
               await api(`/api/pages/${pId}`, { method: 'DELETE' });
               if (currentPage?.id === pId) {
                 currentPage = null;
-                $('#page-area').innerHTML = `
-                  <div class="empty-state text-center my-auto p-4">
-                    <i class="bi bi-journal-text display-3 text-muted mb-3 d-block"></i>
-                    <h1 class="fw-bold">Tu Base de Conocimiento</h1>
-                    <p class="text-muted">Selecciona una página en el panel lateral o crea un nuevo espacio de trabajo para comenzar.</p>
-                  </div>
-                `;
+                preparePageAreaForRender();
+                $('#page-area').innerHTML = renderEmptyStateHTML();
+                if (currentLayoutMode === 'chat') {
+                  setSideRightTab(currentSideRightTab || 'notes');
+                }
               }
               await refresh();
             }
@@ -8373,16 +9579,41 @@
       }
 
       currentPage = await api('/api/pages/' + id);
-      let notebookChanged = currentNotebookId !== currentPage.notebook_id;
-      currentNotebookId = currentPage.notebook_id;
       $('#mobile-page-title').textContent = currentPage.title || 'RAGPoC';
-      if (notebookChanged) {
-        loadSideStudioGallery();
-        if (artifactsModal?.classList.contains('active')) loadNotebookArtifactsGallery();
-        syncChatContextToScope();
+      if (currentPage.notebook_id) {
+        selectNotebook(currentPage.notebook_id);
       }
 
+      preparePageAreaForRender();
+
       $('#page-area').innerHTML = `
+        <!-- Top Pill in Center Mode (Modo Editor) -->
+        <div class="editor-top-nav" id="page-center-nav">
+          <div class="center-mode-segmented-control">
+            <button type="button" class="center-mode-seg-btn ${currentLayoutMode === 'chat' ? 'active' : ''}" data-switch-mode="chat">
+              <i class="bi bi-chat-quote-fill"></i> Chat
+            </button>
+            <button type="button" class="center-mode-seg-btn ${currentLayoutMode === 'editor' ? 'active' : ''}" data-switch-mode="editor">
+              <i class="bi bi-journal-text"></i> Notas
+            </button>
+          </div>
+        </div>
+
+        <!-- Right Panel Tabs in Side Mode (Modo Chat) -->
+        <div class="side-editor-header" id="side-editor-header">
+          <div class="studio-segmented-control" style="width:100%;">
+            <button type="button" class="studio-seg-btn active" id="side-pane-switch-notes" data-side-tab="notes">
+              <i class="bi bi-journal-text"></i> Notas
+            </button>
+            <button type="button" class="studio-seg-btn" id="side-pane-switch-studio" data-side-tab="studio">
+              <i class="bi bi-stars"></i> Studio
+            </button>
+            <button type="button" class="studio-seg-btn" id="side-pane-switch-attachments" data-side-tab="attachments">
+              <i class="bi bi-paperclip"></i> Adjuntos
+            </button>
+          </div>
+        </div>
+
         <div class="editor-container">
           <input id="page-title" class="page-title-input" value="${esc(currentPage.title)}" placeholder="Página sin título">
           
@@ -8417,7 +9648,7 @@
 
             <label class="btn-craft btn-sm" style="cursor:pointer;" title="Insertar Imagen, Video, Audio o Documento">
               <i class="bi bi-plus-square text-secondary"></i> <span>Media</span>
-              <input id="inline-media-file" type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.md" hidden>
+              <input id="inline-media-file" type="file" accept="image/*,video/*,audio/*,.pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json,.ipynb,.py" hidden>
             </label>
 
             <span style="width:1px; height:18px; background:var(--border-warm); margin:0 4px; flex-shrink:0;"></span>
@@ -8429,7 +9660,7 @@
               <i class="bi bi-file-earmark-pdf"></i> Exportar
             </button>
 
-            <button class="btn-craft btn-craft-primary btn-sm" id="save-page">
+            <button class="btn-craft btn-craft-primary btn-sm" id="save-page" title="Guardar cambios (Ctrl+S)">
               <i class="bi bi-check2-circle"></i> Guardar
             </button>
 
@@ -8640,6 +9871,9 @@
 
       await refresh();
       await loadThreadsForScope();
+      if (currentLayoutMode === 'chat') {
+        setSideRightTab(currentSideRightTab || 'notes');
+      }
     }
 
     // Builds the same ProseMirror node shapes insertMediaIntoEditor() inserts live, for the case
@@ -8835,6 +10069,7 @@
 
     async function loadAttachmentsPanel() {
       let container = $('#page-documents');
+      if (!container) return;
       if (!currentPage) {
         container.innerHTML = '<span class="text-muted small">Selecciona una página para ver sus adjuntos.</span>';
         return;
@@ -8979,21 +10214,32 @@
     }
 
     async function savePage() {
-      let title = $('#page-title').value;
-      let content = editor.getJSON();
-      let text = editor.getText();
-      currentPage = await api('/api/pages/' + currentPage.id, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content_json: content, plain_text: text })
-      });
-      unsavedChanges = false;
-      $('#mobile-page-title').textContent = title || 'RAGPoC';
-      $('#save-status').textContent = 'Guardado';
-      let dot = $('#save-dot');
-      dot.className = 'status-bulb just-saved';
-      dot.addEventListener('animationend', () => dot.classList.remove('just-saved'), { once: true });
-      await refresh();
+      if (!currentPage || !editor) return;
+      try {
+        let titleEl = $('#page-title');
+        let title = titleEl ? titleEl.value : (currentPage.title || '');
+        let content = editor.getJSON();
+        let text = editor.getText();
+        currentPage = await api('/api/pages/' + currentPage.id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, content_json: content, plain_text: text })
+        });
+        unsavedChanges = false;
+        let mobileTitle = $('#mobile-page-title');
+        if (mobileTitle) mobileTitle.textContent = title || 'RAGPoC';
+        let saveStatus = $('#save-status');
+        if (saveStatus) saveStatus.textContent = 'Guardado';
+        let dot = $('#save-dot');
+        if (dot) {
+          dot.className = 'status-bulb just-saved';
+          dot.addEventListener('animationend', () => dot.classList.remove('just-saved'), { once: true });
+        }
+        await refresh();
+      } catch (err) {
+        console.error('Error al guardar:', err);
+        showToast('Error al guardar la página: ' + err.message, 'error');
+      }
     }
 
     // Autosave: a lighter version of savePage() that skips the sidebar refresh() (title/position
@@ -9092,13 +10338,11 @@
                   localStorage.removeItem('ragpocWorkspaceId');
                   $('#workspace-tree').innerHTML = '';
                   $('#workspace-name').textContent = 'Cargando espacio…';
-                  $('#page-area').innerHTML = `
-                    <div class="empty-state text-center my-auto p-4">
-                      <i class="bi bi-journal-text display-3 text-muted mb-3 d-block"></i>
-                      <h1 class="fw-bold">Tu Base de Conocimiento</h1>
-                      <p class="text-muted">Selecciona una página en el panel lateral o crea un nuevo espacio de trabajo para comenzar.</p>
-                    </div>
-                  `;
+                  preparePageAreaForRender();
+                  $('#page-area').innerHTML = renderEmptyStateHTML();
+                  if (currentLayoutMode === 'chat') {
+                    setSideRightTab(currentSideRightTab || 'notes');
+                  }
                   await initWorkspace();
                 }
               }
@@ -9212,6 +10456,11 @@
       renderChatAttachmentsPreview();
 
       let log = ctx.el;
+      let welcomeBox = log.querySelector('.chat-welcome-box');
+      if (welcomeBox) welcomeBox.remove();
+      let initialWelcome = $('#chat-log > .chat-welcome-box');
+      if (initialWelcome) initialWelcome.remove();
+
       let userMsg = document.createElement('div');
       userMsg.className = 'chat-bubble-user';
       userMsg.innerHTML = `<div class="small fw-bold text-secondary mb-1 text-end">Tú</div><div>${esc(q)}</div>`;
@@ -9282,12 +10531,13 @@
         let fullAnswerMarkdown = '';
         let renderTimer = null;
 
+        // ── Smooth streaming: animated render with block-reveal ──
         const scheduleRender = () => {
           if (renderTimer) return;
           renderTimer = setTimeout(() => {
             renderTimer = null;
             let rawHtml = marked.parse(fullAnswerMarkdown);
-            ansText.innerHTML = DOMPurify.sanitize(rawHtml);
+            updateAnsTextAnimated(ansText, DOMPurify.sanitize(rawHtml));
             scrollChatLogIfActive(sendKey);
           }, 40);
         };
@@ -9298,9 +10548,22 @@
             renderTimer = null;
           }
           let rawHtml = marked.parse(fullAnswerMarkdown);
+          // Final render: plain innerHTML (no animation on settled content)
           ansText.innerHTML = DOMPurify.sanitize(rawHtml);
           scrollChatLogIfActive(sendKey);
         };
+
+        // ── Smooth streaming: token drip buffer ──
+        // Tokens from the SSE stream arrive in irregular bursts.  The drip
+        // buffer normalises them into a steady character flow so the user sees
+        // smooth, continuous text generation instead of choppy jumps.
+        const chatDrip = new TokenDripBuffer((chunk) => {
+          fullAnswerMarkdown += chunk;
+          scheduleRender();
+        });
+
+        // Activate the CSS streaming cursor
+        ansText.classList.add('streaming');
 
         // Mirrors the agent's create_workspace_page/update_page_notes output live into the
         // editor, but ONLY while the target page is the one actually open on screen -- captured
@@ -9348,6 +10611,12 @@
           renderPageWriteBuffer();
         }
 
+        // ── Smooth streaming: drip buffer for page writes ──
+        const pageWriteDrip = new TokenDripBuffer((chunk) => {
+          pageWriteBuffer += chunk;
+          schedulePageWriteRender();
+        });
+
         for await (let ev of postEventStream('/chat/stream', {
           question: q,
           scope: effectiveScope,
@@ -9380,8 +10649,7 @@
             if (ev.type === 'token') {
               if (execIndicator) execIndicator.style.display = 'none';
               if (asstHeader) asstHeader.style.setProperty('display', 'flex', 'important');
-              fullAnswerMarkdown += ev.text;
-              scheduleRender();
+              chatDrip.push(ev.text);
             }
             if (ev.type === 'page_write_token') {
               if (pageWriteTargetId === null) {
@@ -9391,10 +10659,10 @@
                   pageWriteEndPos = pageWriteStartPos;
                 }
               }
-              pageWriteBuffer += ev.text;
-              schedulePageWriteRender();
+              pageWriteDrip.push(ev.text);
             }
             if (ev.type === 'page_written') {
+              pageWriteDrip.flush();
               flushPageWriteRender();
               // The agent wrote directly to a page's content in the DB (create_workspace_page /
               // update_page_notes tools) — the sidebar tree and, if it's the page currently open
@@ -9408,15 +10676,26 @@
                 showToast(`El asistente ${ev.action === 'created' ? 'creó' : 'actualizó'} la página "${ev.title}".`, 'success');
               }
             }
+            if (ev.type === 'artifact_created') {
+              loadSideStudioGallery();
+              loadNotebookArtifactsGallery();
+              showToast(`El asistente generó el artefacto "${ev.title}".`, 'success');
+            }
             if (ev.type === 'error') {
               if (execIndicator) execIndicator.style.display = 'none';
               if (asstHeader) asstHeader.style.setProperty('display', 'flex', 'important');
+              chatDrip.flush();
+              pageWriteDrip.flush();
+              ansText.classList.remove('streaming');
               fullAnswerMarkdown = ev.message;
               flushRender();
             }
             if (ev.type === 'done') {
               if (execIndicator) execIndicator.style.display = 'none';
               if (asstHeader) asstHeader.style.setProperty('display', 'flex', 'important');
+              chatDrip.flush();
+              pageWriteDrip.flush();
+              ansText.classList.remove('streaming');
               flushRender();
               let actionsBar = asstMsg.querySelector('#asst-actions-bar');
               if (actionsBar) {
@@ -9460,8 +10739,14 @@
               }
             }
         }
+        chatDrip.flush();
+        pageWriteDrip.flush();
+        ansText.classList.remove('streaming');
         flushRender();
       } catch (err) {
+        chatDrip.flush();
+        pageWriteDrip.flush();
+        ansText.classList.remove('streaming');
         let errDiv = document.createElement('div');
         errDiv.className = 'text-danger small mt-2';
         errDiv.textContent = 'Error: ' + err.message;
