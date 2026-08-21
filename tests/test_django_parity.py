@@ -17,6 +17,19 @@ def auth_header() -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": "Basic " + b64encode(b"operator:test-password").decode()}
 
 
+def get_stream_text(resp) -> str:
+    content = resp.streaming_content
+    if hasattr(content, "__aiter__"):
+        import asyncio
+        async def _collect():
+            parts = []
+            async for chunk in content:
+                parts.append(chunk if isinstance(chunk, bytes) else chunk.encode("utf-8"))
+            return b"".join(parts).decode("utf-8")
+        return asyncio.run(_collect())
+    return b"".join(content).decode("utf-8")
+
+
 @pytest.fixture(autouse=True)
 def setup_django_env(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
@@ -392,7 +405,7 @@ def test_django_inline_ai_actions_stream():
     assert resp["Content-Type"] == "text/event-stream"
     events = [
         json.loads(line[6:])
-        for line in b"".join(resp.streaming_content).decode("utf-8").split("\n\n")
+        for line in get_stream_text(resp).split("\n\n")
         if line.startswith("data: ")
     ]
     assert events[-1]["type"] == "done"
@@ -574,7 +587,7 @@ def test_django_chat_threads_and_messages_persistence():
         **auth_header(),
     )
     assert resp.status_code == 200
-    content = b"".join(resp.streaming_content).decode("utf-8")
+    content = get_stream_text(resp)
     assert "thread_init" in content
 
     # Check messages in thread
@@ -623,7 +636,7 @@ def test_django_chat_stream_and_scopes():
         **auth_header(),
     )
     assert resp.status_code == 200
-    content = b"".join(resp.streaming_content).decode("utf-8")
+    content = get_stream_text(resp)
     assert "data: " in content
 
 

@@ -105,7 +105,7 @@ def test_updater_script_syncs_internal_folder_with_robocopy_before_the_exe():
         content = script_path.read_text(encoding="utf-8")
         robocopy_line = f'robocopy "{paths["staging_internal"]}" "{paths["current_internal"]}" /MIR'
         assert robocopy_line in content
-        assert "if %errorlevel% GEQ 8" in content
+        assert "if %robo_rc% GEQ 8" in content or "if %errorlevel% GEQ 8" in content
         assert "if errorlevel 1" not in content.split(robocopy_line)[1].split("move /y")[0]
         # _internal\ must sync before the exe swap, not after -- a half-updated build (new exe,
         # old DLLs or vice versa) is worse than either version cleanly in place.
@@ -164,19 +164,29 @@ def test_apply_update_launches_swap_script_with_a_console(monkeypatch, tmp_path)
     zip_bytes = zip_buf.getvalue()
 
     class _FakeResponse:
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *exc):
+        async def __aexit__(self, *exc):
             return False
 
         def raise_for_status(self):
             pass
 
-        def iter_bytes(self):
+        async def aiter_bytes(self):
             yield zip_bytes
 
-    monkeypatch.setattr(updater.httpx, "stream", lambda *a, **kw: _FakeResponse())
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        def stream(self, *a, **kw):
+            return _FakeResponse()
+
+    monkeypatch.setattr(updater, "new_async_client", lambda *a, **kw: _FakeClient())
     monkeypatch.setattr(updater.threading, "Timer", lambda *a, **kw: type("T", (), {"start": lambda self: None})())
 
     captured = {}
@@ -188,7 +198,8 @@ def test_apply_update_launches_swap_script_with_a_console(monkeypatch, tmp_path)
 
     monkeypatch.setattr(updater.subprocess, "Popen", fake_popen)
 
-    updater.apply_update("https://github.com/AngelDann/RAGPoC-App-Code/releases/download/v9/RAGPoC-windows.zip")
+    import asyncio
+    asyncio.run(updater.apply_update("https://github.com/AngelDann/RAGPoC-App-Code/releases/download/v9/RAGPoC-windows.zip"))
 
     flags = captured["kwargs"]["creationflags"]
     assert flags & subprocess.CREATE_NO_WINDOW

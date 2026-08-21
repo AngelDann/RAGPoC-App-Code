@@ -1283,11 +1283,17 @@ def generate_artifact_stream_view(request: HttpRequest) -> HttpResponse:
     settings = get_settings()
     rag = get_rag_service()
 
-    def event_stream():
+    # `async def` (not a plain generator) so StreamingHttpResponse's ASGI path treats this as a
+    # genuine async iterator and forwards each `yield` to the client as it happens. A synchronous
+    # generator here hits Django's `__aiter__` fallback (see django/http/response.py), which
+    # buffers the ENTIRE generator into a list via sync_to_async before sending anything -- i.e.
+    # no streaming at all, just a long wait followed by the whole response landing in one burst.
+    async def event_stream():
         import queue
         import threading
 
         q: queue.Queue = queue.Queue()
+        loop = asyncio.get_running_loop()
 
         def background_task():
             try:
@@ -1346,7 +1352,10 @@ def generate_artifact_stream_view(request: HttpRequest) -> HttpResponse:
 
         while True:
             try:
-                item = q.get(timeout=180)
+                # q.get() blocks the calling thread, so it runs in the default executor instead
+                # of directly on the ASGI event loop -- otherwise it would stall every other
+                # request this server is handling until an item shows up.
+                item = await loop.run_in_executor(None, lambda: q.get(timeout=180))
                 if item is None:
                     break
                 yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
@@ -1514,15 +1523,22 @@ def inline_ai_action_stream_view(request: HttpRequest) -> HttpResponse:
 
     action, chosen_system, user_message = _build_inline_ai_prompt(body)
 
-    def event_stream():
+    # `async def` (not a plain generator) so StreamingHttpResponse's ASGI path treats this as a
+    # genuine async iterator and sends each `yield` to the client as it happens. A synchronous
+    # generator here would hit Django's `__aiter__` fallback (see django/http/response.py), which
+    # buffers the ENTIRE generator into a list via sync_to_async before sending anything -- i.e.
+    # no streaming at all, just a long wait followed by the whole response landing in one burst.
+    # AsyncOpenAI (not the sync client) is what makes `async for chunk in stream` possible below
+    # without blocking the event loop on the underlying HTTP read.
+    async def event_stream():
         started = time.perf_counter()
         try:
-            from openai import OpenAI
-            client = OpenAI(
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=settings.openrouter_api_key,
             )
-            stream = client.chat.completions.create(
+            stream = await client.chat.completions.create(
                 model=settings.chat_model,
                 messages=[
                     {"role": "system", "content": chosen_system},
@@ -1535,7 +1551,7 @@ def inline_ai_action_stream_view(request: HttpRequest) -> HttpResponse:
 
             input_tokens = 0
             output_tokens = 0
-            for chunk in stream:
+            async for chunk in stream:
                 if chunk.choices:
                     delta = chunk.choices[0].delta.content
                     if delta:
@@ -1545,7 +1561,7 @@ def inline_ai_action_stream_view(request: HttpRequest) -> HttpResponse:
                     input_tokens = usage.prompt_tokens or 0
                     output_tokens = usage.completion_tokens or 0
 
-            record_usage(
+            await sync_to_async(record_usage)(
                 category="inline_ai",
                 action=f"inline_ai:{action}",
                 model=settings.chat_model,
@@ -1555,7 +1571,7 @@ def inline_ai_action_stream_view(request: HttpRequest) -> HttpResponse:
             )
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
-            record_usage(
+            await sync_to_async(record_usage)(
                 category="inline_ai",
                 action=f"inline_ai:{action}",
                 model=settings.chat_model,
@@ -1826,7 +1842,7 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"detail": "La pregunta no puede estar vacía."}, status=422)
 
     scope = body.get("scope", "workspace")
-    if scope not in {"notebook", "workspace"}:
+    if scope not in {"notebook", "workspace", "page"}:
         return JsonResponse({"detail": "Invalid scope."}, status=422)
 
     page_id = body.get("page_id")
@@ -1846,6 +1862,14 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
         if not notebook_id:
             return JsonResponse({"detail": "notebook_id is required for this scope."}, status=422)
         selected = {"notebook_id": notebook_id}
+    elif scope == "page":
+        if notebook_id:
+            selected = {"notebook_id": notebook_id}
+        elif page_id:
+            p_nb = Page.objects.filter(id=page_id).values_list("notebook_id", flat=True).first()
+            selected = {"notebook_id": p_nb} if p_nb else {}
+        else:
+            selected = {}
     else:
         nb_ids = list(Notebook.objects.filter(workspace_id=workspace_id).values_list("id", flat=True)) if workspace_id else []
         selected = {"notebook_ids": nb_ids}
@@ -1880,34 +1904,42 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
     rag = get_rag_service()
     settings = get_settings()
 
-    def event_stream():
+    # `async def` (not a plain generator) so StreamingHttpResponse's ASGI path treats this as a
+    # genuine async iterator and forwards each `yield` to the client as it happens. A synchronous
+    # generator here hits Django's `__aiter__` fallback (see django/http/response.py), which
+    # buffers the ENTIRE generator into a list via sync_to_async before sending anything -- i.e.
+    # no streaming at all, just a long wait followed by the whole response landing in one burst.
+    async def event_stream():
         import queue
         import threading
 
         q = queue.Queue()
-
-        # 1. Fold in what the user is actually looking at right now: the open page's own text
-        # (independent of chat scope — this fires whenever a page happens to be open), plus
-        # whatever's selected in the editor or, failing that, the text immediately around the
-        # cursor, so the agent knows what part of a possibly-long page the question is about.
-        page_direct_text = ""
-        selected_text = (body.get("selected_text") or "").strip()
-        cursor_text = (body.get("cursor_text") or "").strip()
-        if page_id:
-            try:
-                p = Page.objects.select_related("notebook").get(id=page_id)
-                if p.plain_text:
-                    page_direct_text = f"\n[TEXTO DE LA NOTA ACTUAL (Título: {p.title}, Cuaderno: {p.notebook.name})]:\n{p.plain_text}\n"
-                if selected_text:
-                    page_direct_text += f"\n[TEXTO SELECCIONADO POR EL USUARIO EN EL EDITOR AHORA MISMO]:\n{selected_text}\n"
-                elif cursor_text:
-                    page_direct_text += f"\n[CONTEXTO ALREDEDOR DEL CURSOR DEL USUARIO EN EL EDITOR]:\n…{cursor_text}…\n"
-            except Exception:
-                pass
+        asgi_loop = asyncio.get_running_loop()
 
         def background_task():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+            # Fold in what the user is actually looking at right now: the open page's own text
+            # (independent of chat scope — this fires whenever a page happens to be open), plus
+            # whatever's selected in the editor or, failing that, the text immediately around the
+            # cursor, so the agent knows what part of a possibly-long page the question is about.
+            # Computed here (a plain OS thread) rather than in event_stream's own body -- that body
+            # now runs directly on the ASGI event loop, where a synchronous ORM call like this one
+            # would raise Django's SynchronousOnlyOperation.
+            page_direct_text = ""
+            selected_text = (body.get("selected_text") or "").strip()
+            cursor_text = (body.get("cursor_text") or "").strip()
+            if page_id:
+                try:
+                    p = Page.objects.select_related("notebook").get(id=page_id)
+                    if p.plain_text:
+                        page_direct_text = f"\n[TEXTO DE LA NOTA ACTUAL (Título: {p.title}, Cuaderno: {p.notebook.name})]:\n{p.plain_text}\n"
+                    if selected_text:
+                        page_direct_text += f"\n[TEXTO SELECCIONADO POR EL USUARIO EN EL EDITOR AHORA MISMO]:\n{selected_text}\n"
+                    elif cursor_text:
+                        page_direct_text += f"\n[CONTEXTO ALREDEDOR DEL CURSOR DEL USUARIO EN EL EDITOR]:\n…{cursor_text}…\n"
+                except Exception:
+                    pass
             started = time.perf_counter()
             try:
                 # Fetch relevant RAG sources for citations card
@@ -2128,7 +2160,10 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
 
         while True:
             try:
-                item = q.get(timeout=60)
+                # q.get() blocks the calling thread, so it runs in the default executor instead
+                # of directly on the ASGI event loop -- otherwise it would stall every other
+                # request this server is handling until a token shows up.
+                item = await asgi_loop.run_in_executor(None, lambda: q.get(timeout=60))
                 if item is None:
                     break
                 yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"

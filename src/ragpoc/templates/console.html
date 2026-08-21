@@ -4271,6 +4271,73 @@
       return d;
     };
 
+    // XHR-based SSE reader for our `text/event-stream` POST endpoints. `fetch()` + `body.getReader()`
+    // is the standard way to consume these, but inside the desktop app's embedded WebView2 control
+    // it doesn't deliver chunks incrementally -- the reader only resolves once the whole response has
+    // completed, even though the exact same request streams token-by-token in a regular browser tab
+    // hitting the same server. XHR's `onprogress` firing against the growing `responseText` is the one
+    // delivery path that control handles correctly, so every SSE-over-POST call reads through this
+    // instead of fetch+getReader().
+    async function* postEventStream(url, body) {
+      let xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+
+      let buf = '';
+      let readOffset = 0;
+      let queue = [];
+      let wake = null;
+      let finished = false;
+      let failure = null;
+
+      function drain() {
+        let text = xhr.responseText;
+        if (text.length > readOffset) {
+          buf += text.slice(readOffset);
+          readOffset = text.length;
+          let i;
+          while ((i = buf.indexOf('\n\n')) >= 0) {
+            let raw = buf.slice(0, i);
+            buf = buf.slice(i + 2);
+            if (raw.startsWith('data: ')) {
+              try { queue.push(JSON.parse(raw.slice(6))); } catch { /* partial/malformed frame, skip */ }
+            }
+          }
+        }
+        if (wake) { let w = wake; wake = null; w(); }
+      }
+
+      xhr.onprogress = drain;
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+          drain();
+          if (xhr.status < 200 || xhr.status >= 300) {
+            let detail;
+            try { detail = JSON.parse(xhr.responseText).detail; } catch { /* non-JSON error body */ }
+            failure = new Error(detail || `Error ${xhr.status}: ${xhr.statusText}`);
+          }
+          finished = true;
+          if (wake) { let w = wake; wake = null; w(); }
+        }
+      };
+      xhr.onerror = () => {
+        failure = new Error('No se pudo conectar con el servidor local. Comprueba que RAGPoC siga en ejecución.');
+        finished = true;
+        if (wake) { let w = wake; wake = null; w(); }
+      };
+
+      xhr.send(JSON.stringify(body));
+
+      while (true) {
+        while (queue.length) yield queue.shift();
+        if (finished) {
+          if (failure) throw failure;
+          return;
+        }
+        await new Promise(resolve => { wake = resolve; });
+      }
+    }
+
     // Replaces a native <select> with an app-styled dropdown, so its option list never
     // renders via browser/OS chrome. The original <select> stays in the DOM (invisible) as
     // the single source of truth: existing code can keep reading/setting `.value` and
@@ -5319,38 +5386,14 @@
 
       try {
         let fullContext = editor.getText();
-        let r = await fetch('/api/ai/inline-action-stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: action,
-            prompt: prompt,
-            context_text: fullContext,
-            page_id: currentPage?.id || null,
-          })
-        });
-
-        if (!r.ok) {
-          let errBody = await r.json().catch(() => ({}));
-          throw new Error(errBody.detail || `Error ${r.status}: ${r.statusText}`);
-        }
-
-        let reader = r.body.getReader();
-        let dec = new TextDecoder();
-        let buf = '';
         let streamErr = null;
 
-        while (true) {
-          let { value, done } = await reader.read();
-          if (done) break;
-          buf += dec.decode(value, { stream: true });
-          let i;
-          while ((i = buf.indexOf('\n\n')) >= 0) {
-            let raw = buf.slice(0, i);
-            buf = buf.slice(i + 2);
-            if (!raw.startsWith('data: ')) continue;
-            let ev = JSON.parse(raw.slice(6));
-
+        for await (let ev of postEventStream('/api/ai/inline-action-stream', {
+          action: action,
+          prompt: prompt,
+          context_text: fullContext,
+          page_id: currentPage?.id || null,
+        })) {
             if (ev.type === 'token') {
               if (firstToken && onTargetPage()) {
                 // Clear the "Generando…" placeholder as soon as real content starts arriving
@@ -5367,7 +5410,6 @@
             if (ev.type === 'done') {
               flushRender();
             }
-          }
         }
 
         if (streamErr) throw new Error(streamErr);
@@ -6402,42 +6444,19 @@
     const STREAMING_ARTIFACT_TYPES = new Set(['infographic', 'timeline', 'podcast']);
 
     async function generateArtifactStreaming(artifactType, extraBody, onStatus) {
-      let resp = await fetch('/api/artifacts/generate-stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          artifact_type: artifactType,
-          ...extraBody,
-        }),
-      });
-      if (!resp.ok) {
-        let err = await resp.json().catch(() => ({}));
-        throw new Error(err.detail || `Error ${resp.status} generando el artefacto.`);
-      }
-
-      let reader = resp.body.getReader();
-      let dec = new TextDecoder();
-      let buf = '';
       let finalArtifact = null;
       let streamError = null;
 
-      while (true) {
-        let { value, done } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        let i;
-        while ((i = buf.indexOf('\n\n')) >= 0) {
-          let raw = buf.slice(0, i);
-          buf = buf.slice(i + 2);
-          if (!raw.startsWith('data: ')) continue;
-          let ev = JSON.parse(raw.slice(6));
-          if (ev.type === 'status' && onStatus) {
-            onStatus(ev.message);
-          } else if (ev.type === 'done') {
-            finalArtifact = ev.artifact;
-          } else if (ev.type === 'error') {
-            streamError = ev.detail;
-          }
+      for await (let ev of postEventStream('/api/artifacts/generate-stream', {
+        artifact_type: artifactType,
+        ...extraBody,
+      })) {
+        if (ev.type === 'status' && onStatus) {
+          onStatus(ev.message);
+        } else if (ev.type === 'done') {
+          finalArtifact = ev.artifact;
+        } else if (ev.type === 'error') {
+          streamError = ev.detail;
         }
       }
 
@@ -9199,30 +9218,6 @@
           }
         }
 
-        let r = await fetch('/chat/stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            question: q,
-            scope: effectiveScope,
-            page_id: currentPage?.id || null,
-            notebook_id: await getTargetNotebookId(),
-            workspace_id: workspace?.id || null,
-            thread_id: ctx.threadId,
-            attachments: attsToSend,
-            selected_text: selectedText,
-            cursor_text: cursorText,
-          })
-        });
-
-        if (!r.ok) {
-          let errBody = await r.json().catch(() => ({}));
-          throw new Error(errBody.detail || `Error ${r.status}: ${r.statusText}`);
-        }
-
-        let reader = r.body.getReader();
-        let dec = new TextDecoder();
-        let buf = '';
         let fullAnswerMarkdown = '';
         let renderTimer = null;
 
@@ -9288,16 +9283,17 @@
           renderPageWriteBuffer();
         }
 
-        while (true) {
-          let { value, done } = await reader.read();
-          if (done) break;
-          buf += dec.decode(value, { stream: true });
-          let i;
-          while ((i = buf.indexOf('\n\n')) >= 0) {
-            let raw = buf.slice(0, i);
-            buf = buf.slice(i + 2);
-            if (!raw.startsWith('data: ')) continue;
-            let ev = JSON.parse(raw.slice(6));
+        for await (let ev of postEventStream('/chat/stream', {
+          question: q,
+          scope: effectiveScope,
+          page_id: currentPage?.id || null,
+          notebook_id: await getTargetNotebookId(),
+          workspace_id: workspace?.id || null,
+          thread_id: ctx.threadId,
+          attachments: attsToSend,
+          selected_text: selectedText,
+          cursor_text: cursorText,
+        })) {
             if (ev.type === 'thread_init') {
               setContextThread(ctx, sendKey, ev.thread_id);
               if (sendKey === activeChatContextKey) loadThreadsForScope();
@@ -9398,7 +9394,6 @@
                 }
               }
             }
-          }
         }
         flushRender();
       } catch (err) {
