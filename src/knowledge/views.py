@@ -17,9 +17,6 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.static import serve as serve_static_file
-from pydantic_ai import BinaryContent
-from pydantic_ai.messages import ModelMessagesTypeAdapter, ModelRequest
-
 from knowledge.models import (
     AgentMemory,
     AgentSkill,
@@ -34,7 +31,6 @@ from knowledge.models import (
     Workspace,
     calculate_content_hash,
 )
-from knowledge.pydantic_agent import AgentDeps, create_pydantic_rag_agent
 from knowledge.services import get_rag_service, reset_rag_service
 from knowledge.settings_store import (
     get_api_key_status,
@@ -43,7 +39,6 @@ from knowledge.settings_store import (
 )
 from knowledge.settings_store import get_effective_settings as get_settings
 from knowledge.usage import fetch_openrouter_key_status, record_usage, usage_summary
-from ragpoc.artifact_pdf import render_artifact_pdf, render_page_pdf
 from ragpoc.updater import UpdateError, apply_update, check_for_update
 
 
@@ -1186,6 +1181,8 @@ def download_artifact_pdf_view(request: HttpRequest, artifact_id: str) -> HttpRe
     except NotebookArtifact.DoesNotExist:
         return JsonResponse({"detail": "Artifact not found."}, status=404)
 
+    from ragpoc.artifact_pdf import render_artifact_pdf
+
     pdf_bytes = render_artifact_pdf(artifact.title, artifact.artifact_type, artifact.content, artifact.metadata_json)
 
     slug = re.sub(r"[^a-z0-9]+", "-", (artifact.title or "artefacto").lower()).strip("-")[:60] or "artefacto"
@@ -1386,6 +1383,8 @@ def download_page_pdf_view(request: HttpRequest, page_id: str) -> HttpResponse:
 
     title = (body.get("title") or page.title or "Untitled").strip()
     html = body.get("html") or ""
+
+    from ragpoc.artifact_pdf import render_page_pdf
 
     pdf_bytes = render_page_pdf(title, html)
 
@@ -1948,6 +1947,10 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                     q.put({"type": "token", "text": "OPENROUTER_API_KEY no está configurada."})
                     q.put({"type": "done"})
                     return
+
+                from pydantic_ai import BinaryContent
+                from pydantic_ai.messages import ModelMessagesTypeAdapter
+                from knowledge.pydantic_agent import AgentDeps, create_pydantic_rag_agent
 
                 agent_instance = create_pydantic_rag_agent(settings)
                 deps = AgentDeps(

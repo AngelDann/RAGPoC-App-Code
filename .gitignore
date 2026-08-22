@@ -12,6 +12,7 @@ dist/
 .playwright-mcp/
 .hermes/
 .claude/scheduled_tasks.lock
+.agents/
 
 # Keep empty data directory structure in the repository.
 !data/.gitkeep

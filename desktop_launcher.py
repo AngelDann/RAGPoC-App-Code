@@ -404,10 +404,17 @@ def _run_boot(state: dict, on_progress) -> None:
 
     django.setup()
 
-    # Run auto-migrations on startup
+    # Run auto-migrations on startup (fast-path: check if migrations are pending)
     try:
-        on_progress("Verificando base de datos y migraciones...")
-        call_command("migrate", interactive=False)
+        on_progress("Verificando base de datos...")
+        from django.db import connection
+        from django.db.migrations.executor import MigrationExecutor
+
+        executor = MigrationExecutor(connection)
+        targets = executor.loader.graph.leaf_nodes()
+        if executor.migration_plan(targets):
+            on_progress("Aplicando migraciones...")
+            call_command("migrate", interactive=False)
     except Exception as e:
         print(f"Aviso en migraciones: {e}")
         # Not every migrate failure means the database is actually unusable -- some are benign

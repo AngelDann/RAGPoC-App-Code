@@ -31,6 +31,32 @@
           borderBottom: '2px solid #ff6b6b', boxShadow: '0 2px 8px rgba(0,0,0,.4)',
           whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '40vh', overflowY: 'auto',
         });
+
+        var header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+        header.style.marginBottom = '6px';
+        header.style.borderBottom = '1px solid rgba(255,255,255,0.15)';
+        header.style.paddingBottom = '4px';
+
+        var title = document.createElement('strong');
+        title.textContent = 'Aviso del Sistema / Diagnóstico RAGPoC';
+        header.appendChild(title);
+
+        var closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.textContent = '✕ Cerrar';
+        Object.assign(closeBtn.style, {
+          background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none',
+          padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px',
+        });
+        closeBtn.onclick = function () {
+          if (banner) banner.style.display = 'none';
+        };
+        header.appendChild(closeBtn);
+        banner.appendChild(header);
+
         (document.body || document.documentElement).appendChild(banner);
         return banner;
       }
@@ -47,24 +73,41 @@
         node.style.marginTop = '4px';
         seen[key] = { count: 1, node: node };
         bannerEl().appendChild(node);
+        if (banner) banner.style.display = '';
       }
 
-      // capture: true, not the default bubble phase: a resource load failure (a <script src>
-      // or <link> that 404s or times out) fires a plain 'error' event on that element and does
-      // NOT bubble -- only the capture phase on window sees it. Without this, the handler would
-      // only ever see synchronous JS exceptions, missing exactly the CDN/vendor-file-missing
-      // case this was built for.
+      // capture: true: checks resource loading. Only report critical script/link assets
+      // as fatal startup failures. Non-critical runtime media (img, audio, video, iframe)
+      // are ignored by this banner so they don't produce false fatal crash screens.
       window.addEventListener('error', function (e) {
         if (e && e.target && e.target !== window && e.target.tagName) {
-          report('No se pudo cargar: ' + (e.target.src || e.target.href || e.target.tagName));
+          var tag = e.target.tagName.toUpperCase();
+          if (tag === 'SCRIPT' || tag === 'LINK') {
+            report('No se pudo cargar el recurso crítico: ' + (e.target.src || e.target.href || tag));
+          } else {
+            console.warn('[RAGPoC] Recurso no disponible (no crítico):', e.target.src || e.target.href || tag);
+          }
         } else {
-          report((e && e.message) || 'Error de JavaScript desconocido');
+          // Ignore benign/extension errors
+          var msg = (e && e.message) ? String(e.message) : '';
+          if (msg && (msg.includes('ResizeObserver') || msg.includes('Script error.'))) {
+            return;
+          }
+          report(msg || 'Error de JavaScript desconocido');
         }
       }, true);
 
       window.addEventListener('unhandledrejection', function (e) {
         var reason = e && e.reason;
-        report('Promesa sin manejar: ' + (reason && reason.message ? reason.message : reason));
+        if (reason && (reason.name === 'AbortError' || reason.name === 'TimeoutError')) {
+          console.warn('[RAGPoC] Solicitud cancelada o tiempo de espera alcanzado:', reason.message || reason);
+          return;
+        }
+        var msg = reason && reason.message ? reason.message : String(reason || '');
+        if (msg && (msg.includes('ResizeObserver') || msg.includes('clipboard') || msg.includes('user aborted'))) {
+          return;
+        }
+        console.error('[RAGPoC] Promesa rechazada no manejada:', reason);
       });
     })();
   </script>
@@ -1779,15 +1822,14 @@
 
     .chat-controls-bar {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: nowrap;
-      gap: 8px;
+      flex-direction: column;
+      gap: 6px;
       padding: 8px 12px;
       border-top: 1px solid var(--border-warm);
       background: var(--sidebar-bg);
       flex-shrink: 0;
       width: 100%;
+      box-sizing: border-box;
       overflow: visible !important;
       position: relative;
       z-index: 25;
@@ -1795,8 +1837,64 @@
 
     .app-shell.chat-focus-mode .chat-controls-bar {
       background: var(--card-bg);
-      padding: 8px 16px;
+      padding: 10px 16px;
       border-top: 1px solid var(--border-warm);
+    }
+
+    .chat-controls-row-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .chat-controls-row-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .active-thread-banner-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      flex: 1 1 auto;
+      overflow: hidden;
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      background: #fbf9f4;
+      border: 1px solid var(--border-warm);
+      transition: all 0.15s ease;
+      box-sizing: border-box;
+    }
+
+    .active-thread-banner-wrap:hover {
+      background-color: #f2ece0;
+      border-color: #8c867a;
+    }
+
+    .active-thread-banner-wrap:hover .action-mini-btn {
+      color: var(--accent, #9e5b23);
+      border-color: #b58d55;
+    }
+
+    .active-thread-title-text {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+      flex: 1 1 auto;
+      display: block;
     }
 
     .dropdown-menu {
@@ -1840,6 +1938,9 @@
       transition: all 0.14s cubic-bezier(0.16, 1, 0.3, 1);
       cursor: pointer;
       border-radius: var(--radius-sm);
+      min-width: 0;
+      width: 100%;
+      box-sizing: border-box;
     }
 
     .thread-item-row:hover {
@@ -1852,8 +1953,59 @@
       border-left: 2px solid var(--accent, #9e5b23);
     }
 
+    .thread-item-content {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow: hidden;
+      flex: 1 1 auto;
+      min-width: 0;
+      cursor: pointer;
+    }
+
+    .thread-item-meta {
+      overflow: hidden;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .thread-item-title {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--text-dark, #2d2926);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+      display: block;
+    }
+
+    .thread-item-actions {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      flex-shrink: 0;
+      margin-left: 4px;
+    }
+
     .thread-item-row.fade-in {
       animation: threadItemSlide 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @media (max-width: 520px) {
+      .chat-controls-bar {
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 6px 10px;
+      }
+      .chat-controls-left {
+        width: 100%;
+        flex: 1 1 100%;
+      }
+      .chat-controls-right {
+        width: 100%;
+        justify-content: flex-end;
+      }
     }
 
     @keyframes threadItemSlide {
@@ -3148,7 +3300,7 @@
 
   <!-- Text Input Modal (replaces native window.prompt()) -->
   <div class="modal-backdrop-custom" id="input-modal-backdrop">
-    <div class="craft-dialog" style="max-width: 440px;">
+    <div class="craft-dialog" style="max-width: 440px; width: min(440px, calc(100vw - 32px));">
       <div class="d-flex justify-content-between align-items-center p-3 px-4 border-bottom"
         style="background: var(--sidebar-bg);">
         <div class="fw-bold fs-6 d-flex align-items-center gap-2" id="input-modal-title">
@@ -4018,18 +4170,34 @@
           </button>
         </div>
 
-        <!-- Modern Single-Row Chat Controls Sub-Header -->
+        <!-- Chat Controls Sub-Header: Clean 2-Row Layout -->
         <div id="chat-controls-subhdr" class="chat-controls-bar">
-          <!-- Left: Grounded Scope Selector & Active Thread Banner -->
-          <div class="d-flex align-items-center gap-1 flex-1 position-relative">
+          <!-- Row 1: Active Thread Title, Rename Pencil & New Thread Button -->
+          <div class="chat-controls-row-top">
+            <div class="active-thread-banner-wrap" id="active-thread-banner" title="Conversación actual — clic para renombrar">
+              <i class="bi bi-chat-quote-fill flex-shrink-0" style="font-size:12px; color: var(--accent, #9e5b23);"></i>
+              <span class="active-thread-title-text" id="active-thread-title">Nueva conversación</span>
+              <button type="button" class="action-mini-btn flex-shrink-0" id="btn-rename-thread-header" title="Renombrar conversación" style="padding:1px 5px; font-size:10.5px;">
+                <i class="bi bi-pencil"></i>
+              </button>
+            </div>
+            <button class="btn-craft btn-craft-primary btn-sm d-flex align-items-center gap-1 flex-shrink-0" id="new-thread-btn" title="Iniciar nueva conversación en blanco" style="padding: 4px 10px; font-size:11.5px; font-weight:600;">
+              <i class="bi bi-plus-lg"></i> <span>Nuevo</span>
+            </button>
+          </div>
+
+          <!-- Row 2: Grounded Scope Selector & History Menu -->
+          <div class="chat-controls-row-bottom">
             <select id="chat-scope" style="display:none;">
               <option value="notebook" selected>Este cuaderno</option>
               <option value="workspace">Todo el espacio</option>
             </select>
-            <div class="dropdown position-relative flex-shrink-0">
-              <button class="btn-craft btn-sm dropdown-toggle d-flex align-items-center gap-1 text-truncate" type="button" id="chat-scope-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Cambiar ámbito de búsqueda" style="padding: 3px 6px; font-size:11px;">
-                <i class="bi bi-journal-bookmark-fill text-primary" id="chat-scope-icon" style="font-size:12px;"></i>
-                <span id="chat-scope-label" class="fw-semibold small text-truncate">Este cuaderno</span>
+            <div class="dropdown position-relative flex-1" style="min-width:0;">
+              <button class="btn-craft btn-sm dropdown-toggle d-flex align-items-center justify-content-between gap-1 w-100 text-truncate" type="button" id="chat-scope-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Cambiar ámbito de búsqueda" style="padding: 3px 8px; font-size:11px;">
+                <span class="d-flex align-items-center gap-1 text-truncate">
+                  <i class="bi bi-journal-bookmark-fill text-primary flex-shrink-0" id="chat-scope-icon" style="font-size:12px;"></i>
+                  <span id="chat-scope-label" class="fw-semibold small text-truncate">Este cuaderno</span>
+                </span>
               </button>
               <ul class="dropdown-menu shadow border-0 p-1" style="font-size:12px; min-width:240px; z-index:1050;">
                 <li>
@@ -4059,23 +4227,12 @@
               </ul>
             </div>
 
-            <!-- Active Thread Title -->
-            <div class="d-flex align-items-center gap-1 overflow-hidden" id="active-thread-banner" style="max-width: 180px;">
-              <span class="text-muted small text-truncate" id="active-thread-title" style="font-size:11px; font-weight:500;" title="Conversación actual">Nueva conversación</span>
-              <button type="button" class="action-mini-btn" id="btn-rename-thread-header" title="Renombrar conversación" style="display:none; padding:1px 4px;">
-                <i class="bi bi-pencil" style="font-size:10px;"></i>
-              </button>
-            </div>
-          </div>
-
-          <!-- Right: History Menu & New Thread -->
-          <div class="d-flex align-items-center gap-1 flex-shrink-0">
-            <div class="dropdown position-relative">
-              <button class="btn-craft btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" id="threads-history-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Historial de conversaciones" style="padding: 3px 6px; font-size:11px;">
+            <div class="dropdown position-relative flex-shrink-0">
+              <button class="btn-craft btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" id="threads-history-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Historial de conversaciones" style="padding: 3px 8px; font-size:11px;">
                 <i class="bi bi-clock-history text-secondary" style="font-size:12px;"></i>
                 <span class="small" id="threads-history-count">Historial</span>
               </button>
-              <div class="dropdown-menu dropdown-menu-end shadow border-0 p-2" style="width: 270px; max-width: min(290px, 90vw); max-height: 380px; z-index: 1050;">
+              <div class="dropdown-menu dropdown-menu-end shadow border-0 p-2" style="width: 290px; max-width: min(340px, 92vw); max-height: 390px; z-index: 1050;">
                 <div class="d-flex justify-content-between align-items-center px-2 py-1 mb-1 border-bottom">
                   <span class="fw-bold small text-secondary" style="font-size:11px;">Historial de Chats</span>
                   <span class="badge rounded-pill bg-light text-muted border" id="threads-badge-total" style="font-size:10px; font-weight:500;">0</span>
@@ -4099,10 +4256,6 @@
                 </div>
               </div>
             </div>
-
-            <button class="btn-craft btn-craft-primary btn-sm d-flex align-items-center gap-1" id="new-thread-btn" title="Iniciar nueva conversación en blanco" style="padding: 3px 8px; font-size:11px;">
-              <i class="bi bi-plus-lg"></i> <span>Nuevo</span>
-            </button>
           </div>
         </div>
 
@@ -4311,15 +4464,118 @@
     </aside>
   </div>
 
-  <!-- Scripts -->
+  <!-- Scripts (critical base libraries) -->
   <script src="/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/vendor/mermaid/mermaid.min.js"></script>
-  <script>mermaid.initialize({ startOnLoad: false, theme: 'neutral' });</script>
   <script src="/vendor/katex/katex.min.js"></script>
-  <script src="/vendor/chartjs/chart.umd.js"></script>
-  <script src="/vendor/jspdf/jspdf.umd.min.js"></script>
-  <script src="/vendor/html2canvas/html2canvas.min.js"></script>
   <script type="module">
+    // Dynamic / on-demand loaders for non-critical heavy vendor libraries
+    const _loadedScripts = new Map();
+    function loadScript(src) {
+      if (_loadedScripts.has(src)) return _loadedScripts.get(src);
+      let p = new Promise((resolve, reject) => {
+        if (src.includes('katex') && window.katex) return resolve();
+        if (src.includes('chart') && window.Chart) return resolve();
+        if (src.includes('mermaid') && window.mermaid) return resolve();
+
+        let existing = document.querySelector(`script[src="${src}"]`);
+        if (existing) {
+          if (existing.dataset.loaded === 'true' || existing.readyState === 'complete' || existing.readyState === 'loaded') {
+            return resolve();
+          }
+          existing.addEventListener('load', () => resolve(), { once: true });
+          existing.addEventListener('error', (e) => reject(e), { once: true });
+          // Fallback timeout in case the load event already fired
+          setTimeout(() => {
+            if (src.includes('katex') && window.katex) return resolve();
+            if (src.includes('chart') && window.Chart) return resolve();
+            if (src.includes('mermaid') && window.mermaid) return resolve();
+            resolve();
+          }, 500);
+          return;
+        }
+        let script = document.createElement('script');
+        script.src = src;
+        script.onload = () => {
+          script.dataset.loaded = 'true';
+          resolve();
+        };
+        script.onerror = (e) => reject(e);
+        document.head.appendChild(script);
+      });
+      _loadedScripts.set(src, p);
+      return p;
+    }
+
+    async function ensureMermaid() {
+      if (!window.mermaid) {
+        try {
+          await loadScript('/vendor/mermaid/mermaid.min.js');
+          if (window.mermaid) {
+            window.mermaid.initialize({ startOnLoad: false, theme: 'neutral', suppressErrors: true });
+          }
+        } catch (e) {
+          console.warn('[RAGPoC] No se pudo cargar la librería Mermaid:', e);
+        }
+      }
+      return window.mermaid;
+    }
+
+    async function runMermaidOnNodes(nodes) {
+      if (!nodes || (nodes.length !== undefined && nodes.length === 0)) return;
+      try {
+        let m = await ensureMermaid();
+        if (!m) return;
+        let nodeArray = nodes instanceof NodeList || Array.isArray(nodes) ? Array.from(nodes) : [nodes];
+        for (let node of nodeArray) {
+          if (!node || node.dataset.mermaidProcessed === 'true') continue;
+          try {
+            await m.run({ nodes: [node], suppressErrors: true });
+            node.dataset.mermaidProcessed = 'true';
+          } catch (diagramErr) {
+            console.warn('[Mermaid] Error de sintaxis en diagrama:', diagramErr);
+            node.dataset.mermaidProcessed = 'true';
+            node.innerHTML = `
+              <div class="p-2 border border-danger-subtle bg-danger-subtle text-danger rounded small text-start my-1" style="font-family:var(--font-sans);">
+                <div class="fw-semibold"><i class="bi bi-exclamation-triangle-fill me-1"></i> Error en la sintaxis del diagrama Mermaid</div>
+                <div class="text-muted small mt-1 font-monospace" style="max-height:80px; overflow:auto; font-size:11px;">${esc(diagramErr?.message || String(diagramErr))}</div>
+              </div>
+            `;
+          }
+        }
+      } catch (err) {
+        console.warn('[RAGPoC] Error general en el renderizador de diagramas Mermaid:', err);
+      }
+    }
+
+    async function ensureKatex() {
+      if (!window.katex) {
+        try {
+          await loadScript('/vendor/katex/katex.min.js');
+        } catch (e) {
+          console.warn('[RAGPoC] No se pudo cargar la librería KaTeX:', e);
+        }
+      }
+      return window.katex;
+    }
+
+    async function ensureChart() {
+      if (!window.Chart) {
+        try {
+          await loadScript('/vendor/chartjs/chart.umd.js');
+        } catch (e) {
+          console.warn('[RAGPoC] No se pudo cargar la librería Chart.js:', e);
+        }
+      }
+      return window.Chart;
+    }
+
+    async function ensurePdfExportLibs() {
+      await Promise.all([
+        window.html2canvas ? Promise.resolve() : loadScript('/vendor/html2canvas/html2canvas.min.js').catch(e => console.warn('html2canvas load failed', e)),
+        window.jspdf ? Promise.resolve() : loadScript('/vendor/jspdf/jspdf.umd.min.js').catch(e => console.warn('jspdf load failed', e)),
+      ]);
+    }
+
     // One local import instead of 14 to esm.sh. The names are unchanged, so the body of this
     // module is untouched; the bundle is built by scripts/build_vendor.mjs and already has
     // TipTap 2.11.5 (every extension pinned to that same version), lowlight, marked and
@@ -4337,56 +4593,66 @@
     // empty or partial list items, blockquotes, or tables are rendered mid-stream.
     function sanitizeHtmlForTiptap(html) {
       if (!html || typeof html !== 'string') return html || '';
-      let doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
-      let body = doc.body;
+      try {
+        let doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+        let body = doc.body;
 
-      // 1. Ensure all <li> have at least one block child (<p></p>) if empty
-      body.querySelectorAll('li').forEach(li => {
-        if (!li.textContent.trim() && !li.querySelector('img, audio, video, iframe, input, canvas, svg, p, div, table, blockquote, pre, ul, ol')) {
-          li.innerHTML = '<p></p>';
-        }
-      });
+        // 1. Ensure all <li> have at least one block child (<p></p>) if empty
+        body.querySelectorAll('li').forEach(li => {
+          if (!li.textContent.trim() && !li.querySelector('img, audio, video, iframe, input, canvas, svg, p, div, table, blockquote, pre, ul, ol')) {
+            li.innerHTML = '<p></p>';
+          }
+        });
 
-      // 2. Ensure all <blockquote> have at least one block child (<p></p>) if empty
-      body.querySelectorAll('blockquote').forEach(bq => {
-        if (!bq.textContent.trim() && !bq.querySelector('img, audio, video, iframe, input, canvas, svg, p, div, table, blockquote, pre, ul, ol')) {
-          bq.innerHTML = '<p></p>';
-        }
-      });
+        // 2. Ensure all <blockquote> have at least one block child (<p></p>) if empty
+        body.querySelectorAll('blockquote').forEach(bq => {
+          if (!bq.textContent.trim() && !bq.querySelector('img, audio, video, iframe, input, canvas, svg, p, div, table, blockquote, pre, ul, ol')) {
+            bq.innerHTML = '<p></p>';
+          }
+        });
 
-      // 3. Ensure all <td> and <th> have at least one block child (<p></p>) if empty
-      body.querySelectorAll('td, th').forEach(cell => {
-        if (!cell.textContent.trim() && !cell.querySelector('img, audio, video, iframe, input, canvas, svg, p, div, table, blockquote, pre')) {
-          cell.innerHTML = '<p></p>';
-        }
-      });
+        // 3. Ensure all <td> and <th> have at least one block child (<p></p>) if empty
+        body.querySelectorAll('td, th').forEach(cell => {
+          if (!cell.textContent.trim() && !cell.querySelector('img, audio, video, iframe, input, canvas, svg, p, div, table, blockquote, pre')) {
+            cell.innerHTML = '<p></p>';
+          }
+        });
 
-      // 4. Ensure all <ul> and <ol> have at least one <li>
-      body.querySelectorAll('ul, ol').forEach(list => {
-        if (list.children.length === 0) {
-          list.innerHTML = '<li><p></p></li>';
-        }
-      });
+        // 4. Ensure all <ul> and <ol> have at least one <li>
+        body.querySelectorAll('ul, ol').forEach(list => {
+          if (list.children.length === 0) {
+            list.innerHTML = '<li><p></p></li>';
+          }
+        });
 
-      // 5. Ensure all <tr> have at least one cell, and <table> has rows
-      body.querySelectorAll('tr').forEach(tr => {
-        if (tr.children.length === 0) {
-          tr.innerHTML = '<td><p></p></td>';
-        }
-      });
-      body.querySelectorAll('table').forEach(tbl => {
-        if (tbl.children.length === 0) {
-          tbl.innerHTML = '<tbody><tr><td><p></p></td></tr></tbody>';
-        }
-      });
+        // 5. Ensure all <tr> have at least one cell, and <table> has rows
+        body.querySelectorAll('tr').forEach(tr => {
+          if (tr.children.length === 0) {
+            tr.innerHTML = '<td><p></p></td>';
+          }
+        });
+        body.querySelectorAll('table').forEach(tbl => {
+          if (tbl.children.length === 0) {
+            tbl.innerHTML = '<tbody><tr><td><p></p></td></tr></tbody>';
+          }
+        });
 
-      return body.innerHTML;
+        return body.innerHTML;
+      } catch (err) {
+        console.warn('[RAGPoC] Error sanitizing HTML for TipTap, falling back to DOMPurify:', err);
+        return DOMPurify.sanitize(html);
+      }
     }
 
     function renderMarkdownToHtml(md) {
       if (!md) return '';
-      let rawHtml = marked.parse(md);
-      return sanitizeHtmlForTiptap(rawHtml);
+      try {
+        let rawHtml = marked.parse(md);
+        return sanitizeHtmlForTiptap(rawHtml);
+      } catch (err) {
+        console.warn('[RAGPoC] Error parsing markdown, using plain text fallback:', err);
+        return `<p>${esc(md)}</p>`;
+      }
     }
 
     const lowlight = createLowlight(common);
@@ -4446,7 +4712,8 @@
         wrapper.appendChild(pre);
 
         let showingCode = false;
-        toggleBtn.onclick = () => {
+        toggleBtn.onclick = (e) => {
+          e.stopPropagation();
           showingCode = !showingCode;
           pre.style.display = showingCode ? '' : 'none';
           preview.style.display = showingCode ? 'none' : '';
@@ -4460,32 +4727,34 @@
         let renderSeq = 0;
         let renderInFlight = false;
         let pendingSource = null;
+        let lastRenderedSource = null;
+
         async function doRender(source) {
+          if (source === lastRenderedSource && preview.childNodes.length > 0) {
+            return;
+          }
           if (renderInFlight) {
-            // Renderers here have no cancellation API, so a second call started before the
-            // first settles would just leave the first one running forever in the background.
-            // Remember the latest source and pick it up once the in-flight one is done.
             pendingSource = source;
             return;
           }
           let seq = ++renderSeq;
           if (!source.trim()) {
+            lastRenderedSource = source;
             preview.innerHTML = `<span class="text-secondary small">${placeholderText}</span>`;
             return;
           }
           renderInFlight = true;
           try {
-            // No render() call here is trusted to resolve on its own; a malformed input must
-            // never be able to leave the block stuck on "rendering" forever.
             let timedOut = Symbol('timeout');
             let result = await Promise.race([
               render(source, preview),
               new Promise(resolve => setTimeout(() => resolve(timedOut), 8000)),
             ]);
             if (result === timedOut) throw new Error('Tiempo de espera agotado al renderizar.');
+            lastRenderedSource = source;
           } catch (e) {
             if (seq === renderSeq) {
-              preview.innerHTML = `<div class="text-danger small">Error: ${esc(e.message || String(e))}</div>`;
+              preview.innerHTML = `<div class="text-danger small p-2 rounded bg-danger-subtle border border-danger-subtle"><i class="bi bi-exclamation-circle-fill me-1"></i> Error al renderizar: ${esc(e.message || String(e))}</div>`;
             }
           } finally {
             renderInFlight = false;
@@ -4496,6 +4765,7 @@
             }
           }
         }
+
         function scheduleRender(source) {
           clearTimeout(renderTimer);
           renderTimer = setTimeout(() => doRender(source), 350);
@@ -4506,15 +4776,33 @@
         return {
           dom: wrapper,
           contentDOM: code,
+          ignoreMutation(mutation) {
+            // Crucial: Ignore any mutations outside `code` (e.g. preview, canvas, toolbar).
+            // Without this, Chart.js / Mermaid mutations trigger ProseMirror DOMObserver in an infinite loop!
+            if (!code || !code.contains(mutation.target)) {
+              return true;
+            }
+            return false;
+          },
+          stopEvent(event) {
+            // Prevent editor from capturing clicks/events inside toolbar or preview
+            if (toolbar.contains(event.target) || preview.contains(event.target)) {
+              return true;
+            }
+            return false;
+          },
           update(updatedNode) {
             if (updatedNode.type.name !== node.type.name) return false;
             if (updatedNode.attrs.language !== language) return false;
-            scheduleRender(updatedNode.textContent);
+            let newText = updatedNode.textContent;
+            if (newText !== lastRenderedSource) {
+              scheduleRender(newText);
+            }
             return true;
           },
           destroy() {
             clearTimeout(renderTimer);
-            onDestroy?.(preview);
+            try { onDestroy?.(preview); } catch (e) { }
           },
         };
       };
@@ -4528,14 +4816,13 @@
       cssClass: 'mermaid-block',
       placeholderText: 'Diagrama vacío — escribe sintaxis Mermaid en "Ver código".',
       async render(source, preview) {
-        // A fresh <div class="mermaid"> per render (rather than reusing one) sidesteps
-        // mermaid.run()'s data-processed marker, which otherwise skips re-rendering a node
-        // it already processed once.
         let mermaidDiv = document.createElement('div');
         mermaidDiv.className = 'mermaid';
         mermaidDiv.textContent = source;
         preview.replaceChildren(mermaidDiv);
-        await mermaid.run({ nodes: [mermaidDiv] });
+        let m = await ensureMermaid();
+        if (!m) throw new Error('No se pudo inicializar la librería Mermaid.');
+        await m.run({ nodes: [mermaidDiv], suppressErrors: true });
       },
     });
 
@@ -4543,10 +4830,12 @@
       language: 'math',
       cssClass: 'math-block',
       placeholderText: 'Fórmula vacía — escribe LaTeX en "Ver código" (ej. E = mc^2).',
-      render(source, preview) {
+      async render(source, preview) {
+        let k = await ensureKatex();
+        if (!k) throw new Error('No se pudo cargar la librería KaTeX.');
         let container = document.createElement('div');
         container.className = 'math-render';
-        katex.render(source, container, { throwOnError: true, displayMode: true });
+        k.render(source, container, { throwOnError: true, displayMode: true });
         preview.replaceChildren(container);
       },
     });
@@ -4555,32 +4844,37 @@
       language: 'chart',
       cssClass: 'chart-block',
       placeholderText: 'Gráfica vacía — escribe una configuración de Chart.js en JSON en "Ver código".',
-      render(source, preview) {
+      async render(source, preview) {
         let config;
         try {
           config = JSON.parse(source);
         } catch (e) {
           throw new Error('JSON inválido: ' + e.message);
         }
+        if (!config || typeof config !== 'object') {
+          throw new Error('La configuración debe ser un objeto JSON válido.');
+        }
+        let ChartConstructor = await ensureChart();
+        if (!ChartConstructor) {
+          throw new Error('No se pudo cargar la librería Chart.js.');
+        }
         let canvasWrap = document.createElement('div');
         canvasWrap.className = 'chart-canvas-wrap';
         let canvas = document.createElement('canvas');
-        // Fixed pixel size + responsive/animation off: Chart.js's responsive mode drives
-        // sizing off a ResizeObserver on the canvas's container, which inside a rich-text
-        // editor's constantly-reflowing DOM is an unnecessary source of flicker and stalls.
-        // A fixed canvas still scales visually via the CSS on .chart-canvas-wrap.
         canvas.width = 480;
         canvas.height = 300;
         canvasWrap.appendChild(canvas);
-        preview.__chartInstance?.destroy();
+        try { preview.__chartInstance?.destroy(); } catch (e) { }
         preview.replaceChildren(canvasWrap);
-        preview.__chartInstance = new Chart(canvas.getContext('2d'), {
+        let ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('No se pudo obtener el contexto 2D del lienzo.');
+        preview.__chartInstance = new ChartConstructor(ctx, {
           ...config,
-          options: { responsive: false, animation: false, ...config.options },
+          options: { responsive: false, animation: false, ...(config.options || {}) },
         });
       },
       onDestroy(preview) {
-        preview.__chartInstance?.destroy();
+        try { preview.__chartInstance?.destroy(); } catch (e) { }
       },
     });
 
@@ -5447,20 +5741,31 @@
     // Shared insert-into-editor logic for every artifact type (mermaid code block, image, audio,
     // or markdown), used by the side gallery, the notebook gallery and the big viewer modal alike.
     function insertArtifactIntoEditor(art) {
-      editor.chain().focus();
-      let meta = art.metadata_json || {};
-      let isMermaid = art.artifact_type === 'diagram' || (art.artifact_type === 'mindmap' && meta.render_mode !== 'image');
-      if (isMermaid) {
-        let code = art.content.replace(/```mermaid/g, '').replace(/```/g, '').trim();
-        editor.commands.insertContent(`<pre><code class="language-mermaid">${esc(code)}</code></pre><p></p>`);
-      } else if (artifactIsMedia(art)) {
-        if ((meta.mime_type || '').startsWith('audio/')) {
-          editor.commands.insertContent(`<audio src="${artifactMediaUrl(art)}" title="${esc(art.title)}" data-filename="${esc(art.title)}"></audio><p></p>`);
+      if (!art) return;
+      if (!editor || !currentPage) {
+        showToast('Abre una nota o página para insertar este artefacto.', 'warning');
+        return;
+      }
+      try {
+        editor.chain().focus();
+        let meta = art.metadata_json || {};
+        let isMermaid = art.artifact_type === 'diagram' || (art.artifact_type === 'mindmap' && meta.render_mode !== 'image');
+        if (isMermaid) {
+          let code = (art.content || '').replace(/```mermaid/g, '').replace(/```/g, '').trim();
+          editor.commands.insertContent(`<pre><code class="language-mermaid">${esc(code)}</code></pre><p></p>`);
+        } else if (artifactIsMedia(art)) {
+          if ((meta.mime_type || '').startsWith('audio/')) {
+            editor.commands.insertContent(`<audio src="${artifactMediaUrl(art)}" title="${esc(art.title)}" data-filename="${esc(art.title)}"></audio><p></p>`);
+          } else {
+            editor.commands.insertContent(`<img src="${artifactMediaUrl(art)}" alt="${esc(art.title)}"><p></p>`);
+          }
         } else {
-          editor.commands.insertContent(`<img src="${artifactMediaUrl(art)}" alt="${esc(art.title)}"><p></p>`);
+          editor.commands.insertContent(renderMarkdownToHtml(art.content || ''));
         }
-      } else {
-        editor.commands.insertContent(renderMarkdownToHtml(art.content));
+        showToast('Artefacto insertado en la nota.', 'success');
+      } catch (e) {
+        console.error('[RAGPoC] Error insertando artefacto en editor:', e);
+        showToast('No se pudo insertar en la nota: ' + e.message, 'error');
       }
     }
 
@@ -5471,15 +5776,19 @@
       if (!art) return;
       let title = await openInputModal('Nueva Página desde Artefacto', `Artefacto: ${art.artifact_type.toUpperCase()}`, 'Título de la página');
       if (!title) return;
-      let newP = await api('/api/pages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notebook_id: art.notebook_id, title })
-      });
-      await openPage(newP.id);
-      insertArtifactIntoEditor(art);
-      await savePage();
-      showToast('Página creada a partir del artefacto.', 'success');
+      try {
+        let newP = await api('/api/pages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notebook_id: art.notebook_id, title })
+        });
+        await openPage(newP.id);
+        insertArtifactIntoEditor(art);
+        await savePage();
+        showToast('Página creada a partir del artefacto.', 'success');
+      } catch (err) {
+        showToast('Error al crear la página: ' + err.message, 'error');
+      }
     }
 
     let workspace = null;
@@ -5869,7 +6178,7 @@
         `).join('');
 
         setTimeout(() => {
-          mermaid.run({ nodes: listEl.querySelectorAll('.mermaid') });
+          runMermaidOnNodes(listEl.querySelectorAll('.mermaid'));
         }, 50);
 
         listEl.querySelectorAll('[data-zoom-art]').forEach(el => {
@@ -6643,6 +6952,7 @@
       document.body.appendChild(clone);
 
       try {
+        await ensurePdfExportLibs();
         let canvas = await html2canvas(clone, {
           scale: 2,
           backgroundColor: '#ffffff',
@@ -6703,23 +7013,39 @@
     // `correct_index`, but artifacts saved before that was standardized may carry the older
     // `answer_index` name) so every quiz-rendering call site can read `q.correct_index` safely.
     function parseQuizJson(content) {
-      let parsed = JSON.parse(content.replace(/```json/g, '').replace(/```/g, '').trim());
+      if (!content || typeof content !== 'string') throw new Error('Contenido de quiz vacío.');
+      let cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+      let parsed = JSON.parse(cleaned);
       let questions = parsed.questions || parsed;
-      if (!Array.isArray(questions)) throw new Error('Formato de quiz inválido.');
-      questions.forEach(q => {
-        if (q.correct_index === undefined && q.answer_index !== undefined) q.correct_index = q.answer_index;
+      if (!Array.isArray(questions) || questions.length === 0) throw new Error('Formato de quiz inválido o sin preguntas.');
+      let validQuestions = [];
+      questions.forEach((q, idx) => {
+        if (!q || typeof q !== 'object') return;
+        let questionText = q.question || q.title || `Pregunta ${idx + 1}`;
+        let options = Array.isArray(q.options) ? q.options : [];
+        if (options.length === 0) return;
+        let correct_index = q.correct_index !== undefined ? q.correct_index : (q.answer_index !== undefined ? q.answer_index : 0);
+        validQuestions.push({
+          question: questionText,
+          options: options.map(opt => typeof opt === 'string' ? opt : String(opt || '')),
+          correct_index: typeof correct_index === 'number' && correct_index >= 0 && correct_index < options.length ? correct_index : 0,
+          explanation: q.explanation || ''
+        });
       });
-      return { title: parsed.title, questions };
+      if (validQuestions.length === 0) throw new Error('No se encontraron preguntas válidas en el quiz.');
+      return { title: parsed.title || 'Cuestionario', questions: validQuestions };
     }
 
     // Compact, non-interactive summary used inside the small gallery preview cards (too little
     // room there for the full one-question-at-a-time flow, which lives in the output box / viewer).
     function renderQuizPreviewSummary(quizJson) {
+      let questions = quizJson?.questions || [];
       return `
-        <h6 class="fw-bold mb-2 small text-dark">${esc(quizJson.title || '')}</h6>
-        <div class="small text-muted mb-2">${quizJson.questions.length} preguntas · abre el artefacto para responder</div>
+        <h6 class="fw-bold mb-2 small text-dark">${esc(quizJson?.title || 'Cuestionario')}</h6>
+        <div class="small text-muted mb-2">${questions.length} preguntas · abre el artefacto para responder</div>
         <div class="d-flex flex-column gap-1">
-          ${quizJson.questions.map((q, i) => `<div class="small text-truncate">${i + 1}. ${esc(q.question)}</div>`).join('')}
+          ${questions.slice(0, 5).map((q, i) => `<div class="small text-truncate">${i + 1}. ${esc(q.question)}</div>`).join('')}
+          ${questions.length > 5 ? `<div class="text-muted" style="font-size:10px;">+${questions.length - 5} preguntas más...</div>` : ''}
         </div>
       `;
     }
@@ -6728,11 +7054,17 @@
     // All state (current question, chosen answers) lives only in this closure — nothing is
     // persisted server-side, per the scope agreed for the quiz revamp.
     function renderQuizSequential(container, quizJson) {
-      let total = quizJson.questions.length;
+      let questions = quizJson?.questions || [];
+      let total = questions.length;
+      if (total === 0) {
+        container.innerHTML = '<div class="alert alert-warning small">No hay preguntas válidas en este cuestionario.</div>';
+        return;
+      }
       let state = { idx: 0, answers: new Array(total).fill(null) };
 
       function showFeedback(q, chosenIdx) {
         let fb = container.querySelector('.quiz-feedback-box');
+        if (!fb) return;
         let correct = chosenIdx === q.correct_index;
         container.querySelector(`[data-quiz-opt="${chosenIdx}"]`)?.classList.add(correct ? 'btn-craft-primary' : 'active');
         fb.style.display = 'block';
@@ -6741,8 +7073,10 @@
       }
 
       function renderQuestion() {
-        let q = quizJson.questions[state.idx];
+        let q = questions[state.idx];
+        if (!q) return renderResults();
         let answered = state.answers[state.idx];
+        let options = Array.isArray(q.options) ? q.options : [];
         container.innerHTML = `
           <div style="max-width:800px; margin:0 auto; width:100%;">
             <div class="d-flex justify-content-between align-items-center small text-muted mb-2">
@@ -6752,7 +7086,7 @@
             <div class="craft-card p-4 bg-white" style="box-shadow:var(--craft-shadow-md);">
               <div class="fw-bold fs-6 text-dark mb-3">${esc(q.question)}</div>
               <div class="d-flex flex-column gap-2 mb-3">
-                ${q.options.map((opt, optIdx) => `
+                ${options.map((opt, optIdx) => `
                   <button type="button" class="btn-craft text-start p-3 d-flex align-items-center gap-3" data-quiz-opt="${optIdx}" ${answered !== null ? 'disabled' : ''}>
                     <span class="badge bg-light text-dark border px-2 py-1">${String.fromCharCode(65 + optIdx)}</span>
                     <span class="fs-6">${esc(opt)}</span>
@@ -6777,22 +7111,26 @@
             state.answers[state.idx] = optIdx;
             container.querySelectorAll('[data-quiz-opt]').forEach(b => b.disabled = true);
             showFeedback(q, optIdx);
-            $('#quiz-next-btn').disabled = false;
+            let nextBtn = container.querySelector('#quiz-next-btn');
+            if (nextBtn) nextBtn.disabled = false;
           };
         });
 
-        $('#quiz-next-btn').onclick = () => {
-          if (state.idx < total - 1) {
-            state.idx++;
-            renderQuestion();
-          } else {
-            renderResults();
-          }
-        };
+        let nextBtn = container.querySelector('#quiz-next-btn');
+        if (nextBtn) {
+          nextBtn.onclick = () => {
+            if (state.idx < total - 1) {
+              state.idx++;
+              renderQuestion();
+            } else {
+              renderResults();
+            }
+          };
+        }
       }
 
       function renderResults() {
-        let correctCount = quizJson.questions.filter((q, i) => state.answers[i] === q.correct_index).length;
+        let correctCount = questions.filter((q, i) => state.answers[i] === q.correct_index).length;
         container.innerHTML = `
           <div style="max-width:800px; margin:0 auto; width:100%;">
             <div class="craft-card p-4 bg-white text-center" style="box-shadow:var(--craft-shadow-md);">
@@ -6801,16 +7139,17 @@
               <button type="button" class="btn-craft btn-craft-primary" id="quiz-retry-btn"><i class="bi bi-arrow-repeat"></i> Reintentar</button>
             </div>
             <div class="d-flex flex-column gap-2 mt-3">
-              ${quizJson.questions.map((q, i) => {
+              ${questions.map((q, i) => {
                 let ok = state.answers[i] === q.correct_index;
-                let yourAnswer = state.answers[i] === null ? '(sin responder)' : esc(q.options[state.answers[i]]);
+                let yourAnswer = state.answers[i] === null ? '(sin responder)' : esc(q.options[state.answers[i]] || '');
+                let correctAnswer = esc(q.options[q.correct_index] || '');
                 return `
                   <div class="craft-card p-3 bg-white">
                     <div class="d-flex align-items-start gap-2">
                       <i class="bi ${ok ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger'}"></i>
                       <div>
                         <div class="fw-bold small">${i + 1}. ${esc(q.question)}</div>
-                        ${!ok ? `<div class="small text-muted mt-1">Tu respuesta: ${yourAnswer}<br>Correcta: ${esc(q.options[q.correct_index])}</div>` : ''}
+                        ${!ok ? `<div class="small text-muted mt-1">Tu respuesta: ${yourAnswer}<br>Correcta: ${correctAnswer}</div>` : ''}
                         ${q.explanation ? `<div class="small text-muted mt-1">${esc(q.explanation)}</div>` : ''}
                       </div>
                     </div>
@@ -6820,31 +7159,48 @@
             </div>
           </div>
         `;
-        $('#quiz-retry-btn').onclick = () => {
-          state.idx = 0;
-          state.answers = new Array(total).fill(null);
-          renderQuestion();
-        };
+        let retryBtn = container.querySelector('#quiz-retry-btn');
+        if (retryBtn) {
+          retryBtn.onclick = () => {
+            state.idx = 0;
+            state.answers = new Array(total).fill(null);
+            renderQuestion();
+          };
+        }
       }
 
       renderQuestion();
     }
 
     function parseFlashcardsJson(content) {
-      let parsed = JSON.parse(content.replace(/```json/g, '').replace(/```/g, '').trim());
+      if (!content || typeof content !== 'string') throw new Error('Contenido de flashcards vacío.');
+      let cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+      let parsed = JSON.parse(cleaned);
       let cards = parsed.cards || parsed;
-      if (!Array.isArray(cards)) throw new Error('Formato de flashcards inválido.');
-      return { cards };
+      if (!Array.isArray(cards) || cards.length === 0) throw new Error('Formato de flashcards inválido.');
+      let validCards = [];
+      cards.forEach(c => {
+        if (!c || typeof c !== 'object') return;
+        let front = c.front || c.pregunta || c.term || '';
+        let back = c.back || c.respuesta || c.definition || '';
+        if (front || back) {
+          validCards.push({ front: String(front || ''), back: String(back || '') });
+        }
+      });
+      if (validCards.length === 0) throw new Error('No se encontraron tarjetas válidas.');
+      return { cards: validCards };
     }
 
     // Compact, non-interactive summary used inside the small gallery preview cards, mirroring
     // renderQuizPreviewSummary.
     function renderFlashcardsPreviewSummary(cardsJson) {
+      let cards = cardsJson?.cards || [];
       return `
         <h6 class="fw-bold mb-2 small text-dark">Flashcards</h6>
-        <div class="small text-muted mb-2">${cardsJson.cards.length} tarjetas · abre el artefacto para repasar</div>
+        <div class="small text-muted mb-2">${cards.length} tarjetas · abre el artefacto para repasar</div>
         <div class="d-flex flex-column gap-1">
-          ${cardsJson.cards.map((c, i) => `<div class="small text-truncate">${i + 1}. ${esc(c.front)}</div>`).join('')}
+          ${cards.slice(0, 5).map((c, i) => `<div class="small text-truncate">${i + 1}. ${esc(c.front)}</div>`).join('')}
+          ${cards.length > 5 ? `<div class="text-muted" style="font-size:10px;">+${cards.length - 5} tarjetas más...</div>` : ''}
         </div>
       `;
     }
@@ -6852,11 +7208,16 @@
     // One-card-at-a-time flip flow: click/tap the card to reveal the back, then Anterior/Siguiente
     // to navigate. All state lives only in this closure, matching the quiz flow's approach.
     function renderFlashcardsInteractive(container, cardsJson) {
-      let total = cardsJson.cards.length;
+      let cards = cardsJson?.cards || [];
+      let total = cards.length;
+      if (total === 0) {
+        container.innerHTML = '<div class="alert alert-warning small">No hay tarjetas válidas para repasar.</div>';
+        return;
+      }
       let state = { idx: 0, flipped: false };
 
       function renderCard() {
-        let c = cardsJson.cards[state.idx];
+        let c = cards[state.idx] || { front: '', back: '' };
         container.innerHTML = `
           <div style="max-width:640px; margin:0 auto; width:100%;">
             <div class="d-flex justify-content-between align-items-center small text-muted mb-2">
@@ -6885,17 +7246,25 @@
         `;
 
         let scene = container.querySelector('.flashcard-flip-scene');
-        scene.onclick = () => {
-          state.flipped = !state.flipped;
-          scene.classList.toggle('is-flipped', state.flipped);
-        };
+        if (scene) {
+          scene.onclick = () => {
+            state.flipped = !state.flipped;
+            scene.classList.toggle('is-flipped', state.flipped);
+          };
+        }
 
-        container.querySelector('#flashcard-prev-btn').onclick = () => {
-          if (state.idx > 0) { state.idx--; state.flipped = false; renderCard(); }
-        };
-        container.querySelector('#flashcard-next-btn').onclick = () => {
-          if (state.idx < total - 1) { state.idx++; state.flipped = false; renderCard(); }
-        };
+        let prevBtn = container.querySelector('#flashcard-prev-btn');
+        if (prevBtn) {
+          prevBtn.onclick = () => {
+            if (state.idx > 0) { state.idx--; state.flipped = false; renderCard(); }
+          };
+        }
+        let nextBtn = container.querySelector('#flashcard-next-btn');
+        if (nextBtn) {
+          nextBtn.onclick = () => {
+            if (state.idx < total - 1) { state.idx++; state.flipped = false; renderCard(); }
+          };
+        }
       }
 
       renderCard();
@@ -6903,58 +7272,64 @@
 
     // Full-size renderer (generate-result output box / big viewer modal) for every artifact type.
     function renderArtifactPreview(container, artifact) {
-      let type = artifact.artifact_type;
-      let meta = artifact.metadata_json || {};
-      let isMermaid = type === 'diagram' || (type === 'mindmap' && meta.render_mode !== 'image');
+      if (!container || !artifact) return;
+      try {
+        let type = artifact.artifact_type;
+        let meta = artifact.metadata_json || {};
+        let isMermaid = type === 'diagram' || (type === 'mindmap' && meta.render_mode !== 'image');
 
-      if (isMermaid) {
-        let code = artifact.content.replace(/```mermaid/g, '').replace(/```/g, '').trim();
-        container.innerHTML = artifactZoomMarkup(`<div class="mermaid text-center w-100" style="font-size:16px;">${esc(code)}</div>`);
-        setTimeout(() => {
-          mermaid.run({ nodes: container.querySelectorAll('.mermaid') });
-          attachArtifactZoom(container.querySelector('.artifact-zoom-wrap'));
-        }, 50);
-        return;
-      }
-
-      if (type === 'quiz') {
-        try {
-          renderQuizSequential(container, parseQuizJson(artifact.content));
-          return;
-        } catch (e) {
-          container.innerHTML = `<div class="ans-text">${DOMPurify.sanitize(marked.parse(artifact.content))}</div>`;
+        if (isMermaid) {
+          let code = (artifact.content || '').replace(/```mermaid/g, '').replace(/```/g, '').trim();
+          container.innerHTML = artifactZoomMarkup(`<div class="mermaid text-center w-100" style="font-size:16px;">${esc(code)}</div>`);
+          setTimeout(() => {
+            runMermaidOnNodes(container.querySelectorAll('.mermaid'));
+            attachArtifactZoom(container.querySelector('.artifact-zoom-wrap'));
+          }, 50);
           return;
         }
-      }
 
-      if (type === 'flashcards') {
-        try {
-          renderFlashcardsInteractive(container, parseFlashcardsJson(artifact.content));
-          return;
-        } catch (e) {
-          container.innerHTML = `<div class="ans-text">${DOMPurify.sanitize(marked.parse(artifact.content))}</div>`;
+        if (type === 'quiz') {
+          try {
+            renderQuizSequential(container, parseQuizJson(artifact.content));
+            return;
+          } catch (e) {
+            container.innerHTML = `<div class="ans-text">${DOMPurify.sanitize(marked.parse(artifact.content || ''))}</div>`;
+            return;
+          }
+        }
+
+        if (type === 'flashcards') {
+          try {
+            renderFlashcardsInteractive(container, parseFlashcardsJson(artifact.content));
+            return;
+          } catch (e) {
+            container.innerHTML = `<div class="ans-text">${DOMPurify.sanitize(marked.parse(artifact.content || ''))}</div>`;
+            return;
+          }
+        }
+
+        if (artifactIsMedia(artifact)) {
+          let url = artifactMediaUrl(artifact);
+          if ((meta.mime_type || '').startsWith('audio/')) {
+            let transcript = (meta.script || []).map(t => `<div class="mb-2"><b>${esc(t.speaker)}:</b> ${esc(t.text)}</div>`).join('');
+            container.innerHTML = `
+              <div class="craft-card p-4 bg-white text-center">
+                <i class="bi bi-soundwave display-4 text-secondary mb-2"></i>
+                <audio controls src="${url}" style="width:100%;" class="mb-3"></audio>
+                ${transcript ? `<div class="text-start small" style="max-height:260px; overflow:auto;">${transcript}</div>` : ''}
+              </div>`;
+          } else {
+            container.innerHTML = artifactZoomMarkup(`<img src="${url}" alt="${esc(artifact.title)}" onerror="this.parentElement.innerHTML='<div class=\\'alert alert-warning small p-3\\'>No se pudo cargar la imagen del artefacto.</div>'">`);
+            attachArtifactZoom(container.querySelector('.artifact-zoom-wrap'));
+          }
           return;
         }
-      }
 
-      if (artifactIsMedia(artifact)) {
-        let url = artifactMediaUrl(artifact);
-        if ((meta.mime_type || '').startsWith('audio/')) {
-          let transcript = (meta.script || []).map(t => `<div class="mb-2"><b>${esc(t.speaker)}:</b> ${esc(t.text)}</div>`).join('');
-          container.innerHTML = `
-            <div class="craft-card p-4 bg-white text-center">
-              <i class="bi bi-soundwave display-4 text-secondary mb-2"></i>
-              <audio controls src="${url}" style="width:100%;" class="mb-3"></audio>
-              ${transcript ? `<div class="text-start small" style="max-height:260px; overflow:auto;">${transcript}</div>` : ''}
-            </div>`;
-        } else {
-          container.innerHTML = artifactZoomMarkup(`<img src="${url}" alt="${esc(artifact.title)}">`);
-          attachArtifactZoom(container.querySelector('.artifact-zoom-wrap'));
-        }
-        return;
+        container.innerHTML = `<div class="ans-text" style="line-height:1.7; font-size:15px;">${DOMPurify.sanitize(marked.parse(artifact.content || ''))}</div>`;
+      } catch (err) {
+        console.error('[RAGPoC] Error en renderArtifactPreview:', err);
+        container.innerHTML = `<div class="alert alert-danger small p-3">Error al renderizar el artefacto: ${esc(err.message)}</div>`;
       }
-
-      container.innerHTML = `<div class="ans-text" style="line-height:1.7; font-size:15px;">${DOMPurify.sanitize(marked.parse(artifact.content))}</div>`;
     }
 
     // Wraps diagram/image/infographic content in a zoomable, pannable viewport
@@ -7076,34 +7451,39 @@
     }
 
     function renderArtifactGalleryContent(a, i) {
-      let meta = a.metadata_json || {};
-      let isMermaid = a.artifact_type === 'diagram' || (a.artifact_type === 'mindmap' && meta.render_mode !== 'image');
-      if (isMermaid) {
-        let code = a.content.replace(/```mermaid/g, '').replace(/```/g, '').trim();
-        return `<div class="mermaid text-center">${esc(code)}</div>`;
-      }
-      if (a.artifact_type === 'quiz') {
-        try {
-          return renderQuizPreviewSummary(parseQuizJson(a.content));
-        } catch (e) {
-          return `<div class="ans-text">${DOMPurify.sanitize(marked.parse(a.content))}</div>`;
+      try {
+        let meta = a.metadata_json || {};
+        let isMermaid = a.artifact_type === 'diagram' || (a.artifact_type === 'mindmap' && meta.render_mode !== 'image');
+        if (isMermaid) {
+          let code = (a.content || '').replace(/```mermaid/g, '').replace(/```/g, '').trim();
+          return `<div class="mermaid text-center">${esc(code)}</div>`;
         }
-      }
-      if (a.artifact_type === 'flashcards') {
-        try {
-          return renderFlashcardsPreviewSummary(parseFlashcardsJson(a.content));
-        } catch (e) {
-          return `<div class="ans-text">${DOMPurify.sanitize(marked.parse(a.content))}</div>`;
+        if (a.artifact_type === 'quiz') {
+          try {
+            return renderQuizPreviewSummary(parseQuizJson(a.content));
+          } catch (e) {
+            return `<div class="ans-text">${DOMPurify.sanitize(marked.parse(a.content || ''))}</div>`;
+          }
         }
-      }
-      if (artifactIsMedia(a)) {
-        let url = artifactMediaUrl(a);
-        if ((meta.mime_type || '').startsWith('audio/')) {
-          return `<div class="text-center p-2"><i class="bi bi-soundwave fs-2 text-secondary"></i><audio controls src="${url}" style="width:100%;" class="mt-2"></audio></div>`;
+        if (a.artifact_type === 'flashcards') {
+          try {
+            return renderFlashcardsPreviewSummary(parseFlashcardsJson(a.content));
+          } catch (e) {
+            return `<div class="ans-text">${DOMPurify.sanitize(marked.parse(a.content || ''))}</div>`;
+          }
         }
-        return `<img src="${url}" alt="${esc(a.title)}" style="max-width:100%; border-radius:6px;">`;
+        if (artifactIsMedia(a)) {
+          let url = artifactMediaUrl(a);
+          if ((meta.mime_type || '').startsWith('audio/')) {
+            return `<div class="text-center p-2"><i class="bi bi-soundwave fs-2 text-secondary"></i><audio controls src="${url}" style="width:100%;" class="mt-2"></audio></div>`;
+          }
+          return `<img src="${url}" alt="${esc(a.title)}" style="max-width:100%; border-radius:6px;" onerror="this.style.display='none'">`;
+        }
+        return `<div class="ans-text">${DOMPurify.sanitize(marked.parse(a.content || ''))}</div>`;
+      } catch (err) {
+        console.warn('[RAGPoC] Error en renderArtifactGalleryContent:', err);
+        return `<div class="text-muted small p-2">${esc(a.title || 'Artefacto')}</div>`;
       }
-      return `<div class="ans-text">${DOMPurify.sanitize(marked.parse(a.content))}</div>`;
     }
 
     async function loadNotebookArtifactsGallery() {
@@ -7173,7 +7553,7 @@
 
         // Render mermaid diagrams after insertion
         setTimeout(() => {
-          mermaid.run({ nodes: listEl.querySelectorAll('.mermaid') });
+          runMermaidOnNodes(listEl.querySelectorAll('.mermaid'));
         }, 50);
 
         listEl.querySelectorAll('[data-zoom-gallery-art]').forEach(el => {
@@ -7912,62 +8292,75 @@
     const previewModal = $('#file-preview-modal-backdrop');
 
     window.openFilePreviewModal = async function (docId, filename, mediaType, byteSize) {
-      let fileUrl = `/api/documents/${docId}/file`;
-      $('#preview-modal-title').textContent = filename;
-      $('#preview-modal-badge').textContent = (mediaType || 'FILE').toUpperCase();
-      $('#preview-modal-download').href = fileUrl;
-      $('#preview-modal-download').setAttribute('download', filename);
+      try {
+        let fileUrl = `/api/documents/${docId}/file`;
+        let titleEl = $('#preview-modal-title');
+        if (titleEl) titleEl.textContent = filename || 'Archivo';
+        let badgeEl = $('#preview-modal-badge');
+        if (badgeEl) badgeEl.textContent = (mediaType || 'FILE').toUpperCase();
+        let downloadEl = $('#preview-modal-download');
+        if (downloadEl) {
+          downloadEl.href = fileUrl;
+          downloadEl.setAttribute('download', filename || 'archivo');
+        }
 
-      let iconEl = $('#preview-modal-icon');
-      let bodyEl = $('#preview-modal-body');
-      bodyEl.innerHTML = '<div class="skeleton-row" style="height:200px;"></div>';
+        let iconEl = $('#preview-modal-icon');
+        let bodyEl = $('#preview-modal-body');
+        if (!bodyEl) return;
+        bodyEl.innerHTML = '<div class="skeleton-row" style="height:200px;"></div>';
 
-      if (mediaType === 'image' || filename.match(/\.(png|jpg|jpeg|webp|gif)$/i)) {
-        iconEl.className = 'bi bi-image text-primary fs-5';
-        bodyEl.innerHTML = `
-          <div class="d-flex justify-content-center align-items-center flex-1" style="min-height:350px;">
-            <img src="${fileUrl}" alt="${esc(filename)}" style="max-width:100%; max-height:65vh; border-radius:8px; box-shadow:var(--craft-shadow-md); border:1px solid var(--border-warm);">
-          </div>
-        `;
-      } else if (mediaType === 'video' || filename.match(/\.(mp4|webm|mov|mkv)$/i)) {
-        iconEl.className = 'bi bi-camera-video text-danger fs-5';
-        bodyEl.innerHTML = `
-          <div class="d-flex justify-content-center align-items-center flex-1" style="min-height:350px;">
-            <video controls src="${fileUrl}" style="max-width:100%; max-height:65vh; border-radius:8px; box-shadow:var(--craft-shadow-md);" autoplay></video>
-          </div>
-        `;
-      } else if (mediaType === 'audio' || filename.match(/\.(mp3|wav|ogg|m4a)$/i)) {
-        iconEl.className = 'bi bi-music-note-beamed text-success fs-5';
-        bodyEl.innerHTML = `
-          <div class="d-flex flex-column justify-content-center align-items-center flex-1 p-5 craft-card my-auto">
-            <i class="bi bi-soundwave display-3 text-secondary mb-3"></i>
-            <h6 class="fw-bold mb-3">${esc(filename)}</h6>
-            <audio controls src="${fileUrl}" style="width:100%; max-width:500px;" autoplay></audio>
-          </div>
-        `;
-      } else if (mediaType === 'pdf' || filename.match(/\.pdf$/i)) {
-        iconEl.className = 'bi bi-file-earmark-pdf text-danger fs-5';
-        bodyEl.innerHTML = `
-          <div class="flex-1 d-flex flex-column" style="height:65vh;">
-            <iframe src="${fileUrl}#toolbar=1" style="width:100%; height:100%; border:1px solid var(--border-warm); border-radius:8px;" frameborder="0"></iframe>
-          </div>
-        `;
-      } else {
-        iconEl.className = 'bi bi-file-earmark-code text-secondary fs-5';
-        try {
-          let textResp = await fetch(fileUrl);
-          let text = await textResp.text();
+        let lowerFn = (filename || '').toLowerCase();
+        if (mediaType === 'image' || lowerFn.match(/\.(png|jpg|jpeg|webp|gif|svg)$/i)) {
+          if (iconEl) iconEl.className = 'bi bi-image text-primary fs-5';
           bodyEl.innerHTML = `
-            <div class="flex-1">
-              <pre class="preview-code-block"><code>${esc(text)}</code></pre>
+            <div class="d-flex justify-content-center align-items-center flex-1" style="min-height:350px;">
+              <img src="${fileUrl}" alt="${esc(filename)}" style="max-width:100%; max-height:65vh; border-radius:8px; box-shadow:var(--craft-shadow-md); border:1px solid var(--border-warm);" onerror="this.parentElement.innerHTML='<div class=\\'alert alert-warning text-center w-100\\'><i class=\\'bi bi-exclamation-triangle me-1\\'></i> No se pudo cargar la vista previa de la imagen.</div>'">
             </div>
           `;
-        } catch (e) {
-          bodyEl.innerHTML = `<div class="alert alert-warning">No se pudo cargar el archivo como texto: ${esc(e.message)}</div>`;
+        } else if (mediaType === 'video' || lowerFn.match(/\.(mp4|webm|mov|mkv)$/i)) {
+          if (iconEl) iconEl.className = 'bi bi-camera-video text-danger fs-5';
+          bodyEl.innerHTML = `
+            <div class="d-flex justify-content-center align-items-center flex-1" style="min-height:350px;">
+              <video controls src="${fileUrl}" style="max-width:100%; max-height:65vh; border-radius:8px; box-shadow:var(--craft-shadow-md);" onerror="this.parentElement.innerHTML='<div class=\\'alert alert-warning text-center w-100\\'><i class=\\'bi bi-exclamation-triangle me-1\\'></i> No se pudo reproducir el archivo de video.</div>'"></video>
+            </div>
+          `;
+        } else if (mediaType === 'audio' || lowerFn.match(/\.(mp3|wav|ogg|m4a|aac)$/i)) {
+          if (iconEl) iconEl.className = 'bi bi-music-note-beamed text-success fs-5';
+          bodyEl.innerHTML = `
+            <div class="d-flex flex-column justify-content-center align-items-center flex-1 p-5 craft-card my-auto">
+              <i class="bi bi-soundwave display-3 text-secondary mb-3"></i>
+              <h6 class="fw-bold mb-3">${esc(filename)}</h6>
+              <audio controls src="${fileUrl}" style="width:100%; max-width:500px;" onerror="this.parentElement.innerHTML='<div class=\\'alert alert-warning text-center w-100\\'><i class=\\'bi bi-exclamation-triangle me-1\\'></i> No se pudo reproducir el archivo de audio.</div>'"></audio>
+            </div>
+          `;
+        } else if (mediaType === 'pdf' || lowerFn.match(/\.pdf$/i)) {
+          if (iconEl) iconEl.className = 'bi bi-file-earmark-pdf text-danger fs-5';
+          bodyEl.innerHTML = `
+            <div class="flex-1 d-flex flex-column" style="height:65vh;">
+              <iframe src="${fileUrl}#toolbar=1" style="width:100%; height:100%; border:1px solid var(--border-warm); border-radius:8px;" frameborder="0"></iframe>
+            </div>
+          `;
+        } else {
+          if (iconEl) iconEl.className = 'bi bi-file-earmark-code text-secondary fs-5';
+          try {
+            let textResp = await fetch(fileUrl);
+            if (!textResp.ok) throw new Error(`HTTP ${textResp.status} ${textResp.statusText}`);
+            let text = await textResp.text();
+            bodyEl.innerHTML = `
+              <div class="flex-1">
+                <pre class="preview-code-block"><code>${esc(text)}</code></pre>
+              </div>
+            `;
+          } catch (e) {
+            bodyEl.innerHTML = `<div class="alert alert-warning p-3"><i class="bi bi-exclamation-circle me-1"></i> No se pudo cargar el archivo como texto: ${esc(e.message)}</div>`;
+          }
         }
-      }
 
-      previewModal.classList.add('active');
+        if (previewModal) previewModal.classList.add('active');
+      } catch (modalErr) {
+        console.error('[RAGPoC] Error en openFilePreviewModal:', modalErr);
+        showToast('Error al abrir la vista previa: ' + modalErr.message, 'error');
+      }
     };
 
     $('#close-file-preview-modal').onclick = () => {
@@ -9026,7 +9419,7 @@
       let titleEl = $('#active-thread-title');
       if (titleEl) titleEl.textContent = 'Nueva conversación';
       let renameBtn = $('#btn-rename-thread-header');
-      if (renameBtn) renameBtn.style.display = 'none';
+      if (renameBtn) renameBtn.style.display = 'inline-flex';
       let scope = $('#chat-scope')?.value || 'notebook';
       updateScopeButtonUI(scope);
     }
@@ -9097,19 +9490,19 @@
             listEl.innerHTML = threads.map(t => {
               let isActive = t.id === activeThreadId;
               return `
-                <div class="thread-item-row d-flex justify-content-between align-items-center p-2 rounded ${isActive ? 'active-thread' : ''}" data-thread-title="${esc(t.title)}">
-                  <div class="d-flex align-items-center gap-2 overflow-hidden flex-1" style="cursor:pointer;" data-switch-thread="${t.id}">
-                    <i class="bi bi-chat-left-text-fill ${isActive ? 'text-primary' : 'text-muted'}" style="font-size:12px;"></i>
-                    <div class="overflow-hidden">
-                      <div class="fw-bold small text-truncate text-dark" style="font-size:11.5px;">${esc(t.title)}</div>
+                <div class="thread-item-row d-flex justify-content-between align-items-center p-2 rounded ${isActive ? 'active-thread' : ''}" data-thread-title="${esc(t.title)}" style="min-width: 0;">
+                  <div class="thread-item-content" data-switch-thread="${t.id}" title="${esc(t.title)}">
+                    <i class="bi bi-chat-left-text-fill ${isActive ? 'text-primary' : 'text-muted'} flex-shrink-0" style="font-size:12px;"></i>
+                    <div class="thread-item-meta">
+                      <div class="thread-item-title">${esc(t.title)}</div>
                       <div class="text-muted" style="font-size:10px;">${new Date(t.created_at).toLocaleDateString()}</div>
                     </div>
                   </div>
-                  <div class="d-flex gap-1 ms-1">
-                    <button type="button" class="action-mini-btn" data-rename-thread-id="${t.id}" data-thread-title="${esc(t.title)}" title="Renombrar" style="padding:2px 4px;">
+                  <div class="thread-item-actions">
+                    <button type="button" class="action-mini-btn" data-rename-thread-id="${t.id}" data-thread-title="${esc(t.title)}" title="Renombrar" style="padding:2px 5px;">
                       <i class="bi bi-pencil" style="font-size:10px;"></i>
                     </button>
-                    <button type="button" class="action-mini-btn danger" data-delete-thread-id="${t.id}" title="Eliminar" style="padding:2px 4px;">
+                    <button type="button" class="action-mini-btn danger" data-delete-thread-id="${t.id}" title="Eliminar" style="padding:2px 5px;">
                       <i class="bi bi-trash3" style="font-size:10px;"></i>
                     </button>
                   </div>
@@ -9130,11 +9523,10 @@
         let renameBtn = $('#btn-rename-thread-header');
         if (activeThread) {
           if (titleEl) titleEl.textContent = activeThread.title;
-          if (renameBtn) renameBtn.style.display = 'inline-flex';
         } else {
           if (titleEl) titleEl.textContent = 'Nueva conversación';
-          if (renameBtn) renameBtn.style.display = 'none';
         }
+        if (renameBtn) renameBtn.style.display = 'inline-flex';
       } catch (e) {
         console.error('Error loading threads:', e);
       }
@@ -9202,24 +9594,66 @@
       window.hideDropdown('#threads-history-btn');
     });
 
-    $('#btn-rename-thread-header').onclick = async () => {
+    async function triggerActiveThreadRename() {
       let ctx = activeChatContextKey ? getChatContext(activeChatContextKey) : null;
-      if (!ctx?.threadId) return;
-      let currentTitle = $('#active-thread-title')?.textContent || '';
+      let currentTitle = $('#active-thread-title')?.textContent || 'Nueva conversación';
       let newTitle = await openInputModal('Renombrar Conversación', currentTitle, 'Nuevo título');
-      if (newTitle && newTitle !== currentTitle) {
+      if (!newTitle || newTitle === currentTitle) return;
+
+      if (ctx?.threadId) {
         try {
           await api(`/api/threads/${ctx.threadId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ title: newTitle })
           });
+          let titleEl = $('#active-thread-title');
+          if (titleEl) titleEl.textContent = newTitle;
+          showToast('Conversación renombrada', 'success');
           await loadThreadsForScope();
         } catch (err) {
           showToast('Error al renombrar: ' + err.message, 'error');
         }
+      } else {
+        try {
+          let scope = $('#chat-scope')?.value || 'notebook';
+          let nbId = await getTargetNotebookId();
+          let thread = await api('/api/threads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: newTitle,
+              scope: scope,
+              notebook_id: nbId || null,
+              workspace_id: workspace?.id || null,
+              page_id: currentPage?.id || null,
+            })
+          });
+          if (ctx) setContextThread(ctx, activeChatContextKey, thread.id);
+          let titleEl = $('#active-thread-title');
+          if (titleEl) titleEl.textContent = newTitle;
+          showToast('Conversación guardada con nuevo título', 'success');
+          await loadThreadsForScope();
+        } catch (err) {
+          showToast('Error al guardar nombre: ' + err.message, 'error');
+        }
       }
-    };
+    }
+
+    let renameHeaderBtn = $('#btn-rename-thread-header');
+    if (renameHeaderBtn) {
+      renameHeaderBtn.onclick = (e) => {
+        e.stopPropagation();
+        triggerActiveThreadRename();
+      };
+    }
+
+    let activeBanner = $('#active-thread-banner');
+    if (activeBanner) {
+      activeBanner.onclick = () => {
+        triggerActiveThreadRename();
+      };
+    }
 
     $('#new-thread-btn').onclick = () => {
       resetChatView('Nueva conversación', 'Escribe tu pregunta o adjunta archivos para comenzar este nuevo hilo.');
@@ -9269,28 +9703,42 @@
             let rawText = m.content;
             aDiv.querySelector('[data-copy-chat-note]').onclick = () => copyTextToClipboard(rawText);
             aDiv.querySelector('[data-insert-chat-note]').onclick = async () => {
-              editor.chain().focus();
-              editor.commands.insertContent(renderMarkdownToHtml(rawText));
-              await savePage();
-              showToast('Respuesta insertada en la nota activa.', 'success');
+              if (!editor || !currentPage) {
+                showToast('Abre una página o nota para insertar esta respuesta.', 'warning');
+                return;
+              }
+              try {
+                editor.chain().focus();
+                editor.commands.insertContent(renderMarkdownToHtml(rawText));
+                await savePage();
+                showToast('Respuesta insertada en la nota activa.', 'success');
+              } catch (e) {
+                showToast('No se pudo insertar en la nota: ' + e.message, 'error');
+              }
             };
 
             aDiv.querySelector('[data-create-page-chat]').onclick = async () => {
               if (!workspace) return showToast('No hay espacio activo', 'warning');
               let title = await openInputModal('Nueva Página', 'Nota de Asistente', 'Título de la página');
               if (!title) return;
-              let tree = await api('/api/workspaces/' + workspace.id + '/tree');
-              let nbId = tree.notebooks.length ? tree.notebooks[0].id : null;
-              if (!nbId) return showToast('No hay cuadernos disponibles', 'warning');
-              let newP = await api('/api/pages', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ notebook_id: nbId, title })
-              });
-              await openPage(newP.id);
-              editor.chain().focus();
-              editor.commands.insertContent(renderMarkdownToHtml(rawText));
-              await savePage();
+              try {
+                let tree = await api('/api/workspaces/' + workspace.id + '/tree');
+                let nbId = tree.notebooks.length ? tree.notebooks[0].id : null;
+                if (!nbId) return showToast('No hay cuadernos disponibles', 'warning');
+                let newP = await api('/api/pages', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ notebook_id: nbId, title })
+                });
+                await openPage(newP.id);
+                if (editor) {
+                  editor.chain().focus();
+                  editor.commands.insertContent(renderMarkdownToHtml(rawText));
+                  await savePage();
+                }
+              } catch (err) {
+                showToast('Error al crear la página: ' + err.message, 'error');
+              }
             };
             if (m.sources_json && m.sources_json.length) {
               aDiv.innerHTML += `
@@ -9385,7 +9833,7 @@
           if (tree && tree.id) {
             workspace = { id: tree.id, name: tree.name };
             localStorage.setItem('ragpocWorkspaceId', tree.id);
-            await refresh();
+            renderWorkspaceTree(tree);
             if (tree.notebooks.length && tree.notebooks[0].pages.length) {
               await openPage(tree.notebooks[0].pages[0].id);
             }
@@ -9403,7 +9851,7 @@
           let tree = await api('/api/workspaces/' + wsList[0].id + '/tree');
           workspace = { id: tree.id, name: tree.name };
           localStorage.setItem('ragpocWorkspaceId', tree.id);
-          await refresh();
+          renderWorkspaceTree(tree);
           if (tree.notebooks.length && tree.notebooks[0].pages.length) {
             await openPage(tree.notebooks[0].pages[0].id);
           }
@@ -9416,6 +9864,11 @@
     async function refresh() {
       if (!workspace) return;
       let t = await api('/api/workspaces/' + workspace.id + '/tree');
+      renderWorkspaceTree(t);
+    }
+
+    function renderWorkspaceTree(t) {
+      if (!t) return;
       $('#workspace-name').textContent = t.name;
 
       let html = '';
@@ -9565,21 +10018,30 @@
     }
 
     async function openPage(id) {
-      // Flush pending edits on the page being left before tearing down its editor — everything
-      // below rebuilds #page-area unconditionally, destroying the live TipTap instance, and the
-      // only other things that save are the 30s autosave interval and beforeunload (tab close),
-      // neither of which fires on an in-app page switch. Without this, typing something and
-      // switching pages within that 30s window silently dropped the edit with no autosave tick
-      // to catch it. Awaited (not fire-and-forget) so a rapid second navigation can't race a
-      // still-in-flight save for the page before it and write out of order — autoSavePage()
-      // itself reads the editor's content synchronously before its own await, so the outgoing
-      // page's exact state at the moment of navigating is what gets sent either way.
-      if (currentPage && unsavedChanges && editor) {
-        await autoSavePage();
+      // Flush pending edits on the page being left before tearing down its editor
+      if (currentPage && unsavedChanges) {
+        try {
+          await autoSavePage();
+        } catch (e) {
+          console.warn('[RAGPoC] No se pudo autoguardar antes de cambiar de página:', e);
+        }
       }
 
-      currentPage = await api('/api/pages/' + id);
-      $('#mobile-page-title').textContent = currentPage.title || 'RAGPoC';
+      if (editor) {
+        try { editor.destroy(); } catch (e) { }
+        editor = null;
+      }
+
+      try {
+        currentPage = await api('/api/pages/' + id);
+      } catch (err) {
+        console.error('[RAGPoC] Error cargando página:', err);
+        showToast('Error al cargar la página: ' + (err.message || String(err)), 'error');
+        return;
+      }
+
+      let mobileTitle = $('#mobile-page-title');
+      if (mobileTitle) mobileTitle.textContent = currentPage.title || 'RAGPoC';
       if (currentPage.notebook_id) {
         selectNotebook(currentPage.notebook_id);
       }
@@ -9674,73 +10136,129 @@
         </div>
       `;
 
-      editor = new Editor({
-        element: $('#editor-content'),
-        extensions: PAGE_EDITOR_EXTENSIONS,
-        content: currentPage.content_json,
-        onUpdate: () => {
-          unsavedChanges = true;
-          $('#save-status').textContent = 'Sin guardar';
-          $('#save-dot').className = 'status-bulb unsaved';
+      let editorMounted = false;
 
-          if (slashPopup.classList.contains('active') && slashTriggerPos != null) {
-            // Notion-style live filtering of the "/" menu as the user keeps typing
-            let pos = editor.state.selection.from;
-            if (pos < slashTriggerPos) {
-              closeSlashMenu();
-            } else {
-              let query = editor.state.doc.textBetween(slashTriggerPos, pos, '\n', ' ');
-              if (/\s/.test(query)) {
+      function createEditorInstance(contentData) {
+        return new Editor({
+          element: $('#editor-content'),
+          extensions: PAGE_EDITOR_EXTENSIONS,
+          content: contentData,
+          onUpdate: () => {
+            unsavedChanges = true;
+            $('#save-status').textContent = 'Sin guardar';
+            $('#save-dot').className = 'status-bulb unsaved';
+
+            if (slashPopup.classList.contains('active') && slashTriggerPos != null) {
+              let pos = editor.state.selection.from;
+              if (pos < slashTriggerPos) {
                 closeSlashMenu();
               } else {
-                filterSlashMenu(query);
+                let query = editor.state.doc.textBetween(slashTriggerPos, pos, '\n', ' ');
+                if (/\s/.test(query)) {
+                  closeSlashMenu();
+                } else {
+                  filterSlashMenu(query);
+                }
+              }
+            } else {
+              let pos = editor.state.selection.from;
+              let charBefore = editor.state.doc.textBetween(Math.max(0, pos - 1), pos, '\n', ' ');
+              if (charBefore === '/') {
+                let charBeforeThat = editor.state.doc.textBetween(Math.max(0, pos - 2), pos - 1, '\n', ' ');
+                if (!charBeforeThat || /\s/.test(charBeforeThat)) {
+                  slashTriggerPos = pos;
+                  openSlashMenu(editor.view.coordsAtPos(pos));
+                }
               }
             }
-          } else {
-            // Detect a fresh "/" trigger directly off document state (not a setTimeout guess):
-            // a keydown+setTimeout race here would occasionally miss the char typed right after
-            // "/" when typed quickly, leaving slashTriggerPos pointing at the wrong position.
-            // onUpdate fires synchronously per transaction, so consecutive keystrokes can't race it.
-            let pos = editor.state.selection.from;
-            let charBefore = editor.state.doc.textBetween(Math.max(0, pos - 1), pos, '\n', ' ');
-            if (charBefore === '/') {
-              let charBeforeThat = editor.state.doc.textBetween(Math.max(0, pos - 2), pos - 1, '\n', ' ');
-              if (!charBeforeThat || /\s/.test(charBeforeThat)) {
-                slashTriggerPos = pos;
-                openSlashMenu(editor.view.coordsAtPos(pos));
-              }
-            }
-          }
-        },
-        onSelectionUpdate: () => {
-          updateCodeBlockLangPicker();
-          updateTableToolbar();
-        },
-      });
-      unsavedChanges = false;
-
-      // TrailingParagraph's appendTransaction only guards against a trap block (blockquote,
-      // codeBlock, list, table…) becoming the LAST node through a live edit — it doesn't run
-      // on the editor's initial content load. A page saved before this fix existed (or whose
-      // last block just happens to be one of those) needs the same guarantee applied once here.
-      if (editor.state.doc.lastChild && editor.state.doc.lastChild.type.name !== 'paragraph') {
-        let { schema, tr } = editor.state;
-        editor.view.dispatch(tr.insert(editor.state.doc.content.size, schema.nodes.paragraph.create()));
-        unsavedChanges = false;
-        $('#save-status').textContent = 'Guardado';
-        $('#save-dot').className = 'status-bulb';
+          },
+          onSelectionUpdate: () => {
+            updateCodeBlockLangPicker();
+            updateTableToolbar();
+          },
+        });
       }
 
-      // Notion-style "+" gutter button: hover a top-level block to reveal a button that
-      // inserts a new empty paragraph right after it and focuses it — lets you add content
-      // at a specific point without walking the cursor there with repeated Enter presses.
+      // Tier 1: Try structured content_json
+      if (currentPage.content_json && typeof currentPage.content_json === 'object') {
+        try {
+          editor = createEditorInstance(currentPage.content_json);
+          editorMounted = true;
+        } catch (t1Err) {
+          console.warn('[RAGPoC] Falló el montaje del content_json guardado. Intentando fallback Markdown/HTML...', t1Err);
+        }
+      }
+
+      // Tier 2: Try converting content_md or plain_text
+      if (!editorMounted && (currentPage.plain_text || currentPage.content_md)) {
+        try {
+          let fallbackHtml = renderMarkdownToHtml(currentPage.content_md || currentPage.plain_text || '');
+          editor = createEditorInstance(fallbackHtml);
+          editorMounted = true;
+          showToast('La nota se recuperó a partir de su contenido de texto debido a un error de formato.', 'info');
+        } catch (t2Err) {
+          console.warn('[RAGPoC] Falló el montaje de fallback Markdown. Intentando documento limpio...', t2Err);
+        }
+      }
+
+      // Tier 3: Try clean empty document
+      if (!editorMounted) {
+        try {
+          editor = createEditorInstance({ type: 'doc', content: [{ type: 'paragraph' }] });
+          editorMounted = true;
+        } catch (t3Err) {
+          console.error('[RAGPoC] Falló el montaje del editor TipTap básico:', t3Err);
+        }
+      }
+
+      // Tier 4: Error Boundary Safe Textarea Component (TipTap totally failed)
+      if (!editorMounted) {
+        let contentHost = $('#editor-content');
+        if (contentHost) {
+          contentHost.innerHTML = `
+            <div class="p-3 bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded mb-3">
+              <div class="fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i> Modo de Respaldo Seguro</div>
+              <div class="small">El editor visual no pudo inicializarse para esta página. Tu contenido está accesible abajo para editar y guardar normalmente sin riesgo de pérdida.</div>
+            </div>
+            <textarea id="fallback-page-textarea" class="form-control font-monospace" style="min-height:500px; line-height:1.6; font-size:14px;">${esc(currentPage.plain_text || currentPage.content_md || '')}</textarea>
+          `;
+          let textarea = $('#fallback-page-textarea');
+          if (textarea) {
+            textarea.oninput = () => {
+              unsavedChanges = true;
+              $('#save-status').textContent = 'Sin guardar';
+              $('#save-dot').className = 'status-bulb unsaved';
+            };
+          }
+        }
+      }
+
+      unsavedChanges = false;
+
+      // TrailingParagraph guarantee if editor is alive
+      if (editor && editor.state && editor.state.doc && editor.state.doc.lastChild && editor.state.doc.lastChild.type.name !== 'paragraph') {
+        try {
+          let { schema, tr } = editor.state;
+          editor.view.dispatch(tr.insert(editor.state.doc.content.size, schema.nodes.paragraph.create()));
+          unsavedChanges = false;
+          $('#save-status').textContent = 'Guardado';
+          $('#save-dot').className = 'status-bulb';
+        } catch (e) {
+          console.warn('[RAGPoC] No se pudo insertar párrafo final:', e);
+        }
+      }
+
+      // Notion-style "+" gutter button
       (function setupBlockPlusButton() {
+        if (!editor) return;
         let plusBtn = document.createElement('button');
         plusBtn.type = 'button';
         plusBtn.className = 'block-plus-btn';
         plusBtn.title = 'Añadir bloque debajo';
         plusBtn.innerHTML = '<i class="bi bi-plus-lg"></i>';
-        $('.editor-container').appendChild(plusBtn);
+        let container = $('.editor-container');
+        if (!container) return;
+        container.appendChild(plusBtn);
 
         let hoveredBlockDom = null;
         function setHovered(block) {
@@ -9750,11 +10268,6 @@
           if (hoveredBlockDom) hoveredBlockDom.classList.add('block-hovered');
         }
 
-        // Find the top-level block whose vertical span contains this Y coordinate — not
-        // "whichever element is directly under the cursor". The button lives in the left
-        // gutter, outside the block's own box, so a target-based lookup loses the block
-        // (and hides the button) the instant the cursor crosses that gutter gap on the way
-        // to the button. Y-based lookup keeps the same block "active" all the way there.
         function topLevelBlockAtY(y) {
           let pmRoot = $('#editor-content .ProseMirror');
           if (!pmRoot) return null;
@@ -9765,7 +10278,7 @@
           return null;
         }
 
-        $('.editor-container').addEventListener('mousemove', e => {
+        container.addEventListener('mousemove', e => {
           if (plusBtn.contains(e.target)) return;
           let block = topLevelBlockAtY(e.clientY);
           if (!block) {
@@ -9774,25 +10287,22 @@
             return;
           }
           setHovered(block);
-          let containerRect = $('.editor-container').getBoundingClientRect();
+          let containerRect = container.getBoundingClientRect();
           let blockRect = block.getBoundingClientRect();
           plusBtn.style.left = `${blockRect.left - containerRect.left - 32}px`;
           plusBtn.style.top = `${blockRect.top - containerRect.top}px`;
           plusBtn.classList.add('visible');
         });
 
-        $('.editor-container').addEventListener('mouseleave', () => {
+        container.addEventListener('mouseleave', () => {
           plusBtn.classList.remove('visible');
           setHovered(null);
         });
 
         plusBtn.onclick = () => {
-          if (!hoveredBlockDom) return;
-          // Compute the insert position by summing preceding top-level node sizes rather
-          // than posAtDOM(node, 0) — posAtDOM can throw ("Position -1 out of range") on some
-          // node/mark shapes, while doc.child(i) <-> pmRoot.children[i] is a stable 1:1
-          // correspondence ProseMirror always maintains for top-level nodes.
+          if (!hoveredBlockDom || !editor) return;
           let pmRoot = $('#editor-content .ProseMirror');
+          if (!pmRoot) return;
           let idx = Array.prototype.indexOf.call(pmRoot.children, hoveredBlockDom);
           if (idx === -1) return;
           let doc = editor.state.doc;
@@ -9806,6 +10316,7 @@
 
       document.querySelectorAll('[data-c]').forEach(b => {
         b.onclick = () => {
+          if (!editor) return showToast('Editor no disponible', 'warning');
           let cmd = b.dataset.c;
           let level = b.dataset.l ? parseInt(b.dataset.l) : null;
           if (level) {
@@ -9816,61 +10327,97 @@
         };
       });
 
-      $('#save-page').onclick = savePage;
-      $('#btn-export-page-pdf').onclick = () => exportPageById(currentPage.id);
+      let saveBtn = $('#save-page');
+      if (saveBtn) saveBtn.onclick = savePage;
 
-      $('#btn-undo').onclick = () => editor.chain().focus().undo().run();
-      $('#btn-redo').onclick = () => editor.chain().focus().redo().run();
+      let exportBtn = $('#btn-export-page-pdf');
+      if (exportBtn) exportBtn.onclick = () => exportPageById(currentPage.id);
 
-      $('#btn-toggle-link').onclick = async () => {
-        let existingUrl = editor.getAttributes('link').href;
-        if (existingUrl) {
-          editor.chain().focus().extendMarkRange('link').unsetLink().run();
-          return;
-        }
-        let url = await openInputModal('Insertar Enlace', 'https://', 'URL', { type: 'url', placeholder: 'https://' });
-        if (!url) return;
-        editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-      };
+      let undoBtn = $('#btn-undo');
+      if (undoBtn) undoBtn.onclick = () => { if (editor) editor.chain().focus().undo().run(); };
 
-      $('#btn-insert-table').onclick = () => {
-        editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
-      };
+      let redoBtn = $('#btn-redo');
+      if (redoBtn) redoBtn.onclick = () => { if (editor) editor.chain().focus().redo().run(); };
 
-      $('#btn-insert-embed').onclick = async () => {
-        let url = await openInputModal('Insertar Sitio Web', 'https://', 'URL a embeber', { type: 'url', placeholder: 'https://ejemplo.com' });
-        if (!url) return;
-        editor.chain().focus().insertContent([{ type: 'embedBlock', attrs: { url: normalizeEmbedUrl(url) } }]).run();
-      };
+      let linkBtn = $('#btn-toggle-link');
+      if (linkBtn) {
+        linkBtn.onclick = async () => {
+          if (!editor) return;
+          let existingUrl = editor.getAttributes('link').href;
+          if (existingUrl) {
+            editor.chain().focus().extendMarkRange('link').unsetLink().run();
+            return;
+          }
+          let url = await openInputModal('Insertar Enlace', 'https://', 'URL', { type: 'url', placeholder: 'https://' });
+          if (!url) return;
+          editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+        };
+      }
 
-      $('#btn-trigger-slash-menu').onclick = () => {
-        editor.chain().focus();
-        let state = editor.state;
-        let coords = editor.view.coordsAtPos(state.selection.from);
-        slashTriggerPos = state.selection.from;
-        openSlashMenu(coords);
-      };
+      let tableBtn = $('#btn-insert-table');
+      if (tableBtn) {
+        tableBtn.onclick = () => {
+          if (editor) editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+        };
+      }
 
-      $('#inline-media-file').onchange = async e => {
-        let file = e.target.files[0];
-        if (file) {
-          await handleMediaUploadAndInsert(file);
-          e.target.value = '';
-        }
-      };
+      let embedBtn = $('#btn-insert-embed');
+      if (embedBtn) {
+        embedBtn.onclick = async () => {
+          if (!editor) return;
+          let url = await openInputModal('Insertar Sitio Web', 'https://', 'URL a embeber', { type: 'url', placeholder: 'https://ejemplo.com' });
+          if (!url) return;
+          editor.chain().focus().insertContent([{ type: 'embedBlock', attrs: { url: normalizeEmbedUrl(url) } }]).run();
+        };
+      }
 
-      await loadAttachmentsPanel();
+      let slashBtn = $('#btn-trigger-slash-menu');
+      if (slashBtn) {
+        slashBtn.onclick = () => {
+          if (!editor) return;
+          editor.chain().focus();
+          let state = editor.state;
+          let coords = editor.view.coordsAtPos(state.selection.from);
+          slashTriggerPos = state.selection.from;
+          openSlashMenu(coords);
+        };
+      }
 
-      $('#attachment-file').onchange = async e => {
-        let file = e.target.files[0];
-        if (file) {
-          await handleMediaUploadAndInsert(file);
-          e.target.value = '';
-        }
-      };
+      let inlineMedia = $('#inline-media-file');
+      if (inlineMedia) {
+        inlineMedia.onchange = async e => {
+          let file = e.target.files[0];
+          if (file) {
+            await handleMediaUploadAndInsert(file);
+            e.target.value = '';
+          }
+        };
+      }
 
-      await refresh();
-      await loadThreadsForScope();
+      try {
+        await loadAttachmentsPanel();
+      } catch (err) {
+        console.warn('[RAGPoC] Error cargando panel de adjuntos:', err);
+      }
+
+      let attachFile = $('#attachment-file');
+      if (attachFile) {
+        attachFile.onchange = async e => {
+          let file = e.target.files[0];
+          if (file) {
+            await handleMediaUploadAndInsert(file);
+            e.target.value = '';
+          }
+        };
+      }
+
+      try {
+        await refresh();
+        await loadThreadsForScope();
+      } catch (err) {
+        console.warn('[RAGPoC] Error refrescando vista/hilos:', err);
+      }
+
       if (currentLayoutMode === 'chat') {
         setSideRightTab(currentSideRightTab || 'notes');
       }
@@ -10180,46 +10727,74 @@
     }
 
     function insertMediaIntoEditor(mediaUrl, mediaType, originalFilename, docId = '', byteSize = 0) {
-      editor.chain().focus();
-      if (mediaType === 'image') {
-        editor.chain().focus().setImage({ src: mediaUrl, alt: originalFilename }).run();
-      } else if (mediaType === 'video') {
-        editor.chain().focus().insertContent([
-          { type: 'videoBlock', attrs: { src: mediaUrl, filename: originalFilename } },
-          { type: 'paragraph', content: [] },
-        ]).run();
-      } else if (mediaType === 'audio' || originalFilename.endsWith('.mp3') || originalFilename.endsWith('.wav')) {
-        editor.chain().focus().insertContent([
-          { type: 'audioBlock', attrs: { src: mediaUrl, filename: originalFilename } },
-          { type: 'paragraph', content: [] },
-        ]).run();
-      } else {
-        editor.chain().focus().insertContent([
-          {
-            type: 'fileBlock',
-            attrs: {
-              docId: docId || '',
-              filename: originalFilename,
-              mediaType: mediaType || 'file',
-              byteSize: byteSize || 0,
-              url: mediaUrl,
+      if (!editor) {
+        showToast('Abre el editor para insertar contenido multimedia.', 'warning');
+        return;
+      }
+      try {
+        editor.chain().focus();
+        if (mediaType === 'image') {
+          editor.chain().focus().setImage({ src: mediaUrl, alt: originalFilename }).run();
+        } else if (mediaType === 'video') {
+          editor.chain().focus().insertContent([
+            { type: 'videoBlock', attrs: { src: mediaUrl, filename: originalFilename } },
+            { type: 'paragraph', content: [] },
+          ]).run();
+        } else if (mediaType === 'audio' || originalFilename.endsWith('.mp3') || originalFilename.endsWith('.wav')) {
+          editor.chain().focus().insertContent([
+            { type: 'audioBlock', attrs: { src: mediaUrl, filename: originalFilename } },
+            { type: 'paragraph', content: [] },
+          ]).run();
+        } else {
+          editor.chain().focus().insertContent([
+            {
+              type: 'fileBlock',
+              attrs: {
+                docId: docId || '',
+                filename: originalFilename,
+                mediaType: mediaType || 'file',
+                byteSize: byteSize || 0,
+                url: mediaUrl,
+              },
             },
-          },
-          {
-            type: 'paragraph',
-            content: []
-          }
-        ]).run();
+            {
+              type: 'paragraph',
+              content: []
+            }
+          ]).run();
+        }
+      } catch (err) {
+        console.error('[RAGPoC] Error insertando media en editor:', err);
+        showToast('No se pudo insertar el medio en la nota: ' + err.message, 'error');
       }
     }
 
     async function savePage() {
-      if (!currentPage || !editor) return;
+      if (!currentPage) return;
       try {
         let titleEl = $('#page-title');
         let title = titleEl ? titleEl.value : (currentPage.title || '');
-        let content = editor.getJSON();
-        let text = editor.getText();
+        let content = null;
+        let text = '';
+
+        let fallbackTextarea = $('#fallback-page-textarea');
+        if (fallbackTextarea) {
+          text = fallbackTextarea.value;
+          let paragraphs = text.split('\n\n').filter(Boolean);
+          content = {
+            type: 'doc',
+            content: paragraphs.length ? paragraphs.map(p => ({
+              type: 'paragraph',
+              content: p.trim() ? [{ type: 'text', text: p.trim() }] : []
+            })) : [{ type: 'paragraph' }]
+          };
+        } else if (editor) {
+          content = editor.getJSON();
+          text = editor.getText();
+        } else {
+          return;
+        }
+
         currentPage = await api('/api/pages/' + currentPage.id, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -10237,7 +10812,7 @@
         }
         await refresh();
       } catch (err) {
-        console.error('Error al guardar:', err);
+        console.error('[RAGPoC] Error al guardar:', err);
         showToast('Error al guardar la página: ' + err.message, 'error');
       }
     }
@@ -10250,24 +10825,48 @@
     const AUTOSAVE_INTERVAL_MS = 30000;
 
     async function autoSavePage() {
-      if (!currentPage || !unsavedChanges || !editor) return;
+      if (!currentPage || !unsavedChanges) return;
       try {
-        let title = $('#page-title').value;
-        let content = editor.getJSON();
-        let text = editor.getText();
+        let titleEl = $('#page-title');
+        let title = titleEl ? titleEl.value : (currentPage.title || '');
+        let content = null;
+        let text = '';
+
+        let fallbackTextarea = $('#fallback-page-textarea');
+        if (fallbackTextarea) {
+          text = fallbackTextarea.value;
+          let paragraphs = text.split('\n\n').filter(Boolean);
+          content = {
+            type: 'doc',
+            content: paragraphs.length ? paragraphs.map(p => ({
+              type: 'paragraph',
+              content: p.trim() ? [{ type: 'text', text: p.trim() }] : []
+            })) : [{ type: 'paragraph' }]
+          };
+        } else if (editor) {
+          content = editor.getJSON();
+          text = editor.getText();
+        } else {
+          return;
+        }
+
         currentPage = await api('/api/pages/' + currentPage.id, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title, content_json: content, plain_text: text })
         });
         unsavedChanges = false;
-        $('#mobile-page-title').textContent = title || 'RAGPoC';
-        $('#save-status').textContent = 'Guardado automáticamente';
+        let mobileTitle = $('#mobile-page-title');
+        if (mobileTitle) mobileTitle.textContent = title || 'RAGPoC';
+        let saveStatus = $('#save-status');
+        if (saveStatus) saveStatus.textContent = 'Guardado automáticamente';
         let dot = $('#save-dot');
-        dot.className = 'status-bulb just-saved';
-        dot.addEventListener('animationend', () => dot.classList.remove('just-saved'), { once: true });
+        if (dot) {
+          dot.className = 'status-bulb just-saved';
+          dot.addEventListener('animationend', () => dot.classList.remove('just-saved'), { once: true });
+        }
       } catch (err) {
-        console.error('Autoguardado falló:', err);
+        console.error('[RAGPoC] Autoguardado falló:', err);
       }
     }
 
