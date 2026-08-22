@@ -2461,6 +2461,77 @@
       font-weight: 700;
     }
 
+    /* ── Rendered code blocks & plugins inside chat messages ── */
+    .ans-text .rendered-code-block {
+      margin: 12px 0;
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-md);
+      background: #ffffff;
+      box-shadow: var(--craft-shadow-sm);
+      overflow: hidden;
+    }
+    .ans-text .rendered-code-block-toolbar {
+      padding: 6px 10px;
+      background: var(--canvas-bg);
+      border-bottom: 1px solid var(--border-warm);
+      font-size: 11px;
+    }
+    .ans-text .rendered-code-block-preview {
+      background: #ffffff;
+      overflow-x: auto;
+    }
+    .ans-text .rendered-code-block-preview svg {
+      max-width: 100%;
+      height: auto;
+    }
+    .ans-text .rendered-code-block-source {
+      background: #201e1a;
+      color: #ece8df;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+    }
+    .ans-text .math-inline-render {
+      display: inline-block;
+      vertical-align: middle;
+      font-size: 1.05em;
+      padding: 0 2px;
+    }
+    .ans-text .math-block-render {
+      font-size: 1.1em;
+      overflow-x: auto;
+      padding: 6px 0;
+    }
+
+    /* Standard code blocks with copy bar in chat */
+    .chat-code-card {
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      background: #201e1a;
+      box-shadow: var(--craft-shadow-sm);
+      margin: 10px 0;
+    }
+    .chat-code-header {
+      padding: 4px 10px;
+      background: #2b2823;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 11px;
+      color: #a8a29e;
+      font-family: var(--font-mono);
+    }
+    .chat-code-lang {
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-size: 10px;
+      color: #d6d3d1;
+    }
+    .chat-code-card pre {
+      margin: 0 !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+    }
+
     .chat-input-dock {
       margin-top: auto;
       flex-shrink: 0;
@@ -4468,6 +4539,37 @@
   <script src="/vendor/bootstrap/bootstrap.bundle.min.js"></script>
   <script src="/vendor/katex/katex.min.js"></script>
   <script type="module">
+    import {
+      Editor, Node, Extension, Plugin, PluginKey, generateHTML, StarterKit, Image, Link,
+      CodeBlockLowlight, Table, TableRow, TableHeader, TableCell, createLowlight, common,
+      marked, DOMPurify,
+    } from '/vendor/app-deps.js';
+
+    const $ = s => document.querySelector(s);
+    const esc = s => {
+      let d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    };
+    async function copyRawText(text) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          let ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        }
+      } catch (e) {
+        console.warn('Copy failed:', e);
+      }
+    }
+
     // Dynamic / on-demand loaders for non-critical heavy vendor libraries
     const _loadedScripts = new Map();
     function loadScript(src) {
@@ -4576,15 +4678,377 @@
       ]);
     }
 
-    // One local import instead of 14 to esm.sh. The names are unchanged, so the body of this
-    // module is untouched; the bundle is built by scripts/build_vendor.mjs and already has
-    // TipTap 2.11.5 (every extension pinned to that same version), lowlight, marked and
-    // DOMPurify resolved into it, so there is no network request left here that can fail.
-    import {
-      Editor, Node, Extension, Plugin, PluginKey, generateHTML, StarterKit, Image, Link,
-      CodeBlockLowlight, Table, TableRow, TableHeader, TableCell, createLowlight, common,
-      marked, DOMPurify,
-    } from '/vendor/app-deps.js';
+    // Parses inline ($...$) and block ($$...$$) LaTeX expressions in text nodes within a container
+    function renderMathInText(container, katexLib) {
+      if (!container || !katexLib) return;
+      try {
+        let walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+        let textNodes = [];
+        while (walker.nextNode()) {
+          let node = walker.currentNode;
+          if (!node || !node.nodeValue) continue;
+          let p = node.parentElement;
+          if (p && (p.tagName === 'CODE' || p.tagName === 'PRE' || p.tagName === 'SCRIPT' || p.tagName === 'STYLE' || p.closest('.rendered-code-block') || p.classList.contains('katex') || p.classList.contains('math-inline-render') || p.classList.contains('math-block-render'))) {
+            continue;
+          }
+          if (node.nodeValue.includes('$')) {
+            textNodes.push(node);
+          }
+        }
+
+        for (let textNode of textNodes) {
+          let text = textNode.nodeValue;
+          if (!text || !text.includes('$')) continue;
+          let parts = text.split(/(\$\$[\s\S]+?\$\$|\$[^\$\n]+?\$)/g);
+          if (parts.length <= 1) continue;
+
+          let span = document.createElement('span');
+          for (let part of parts) {
+            if (!part) continue;
+            if (part.startsWith('$$') && part.endsWith('$$') && part.length >= 4) {
+              let math = part.slice(2, -2).trim();
+              let mathEl = document.createElement('span');
+              mathEl.className = 'math-block-render d-block text-center my-2';
+              try {
+                katexLib.render(math, mathEl, { displayMode: true, throwOnError: false });
+                span.appendChild(mathEl);
+              } catch {
+                span.appendChild(document.createTextNode(part));
+              }
+            } else if (part.startsWith('$') && part.endsWith('$') && part.length >= 3) {
+              let math = part.slice(1, -1).trim();
+              let mathEl = document.createElement('span');
+              mathEl.className = 'math-inline-render';
+              try {
+                katexLib.render(math, mathEl, { displayMode: false, throwOnError: false });
+                span.appendChild(mathEl);
+              } catch {
+                span.appendChild(document.createTextNode(part));
+              }
+            } else {
+              span.appendChild(document.createTextNode(part));
+            }
+          }
+          if (textNode.parentNode) {
+            textNode.parentNode.replaceChild(span, textNode);
+          }
+        }
+      } catch (err) {
+        console.warn('[RAGPoC] Error procesando fórmulas LaTeX en texto:', err);
+      }
+    }
+
+    // Transforms code blocks inside chat bubbles into interactive visual plugins (Mermaid, Chart.js, KaTeX, Code Cards)
+    async function renderChatPlugins(container) {
+      if (!container) return;
+
+      // 1. Process Mermaid diagrams (pre > code.language-mermaid)
+      let mermaidBlocks = container.querySelectorAll('pre > code.language-mermaid, pre > code.mermaid');
+      if (mermaidBlocks.length > 0) {
+        let m = await ensureMermaid();
+        for (let codeEl of Array.from(mermaidBlocks)) {
+          let preEl = codeEl.closest('pre');
+          if (!preEl || preEl.dataset.pluginProcessed === 'true' || preEl.closest('.rendered-code-block')) continue;
+          preEl.dataset.pluginProcessed = 'true';
+
+          let source = codeEl.textContent.trim();
+          if (!source) continue;
+
+          let wrapper = document.createElement('div');
+          wrapper.className = 'rendered-code-block mermaid-block my-2';
+
+          let toolbar = document.createElement('div');
+          toolbar.className = 'rendered-code-block-toolbar d-flex justify-content-between align-items-center';
+          toolbar.innerHTML = `
+            <span class="badge bg-light text-secondary border"><i class="bi bi-diagram-3 me-1 text-primary"></i> Mermaid</span>
+            <div class="d-flex gap-1">
+              <button type="button" class="btn-craft btn-sm btn-copy-code" title="Copiar código Mermaid">
+                <i class="bi bi-clipboard"></i> Copiar
+              </button>
+              <button type="button" class="btn-craft btn-sm btn-toggle-code" title="Alternar vista de código">
+                <i class="bi bi-code-slash"></i> Ver código
+              </button>
+            </div>
+          `;
+
+          let preview = document.createElement('div');
+          preview.className = 'rendered-code-block-preview p-3';
+
+          let sourcePre = document.createElement('pre');
+          sourcePre.className = 'rendered-code-block-source p-3 m-0';
+          sourcePre.style.display = 'none';
+          let sourceCode = document.createElement('code');
+          sourceCode.className = 'language-mermaid';
+          sourceCode.textContent = source;
+          sourcePre.appendChild(sourceCode);
+
+          wrapper.appendChild(toolbar);
+          wrapper.appendChild(preview);
+          wrapper.appendChild(sourcePre);
+
+          let toggleBtn = toolbar.querySelector('.btn-toggle-code');
+          let copyBtn = toolbar.querySelector('.btn-copy-code');
+          let showingCode = false;
+
+          toggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            showingCode = !showingCode;
+            sourcePre.style.display = showingCode ? 'block' : 'none';
+            preview.style.display = showingCode ? 'none' : 'flex';
+            toggleBtn.innerHTML = showingCode
+              ? '<i class="bi bi-eye"></i> Ver diagrama'
+              : '<i class="bi bi-code-slash"></i> Ver código';
+          };
+
+          copyBtn.onclick = (e) => {
+            e.stopPropagation();
+            copyTextToClipboard(source);
+            copyBtn.innerHTML = '<i class="bi bi-check2 text-success"></i> Copiado';
+            setTimeout(() => { copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copiar'; }, 2000);
+          };
+
+          if (preEl.parentNode) preEl.parentNode.replaceChild(wrapper, preEl);
+
+          if (m && source) {
+            let mermaidDiv = document.createElement('div');
+            mermaidDiv.className = 'mermaid text-center w-100';
+            mermaidDiv.textContent = source;
+            preview.appendChild(mermaidDiv);
+            try {
+              await m.run({ nodes: [mermaidDiv], suppressErrors: true });
+            } catch (diagErr) {
+              preview.innerHTML = `
+                <div class="p-2 border border-danger-subtle bg-danger-subtle text-danger rounded small text-start my-1 w-100" style="font-family:var(--font-sans);">
+                  <div class="fw-semibold"><i class="bi bi-exclamation-triangle-fill me-1"></i> Error en la sintaxis del diagrama Mermaid</div>
+                  <div class="text-muted small mt-1 font-monospace" style="font-size:11px;">${esc(diagErr?.message || String(diagErr))}</div>
+                </div>`;
+            }
+          }
+        }
+      }
+
+      // 2. Process Chart.js blocks (pre > code.language-chart)
+      let chartBlocks = container.querySelectorAll('pre > code.language-chart, pre > code.language-chartjs');
+      if (chartBlocks.length > 0) {
+        let ChartConstructor = await ensureChart();
+        for (let codeEl of Array.from(chartBlocks)) {
+          let preEl = codeEl.closest('pre');
+          if (!preEl || preEl.dataset.pluginProcessed === 'true' || preEl.closest('.rendered-code-block')) continue;
+          preEl.dataset.pluginProcessed = 'true';
+
+          let source = codeEl.textContent.trim();
+          if (!source) continue;
+
+          let wrapper = document.createElement('div');
+          wrapper.className = 'rendered-code-block chart-block my-2';
+
+          let toolbar = document.createElement('div');
+          toolbar.className = 'rendered-code-block-toolbar d-flex justify-content-between align-items-center';
+          toolbar.innerHTML = `
+            <span class="badge bg-light text-secondary border"><i class="bi bi-bar-chart-line me-1 text-success"></i> Gráfica</span>
+            <div class="d-flex gap-1">
+              <button type="button" class="btn-craft btn-sm btn-copy-code" title="Copiar configuración JSON">
+                <i class="bi bi-clipboard"></i> Copiar
+              </button>
+              <button type="button" class="btn-craft btn-sm btn-toggle-code" title="Alternar vista de código">
+                <i class="bi bi-code-slash"></i> Ver código
+              </button>
+            </div>
+          `;
+
+          let preview = document.createElement('div');
+          preview.className = 'rendered-code-block-preview p-3';
+
+          let sourcePre = document.createElement('pre');
+          sourcePre.className = 'rendered-code-block-source p-3 m-0';
+          sourcePre.style.display = 'none';
+          let sourceCode = document.createElement('code');
+          sourceCode.className = 'language-json';
+          sourceCode.textContent = source;
+          sourcePre.appendChild(sourceCode);
+
+          wrapper.appendChild(toolbar);
+          wrapper.appendChild(preview);
+          wrapper.appendChild(sourcePre);
+
+          let toggleBtn = toolbar.querySelector('.btn-toggle-code');
+          let copyBtn = toolbar.querySelector('.btn-copy-code');
+          let showingCode = false;
+
+          toggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            showingCode = !showingCode;
+            sourcePre.style.display = showingCode ? 'block' : 'none';
+            preview.style.display = showingCode ? 'none' : 'flex';
+            toggleBtn.innerHTML = showingCode
+              ? '<i class="bi bi-eye"></i> Ver gráfica'
+              : '<i class="bi bi-code-slash"></i> Ver código';
+          };
+
+          copyBtn.onclick = (e) => {
+            e.stopPropagation();
+            copyTextToClipboard(source);
+            copyBtn.innerHTML = '<i class="bi bi-check2 text-success"></i> Copiado';
+            setTimeout(() => { copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copiar'; }, 2000);
+          };
+
+          if (preEl.parentNode) preEl.parentNode.replaceChild(wrapper, preEl);
+
+          if (ChartConstructor && source) {
+            try {
+              let config = JSON.parse(source);
+              let canvasWrap = document.createElement('div');
+              canvasWrap.className = 'chart-canvas-wrap w-100';
+              canvasWrap.style.cssText = 'position:relative; width:100%; height:260px; max-height:300px;';
+              let canvas = document.createElement('canvas');
+              canvasWrap.appendChild(canvas);
+              preview.appendChild(canvasWrap);
+              let ctx = canvas.getContext('2d');
+              new ChartConstructor(ctx, {
+                ...config,
+                options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  ...(config.options || {})
+                }
+              });
+            } catch (chartErr) {
+              preview.innerHTML = `
+                <div class="p-2 border border-danger-subtle bg-danger-subtle text-danger rounded small text-start my-1 w-100" style="font-family:var(--font-sans);">
+                  <div class="fw-semibold"><i class="bi bi-exclamation-triangle-fill me-1"></i> Error en la configuración de la gráfica</div>
+                  <div class="text-muted small mt-1 font-monospace" style="font-size:11px;">${esc(chartErr?.message || String(chartErr))}</div>
+                </div>`;
+            }
+          }
+        }
+      }
+
+      // 3. Process Math / LaTeX blocks (pre > code.language-math)
+      let mathBlocks = container.querySelectorAll('pre > code.language-math, pre > code.language-latex, pre > code.language-katex');
+      if (mathBlocks.length > 0) {
+        let k = await ensureKatex();
+        for (let codeEl of Array.from(mathBlocks)) {
+          let preEl = codeEl.closest('pre');
+          if (!preEl || preEl.dataset.pluginProcessed === 'true' || preEl.closest('.rendered-code-block')) continue;
+          preEl.dataset.pluginProcessed = 'true';
+
+          let source = codeEl.textContent.trim();
+          if (!source) continue;
+
+          let wrapper = document.createElement('div');
+          wrapper.className = 'rendered-code-block math-block my-2';
+
+          let toolbar = document.createElement('div');
+          toolbar.className = 'rendered-code-block-toolbar d-flex justify-content-between align-items-center';
+          toolbar.innerHTML = `
+            <span class="badge bg-light text-secondary border"><i class="bi bi-calculator me-1 text-warning"></i> LaTeX</span>
+            <div class="d-flex gap-1">
+              <button type="button" class="btn-craft btn-sm btn-copy-code" title="Copiar fórmula LaTeX">
+                <i class="bi bi-clipboard"></i> Copiar
+              </button>
+              <button type="button" class="btn-craft btn-sm btn-toggle-code" title="Alternar vista de código">
+                <i class="bi bi-code-slash"></i> Ver código
+              </button>
+            </div>
+          `;
+
+          let preview = document.createElement('div');
+          preview.className = 'rendered-code-block-preview p-3';
+
+          let sourcePre = document.createElement('pre');
+          sourcePre.className = 'rendered-code-block-source p-3 m-0';
+          sourcePre.style.display = 'none';
+          let sourceCode = document.createElement('code');
+          sourceCode.className = 'language-latex';
+          sourceCode.textContent = source;
+          sourcePre.appendChild(sourceCode);
+
+          wrapper.appendChild(toolbar);
+          wrapper.appendChild(preview);
+          wrapper.appendChild(sourcePre);
+
+          let toggleBtn = toolbar.querySelector('.btn-toggle-code');
+          let copyBtn = toolbar.querySelector('.btn-copy-code');
+          let showingCode = false;
+
+          toggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            showingCode = !showingCode;
+            sourcePre.style.display = showingCode ? 'block' : 'none';
+            preview.style.display = showingCode ? 'none' : 'flex';
+            toggleBtn.innerHTML = showingCode
+              ? '<i class="bi bi-eye"></i> Ver fórmula'
+              : '<i class="bi bi-code-slash"></i> Ver código';
+          };
+
+          copyBtn.onclick = (e) => {
+            e.stopPropagation();
+            copyTextToClipboard(source);
+            copyBtn.innerHTML = '<i class="bi bi-check2 text-success"></i> Copiado';
+            setTimeout(() => { copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copiar'; }, 2000);
+          };
+
+          if (preEl.parentNode) preEl.parentNode.replaceChild(wrapper, preEl);
+
+          if (k && source) {
+            let containerDiv = document.createElement('div');
+            containerDiv.className = 'math-render text-center w-100';
+            try {
+              k.render(source, containerDiv, { displayMode: true, throwOnError: false });
+              preview.appendChild(containerDiv);
+            } catch (mathErr) {
+              preview.innerHTML = `
+                <div class="p-2 border border-danger-subtle bg-danger-subtle text-danger rounded small text-start my-1 w-100" style="font-family:var(--font-sans);">
+                  <div class="fw-semibold"><i class="bi bi-exclamation-triangle-fill me-1"></i> Error en la fórmula LaTeX</div>
+                  <div class="text-muted small mt-1 font-monospace" style="font-size:11px;">${esc(mathErr?.message || String(mathErr))}</div>
+                </div>`;
+            }
+          }
+        }
+      }
+
+      // 4. Process inline and block math in text ($...$ and $$...$$)
+      let kLib = await ensureKatex();
+      if (kLib) {
+        renderMathInText(container, kLib);
+      }
+
+      // 5. Enhance standard code blocks with copy bar
+      let normalPreBlocks = container.querySelectorAll('pre');
+      for (let preEl of Array.from(normalPreBlocks)) {
+        if (preEl.dataset.pluginProcessed === 'true' || preEl.closest('.rendered-code-block') || preEl.closest('.chat-code-card')) continue;
+        preEl.dataset.pluginProcessed = 'true';
+
+        let codeEl = preEl.querySelector('code');
+        let codeText = codeEl ? codeEl.textContent : preEl.textContent;
+        let langMatch = codeEl ? (codeEl.className || '').match(/language-([a-zA-Z0-9_\-]+)/) : null;
+        let langName = langMatch ? langMatch[1] : 'código';
+
+        let card = document.createElement('div');
+        card.className = 'chat-code-card my-2';
+        card.innerHTML = `
+          <div class="chat-code-header d-flex justify-content-between align-items-center">
+            <span class="chat-code-lang"><i class="bi bi-code-square me-1"></i> ${esc(langName)}</span>
+            <button type="button" class="btn-craft btn-sm btn-copy-code" title="Copiar código">
+              <i class="bi bi-clipboard"></i> Copiar
+            </button>
+          </div>
+        `;
+        let copyBtn = card.querySelector('.btn-copy-code');
+        copyBtn.onclick = (e) => {
+          e.stopPropagation();
+          copyTextToClipboard(codeText);
+          copyBtn.innerHTML = '<i class="bi bi-check2 text-success"></i> Copiado';
+          setTimeout(() => { copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copiar'; }, 2000);
+        };
+
+        if (preEl.parentNode) {
+          preEl.parentNode.insertBefore(card, preEl);
+          card.appendChild(preEl);
+        }
+      }
+    }
+    window.renderChatPlugins = renderChatPlugins;
 
     marked.setOptions({ gfm: true, breaks: true });
 
@@ -5203,7 +5667,6 @@
       EmbedBlock,
     ];
 
-    const $ = s => document.querySelector(s);
     // Default cap on every api() call so a stuck backend request (a dead connection, a proxy
     // eating the response) doesn't leave the UI waiting forever with no feedback -- the same
     // "looks frozen, isn't" failure mode the CDN vendoring above fixed, just from the network
@@ -5506,6 +5969,7 @@
       return el;
     }
     window.showToast = showToast;
+    window.renderChatPlugins = renderChatPlugins;
 
     // Persistent, per-operation upload progress row — lives in #upload-tray, outside
     // #page-area/any modal, so switching pages, notebooks, or closing a modal never destroys it
@@ -8998,12 +9462,6 @@
       await refresh();
     };
 
-    const esc = s => {
-      let d = document.createElement('div');
-      d.textContent = s || '';
-      return d.innerHTML;
-    };
-
     // Sources Modal Controls — sources are always notebook-scoped now, so the modal just needs
     // to know WHICH notebook; it defaults to getTargetNotebookId() (the same current-notebook
     // resolution the artifact galleries use) when no explicit notebook is passed.
@@ -9749,6 +10207,8 @@
               `;
             }
             log.appendChild(aDiv);
+            let ansEl = aDiv.querySelector('.ans-text');
+            if (ansEl) renderChatPlugins(ansEl);
           }
         }
         $('#chat-log').scrollTop = $('#chat-log').scrollHeight;
@@ -11149,6 +11609,7 @@
           let rawHtml = marked.parse(fullAnswerMarkdown);
           // Final render: plain innerHTML (no animation on settled content)
           ansText.innerHTML = DOMPurify.sanitize(rawHtml);
+          renderChatPlugins(ansText);
           scrollChatLogIfActive(sendKey);
         };
 
