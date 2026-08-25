@@ -13,6 +13,7 @@ dist/
 .hermes/
 .claude/scheduled_tasks.lock
 .agents/
+qa-output/
 
 # Keep empty data directory structure in the repository.
 !data/.gitkeep

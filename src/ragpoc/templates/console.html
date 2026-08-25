@@ -369,20 +369,40 @@
     }
 
     .dropdown-menu {
+      position: absolute !important;
+      top: 100% !important;
+      margin-top: 4px !important;
+      margin-bottom: 0 !important;
       border: 1px solid var(--border-warm);
       border-radius: var(--radius-md);
-      box-shadow: var(--craft-shadow-md);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
       padding: 6px;
       font-size: 13px;
+      z-index: 1050 !important;
+      transform-origin: top left;
+    }
+
+    .dropdown-menu.dropdown-menu-end {
+      left: auto !important;
+      right: 0 !important;
+      transform-origin: top right;
     }
 
     .dropdown-menu.show {
-      animation: dropdownIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex !important;
+      flex-direction: column !important;
+      animation: dropdownIn 0.14s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
 
     @keyframes dropdownIn {
-      from { opacity: 0; transform: translateY(-4px) scale(0.98); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
+      from {
+        opacity: 0;
+        transform: translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .dropdown-item {
@@ -707,6 +727,13 @@
 
     .side-editor-header {
       display: none;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .side-editor-header .studio-segmented-control {
+      flex: 1;
+      margin-bottom: 0;
     }
 
     /* In Editor Mode:
@@ -796,17 +823,20 @@
     }
 
     .sidebar.panel-collapsed,
-    .chat-pane.panel-collapsed {
+    .chat-pane.panel-collapsed,
+    .editor-pane.panel-collapsed {
       align-items: center;
     }
 
     .sidebar.panel-collapsed > *:not(.panel-rail),
-    .chat-pane.panel-collapsed > *:not(.panel-rail) {
+    .chat-pane.panel-collapsed > *:not(.panel-rail),
+    .editor-pane.panel-collapsed > *:not(.panel-rail) {
       display: none !important;
     }
 
     .sidebar.panel-collapsed .panel-rail,
-    .chat-pane.panel-collapsed .panel-rail {
+    .chat-pane.panel-collapsed .panel-rail,
+    .editor-pane.panel-collapsed .panel-rail {
       display: flex;
     }
 
@@ -1897,25 +1927,48 @@
       display: block;
     }
 
-    .dropdown-menu {
-      animation: dropdownFadeScale 0.16s cubic-bezier(0.16, 1, 0.3, 1);
-      transform-origin: top right;
+    /* Agent Chat Dropdowns: Always open cleanly below trigger with smooth entrance */
+    .chat-controls-bar .dropdown {
+      position: relative;
+    }
+
+    .chat-controls-bar .dropdown-menu {
+      position: absolute !important;
+      top: 100% !important;
+      margin-top: 4px !important;
+      margin-bottom: 0 !important;
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-md);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
       z-index: 1050 !important;
     }
 
-    .dropdown-menu.show {
-      display: flex !important;
-      flex-direction: column !important;
+    .chat-controls-bar .dropdown-menu:not(.dropdown-menu-end) {
+      left: 0 !important;
+      right: auto !important;
+      transform-origin: top left;
     }
 
-    @keyframes dropdownFadeScale {
+    .chat-controls-bar .dropdown-menu.dropdown-menu-end {
+      left: auto !important;
+      right: 0 !important;
+      transform-origin: top right;
+    }
+
+    .chat-controls-bar .dropdown-menu.show {
+      display: flex !important;
+      flex-direction: column !important;
+      animation: chatDropdownSlideDown 0.14s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes chatDropdownSlideDown {
       from {
         opacity: 0;
-        transform: scale(0.96) translateY(-4px);
+        transform: translateY(-4px);
       }
       to {
         opacity: 1;
-        transform: scale(1) translateY(0);
+        transform: translateY(0);
       }
     }
 
@@ -3575,7 +3628,7 @@
             <i class="bi bi-file-earmark-plus"></i> Guardar como Página
           </button>
           <div class="dropdown">
-            <button class="btn-craft btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown"
+            <button class="btn-craft btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-display="static"
               aria-expanded="false">
               <i class="bi bi-download"></i> Descargar
             </button>
@@ -4131,14 +4184,14 @@
         <div class="workspace-pill" id="ws-banner">
           <div class="section-tag"><i class="bi bi-folder2-open"></i> Espacio de trabajo</div>
           <div class="d-flex align-items-center gap-1 mb-2">
-            <div class="dropdown flex-1" style="min-width:0;">
+            <div class="dropdown position-relative flex-1" style="min-width:0;">
               <button type="button" class="dropdown-toggle fw-bold fs-6 text-truncate d-flex align-items-center"
-                id="workspace-switcher-btn" data-bs-toggle="dropdown" aria-expanded="false"
+                id="workspace-switcher-btn" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false"
                 title="Cambiar de espacio de trabajo"
                 style="width:100%; text-align:left; border:none; background:transparent; padding:0; color:inherit;">
                 <span id="workspace-name" class="text-truncate">Cargando espacio…</span>
               </button>
-              <ul class="dropdown-menu" id="workspace-switcher-menu" style="min-width:220px; max-height:320px; overflow-y:auto;">
+              <ul class="dropdown-menu shadow border-0 p-1" id="workspace-switcher-menu" style="min-width:240px; max-height:320px; overflow-y:auto; z-index:1050;">
                 <li class="dropdown-item-text small text-muted px-3 py-2">Cargando…</li>
               </ul>
             </div>
@@ -4184,17 +4237,44 @@
 
     <!-- Center: Notion-style Tiptap Canvas -->
     <main class="editor-pane craft-canvas" id="page-area">
-      <div class="empty-state text-center my-auto p-4">
-        <div class="d-flex justify-content-center w-100 mb-4" id="empty-state-toggle-row">
-          <div class="center-mode-segmented-control">
-            <button type="button" class="center-mode-seg-btn" data-switch-mode="chat">
-              <i class="bi bi-chat-quote-fill"></i> Chat
-            </button>
-            <button type="button" class="center-mode-seg-btn active" data-switch-mode="editor">
-              <i class="bi bi-journal-text"></i> Notas
-            </button>
-          </div>
+      <div class="panel-rail" id="page-rail">
+        <button class="btn-craft btn-craft-icon btn-sm" id="btn-expand-page" data-action="expand-right" title="Expandir panel">
+          <i class="bi bi-layout-sidebar-reverse"></i>
+        </button>
+      </div>
+
+      <!-- Top Pill in Center Mode (Modo Editor) -->
+      <div class="editor-top-nav" id="page-center-nav">
+        <div class="center-mode-segmented-control">
+          <button type="button" class="center-mode-seg-btn" data-switch-mode="chat">
+            <i class="bi bi-chat-quote-fill"></i> Chat
+          </button>
+          <button type="button" class="center-mode-seg-btn active" data-switch-mode="editor">
+            <i class="bi bi-journal-text"></i> Notas
+          </button>
         </div>
+      </div>
+
+      <!-- Right Panel Tabs in Side Mode (Modo Chat) -->
+      <div class="side-editor-header" id="side-editor-header">
+        <div class="studio-segmented-control">
+          <button type="button" class="studio-seg-btn active" id="side-pane-switch-notes" data-side-tab="notes">
+            <i class="bi bi-journal-text"></i> Notas
+          </button>
+          <button type="button" class="studio-seg-btn" id="side-pane-switch-studio" data-side-tab="studio">
+            <i class="bi bi-stars"></i> Studio
+          </button>
+          <button type="button" class="studio-seg-btn" id="side-pane-switch-attachments" data-side-tab="attachments">
+            <i class="bi bi-paperclip"></i> Adjuntos
+          </button>
+        </div>
+        <button class="btn-craft btn-craft-icon btn-sm panel-collapse-btn" id="btn-collapse-side-editor" data-action="collapse-right"
+          title="Colapsar panel">
+          <i class="bi bi-layout-sidebar-reverse"></i>
+        </button>
+      </div>
+
+      <div class="empty-state text-center my-auto p-4">
         <i class="bi bi-journal-text display-3 text-muted mb-3 d-block"></i>
         <h1 class="fw-bold">Tu Base de Conocimiento</h1>
         <p class="text-muted">Selecciona una página en el panel lateral o crea un nuevo espacio de trabajo para
@@ -4264,7 +4344,7 @@
               <option value="workspace">Todo el espacio</option>
             </select>
             <div class="dropdown position-relative flex-1" style="min-width:0;">
-              <button class="btn-craft btn-sm dropdown-toggle d-flex align-items-center justify-content-between gap-1 w-100 text-truncate" type="button" id="chat-scope-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Cambiar ámbito de búsqueda" style="padding: 3px 8px; font-size:11px;">
+              <button class="btn-craft btn-sm dropdown-toggle d-flex align-items-center justify-content-between gap-1 w-100 text-truncate" type="button" id="chat-scope-btn" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="Cambiar ámbito de búsqueda" style="padding: 3px 8px; font-size:11px;">
                 <span class="d-flex align-items-center gap-1 text-truncate">
                   <i class="bi bi-journal-bookmark-fill text-primary flex-shrink-0" id="chat-scope-icon" style="font-size:12px;"></i>
                   <span id="chat-scope-label" class="fw-semibold small text-truncate">Este cuaderno</span>
@@ -4299,7 +4379,7 @@
             </div>
 
             <div class="dropdown position-relative flex-shrink-0">
-              <button class="btn-craft btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" id="threads-history-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Historial de conversaciones" style="padding: 3px 8px; font-size:11px;">
+              <button class="btn-craft btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" id="threads-history-btn" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="Historial de conversaciones" style="padding: 3px 8px; font-size:11px;">
                 <i class="bi bi-clock-history text-secondary" style="font-size:12px;"></i>
                 <span class="small" id="threads-history-count">Historial</span>
               </button>
@@ -6640,7 +6720,7 @@
                   <i class="bi bi-pin-angle-fill text-primary"></i>
                 </button>
                 <div class="dropdown">
-                  <button class="action-mini-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Descargar" style="padding:2px 6px;">
+                  <button class="action-mini-btn" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="Descargar" style="padding:2px 6px;">
                     <i class="bi bi-download" style="font-size:11px;"></i>
                   </button>
                   <ul class="dropdown-menu dropdown-menu-end">
@@ -8014,7 +8094,7 @@
                   <i class="bi bi-pin-angle-fill text-primary"></i> Insertar
                 </button>
                 <div class="dropdown">
-                  <button class="action-mini-btn" data-bs-toggle="dropdown" aria-expanded="false" title="Descargar">
+                  <button class="action-mini-btn" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="Descargar">
                     <i class="bi bi-download"></i>
                   </button>
                   <ul class="dropdown-menu dropdown-menu-end">
@@ -9103,16 +9183,25 @@
       let isChatMode = mode === 'chat';
       appShell.classList.toggle('chat-focus-mode', isChatMode);
 
+      let isRightCollapsed = localStorage.getItem('ragpocChatCollapsed') === '1';
+
       let studioContainer = $('#studio-view-container');
       let attachContainer = $('#attachments-view-container');
       let chatDrawer = $('#chat-drawer');
+      let pageArea = $('#page-area');
       let editorContainer = document.querySelector('.editor-container') || document.querySelector('.empty-state');
 
       if (isChatMode) {
-        // Center is Chat: ensure chat-view is visible in center
-        $('#chat-view-container').style.setProperty('display', 'flex', 'important');
+        // Center is Chat: ensure chat-view is visible in center and chat drawer is never collapsed
+        chatDrawer.classList.remove('panel-collapsed');
+        $('#chat-view-container')?.style.setProperty('display', 'flex', 'important');
+        if (pageArea) pageArea.classList.toggle('panel-collapsed', isRightCollapsed);
         setSideRightTab(currentSideRightTab || 'notes');
       } else {
+        // Center is Editor, Right is Chat Drawer
+        if (pageArea) pageArea.classList.remove('panel-collapsed');
+        chatDrawer.classList.toggle('panel-collapsed', isRightCollapsed);
+
         // Return studio and attach containers to chat-drawer
         if (studioContainer && studioContainer.parentElement !== chatDrawer) {
           chatDrawer.appendChild(studioContainer);
@@ -9121,7 +9210,12 @@
           chatDrawer.appendChild(attachContainer);
         }
         if (editorContainer) editorContainer.style.display = '';
-        setActivePaneView(currentPaneView);
+        if (isRightCollapsed) {
+          paneViews[currentPaneView]?.container?.style.setProperty('display', 'none', 'important');
+          paneViews[currentPaneView]?.sub?.style.setProperty('display', 'none', 'important');
+        } else {
+          setActivePaneView(currentPaneView);
+        }
       }
 
       updateLayoutButtons();
@@ -9330,11 +9424,41 @@
         setLayoutMode(switchBtn.dataset.switchMode);
         return;
       }
+      let collapseRightBtn = e.target.closest('#btn-collapse-chat, #btn-collapse-side-editor, [data-action="collapse-right"]');
+      if (collapseRightBtn) {
+        e.preventDefault();
+        setRightPanelCollapsed(true);
+        return;
+      }
+      let expandRightBtn = e.target.closest('#btn-expand-chat, #btn-expand-page, [data-action="expand-right"]');
+      if (expandRightBtn) {
+        e.preventDefault();
+        setRightPanelCollapsed(false);
+        return;
+      }
+      let collapseSidebarBtn = e.target.closest('#btn-collapse-sidebar');
+      if (collapseSidebarBtn) {
+        e.preventDefault();
+        setSidebarCollapsed(true);
+        return;
+      }
+      let expandSidebarBtn = e.target.closest('#btn-expand-sidebar');
+      if (expandSidebarBtn) {
+        e.preventDefault();
+        setSidebarCollapsed(false);
+        return;
+      }
     });
 
     function renderEmptyStateHTML() {
       let isChatMode = currentLayoutMode === 'chat';
       return `
+        <div class="panel-rail" id="page-rail">
+          <button class="btn-craft btn-craft-icon btn-sm" id="btn-expand-page" data-action="expand-right" title="Expandir panel">
+            <i class="bi bi-layout-sidebar-reverse"></i>
+          </button>
+        </div>
+
         <!-- Top Pill in Center Mode (Modo Editor) -->
         <div class="editor-top-nav" id="page-center-nav">
           <div class="center-mode-segmented-control">
@@ -9349,17 +9473,21 @@
 
         <!-- Right Panel Tabs in Side Mode (Modo Chat) -->
         <div class="side-editor-header" id="side-editor-header">
-          <div class="studio-segmented-control" style="width:100%;">
-            <button type="button" class="studio-seg-btn active" id="side-pane-switch-notes" data-side-tab="notes">
+          <div class="studio-segmented-control">
+            <button type="button" class="studio-seg-btn ${currentSideRightTab === 'notes' ? 'active' : ''}" id="side-pane-switch-notes" data-side-tab="notes">
               <i class="bi bi-journal-text"></i> Notas
             </button>
-            <button type="button" class="studio-seg-btn" id="side-pane-switch-studio" data-side-tab="studio">
+            <button type="button" class="studio-seg-btn ${currentSideRightTab === 'studio' ? 'active' : ''}" id="side-pane-switch-studio" data-side-tab="studio">
               <i class="bi bi-stars"></i> Studio
             </button>
-            <button type="button" class="studio-seg-btn" id="side-pane-switch-attachments" data-side-tab="attachments">
+            <button type="button" class="studio-seg-btn ${currentSideRightTab === 'attachments' ? 'active' : ''}" id="side-pane-switch-attachments" data-side-tab="attachments">
               <i class="bi bi-paperclip"></i> Adjuntos
             </button>
           </div>
+          <button class="btn-craft btn-craft-icon btn-sm panel-collapse-btn" id="btn-collapse-side-editor" data-action="collapse-right"
+            title="Colapsar panel">
+            <i class="bi bi-layout-sidebar-reverse"></i>
+          </button>
         </div>
 
         <div class="empty-state text-center my-auto p-4">
@@ -9380,30 +9508,39 @@
       sidebar.classList.toggle('panel-collapsed', collapsed);
       appShell.classList.toggle('sidebar-collapsed', collapsed);
       localStorage.setItem('ragpocSidebarCollapsed', collapsed ? '1' : '0');
+      window.dispatchEvent(new Event('resize'));
     }
 
-    function setChatCollapsed(collapsed) {
-      chatDrawer.classList.toggle('panel-collapsed', collapsed);
+    function setRightPanelCollapsed(collapsed) {
+      let isChatMode = currentLayoutMode === 'chat';
       appShell.classList.toggle('chat-collapsed', collapsed);
       localStorage.setItem('ragpocChatCollapsed', collapsed ? '1' : '0');
-      // The active pane view forces its own `display:flex !important` inline style
-      // (see setActivePaneView), which otherwise outranks the .panel-collapsed CSS rule
-      // and keeps the chat input / studio artifacts visible over the collapsed rail.
-      if (collapsed) {
-        paneViews[currentPaneView]?.container?.style.setProperty('display', 'none', 'important');
-        paneViews[currentPaneView]?.sub?.style.setProperty('display', 'none', 'important');
-      } else {
-        setActivePaneView(currentPaneView);
-      }
-    }
 
-    $('#btn-collapse-sidebar').onclick = () => setSidebarCollapsed(true);
-    $('#btn-expand-sidebar').onclick = () => setSidebarCollapsed(false);
-    $('#btn-collapse-chat').onclick = () => setChatCollapsed(true);
-    $('#btn-expand-chat').onclick = () => setChatCollapsed(false);
+      let pageArea = $('#page-area');
+      if (isChatMode) {
+        // In Chat Mode: Center is #chat-drawer (never collapsed), Right is #page-area
+        chatDrawer.classList.remove('panel-collapsed');
+        if (pageArea) pageArea.classList.toggle('panel-collapsed', collapsed);
+        $('#chat-view-container')?.style.setProperty('display', 'flex', 'important');
+      } else {
+        // In Editor Mode: Center is #page-area, Right is #chat-drawer
+        if (pageArea) pageArea.classList.remove('panel-collapsed');
+        chatDrawer.classList.toggle('panel-collapsed', collapsed);
+        if (collapsed) {
+          paneViews[currentPaneView]?.container?.style.setProperty('display', 'none', 'important');
+          paneViews[currentPaneView]?.sub?.style.setProperty('display', 'none', 'important');
+        } else {
+          setActivePaneView(currentPaneView);
+        }
+      }
+      window.dispatchEvent(new Event('resize'));
+    }
+    const setChatCollapsed = setRightPanelCollapsed;
+    window.setRightPanelCollapsed = setRightPanelCollapsed;
+    window.setChatCollapsed = setChatCollapsed;
 
     setSidebarCollapsed(localStorage.getItem('ragpocSidebarCollapsed') === '1');
-    setChatCollapsed(localStorage.getItem('ragpocChatCollapsed') === '1');
+    setRightPanelCollapsed(localStorage.getItem('ragpocChatCollapsed') === '1');
 
     // --- Drag-to-resize for side panels, supporting both Editor Mode and Chat Mode.
     // Widths live on CSS vars read by .app-shell's grid-template-columns and persist in localStorage.
@@ -10500,6 +10637,9 @@
           );
         };
       });
+
+      // Keep workspace switcher dropdown list in sync and prefilled
+      renderWorkspaceSwitcher();
     }
 
     async function openPage(id) {
@@ -10534,6 +10674,12 @@
       preparePageAreaForRender();
 
       $('#page-area').innerHTML = `
+        <div class="panel-rail" id="page-rail">
+          <button class="btn-craft btn-craft-icon btn-sm" id="btn-expand-page" data-action="expand-right" title="Expandir panel">
+            <i class="bi bi-layout-sidebar-reverse"></i>
+          </button>
+        </div>
+
         <!-- Top Pill in Center Mode (Modo Editor) -->
         <div class="editor-top-nav" id="page-center-nav">
           <div class="center-mode-segmented-control">
@@ -10548,17 +10694,21 @@
 
         <!-- Right Panel Tabs in Side Mode (Modo Chat) -->
         <div class="side-editor-header" id="side-editor-header">
-          <div class="studio-segmented-control" style="width:100%;">
-            <button type="button" class="studio-seg-btn active" id="side-pane-switch-notes" data-side-tab="notes">
+          <div class="studio-segmented-control">
+            <button type="button" class="studio-seg-btn ${currentSideRightTab === 'notes' ? 'active' : ''}" id="side-pane-switch-notes" data-side-tab="notes">
               <i class="bi bi-journal-text"></i> Notas
             </button>
-            <button type="button" class="studio-seg-btn" id="side-pane-switch-studio" data-side-tab="studio">
+            <button type="button" class="studio-seg-btn ${currentSideRightTab === 'studio' ? 'active' : ''}" id="side-pane-switch-studio" data-side-tab="studio">
               <i class="bi bi-stars"></i> Studio
             </button>
-            <button type="button" class="studio-seg-btn" id="side-pane-switch-attachments" data-side-tab="attachments">
+            <button type="button" class="studio-seg-btn ${currentSideRightTab === 'attachments' ? 'active' : ''}" id="side-pane-switch-attachments" data-side-tab="attachments">
               <i class="bi bi-paperclip"></i> Adjuntos
             </button>
           </div>
+          <button class="btn-craft btn-craft-icon btn-sm panel-collapse-btn" id="btn-collapse-side-editor" data-action="collapse-right"
+            title="Colapsar panel">
+            <i class="bi bi-layout-sidebar-reverse"></i>
+          </button>
         </div>
 
         <div class="editor-container">
@@ -11373,7 +11523,9 @@
     async function renderWorkspaceSwitcher() {
       let menu = $('#workspace-switcher-menu');
       if (!menu) return;
-      menu.innerHTML = '<li class="dropdown-item-text small text-muted px-3 py-2">Cargando…</li>';
+      if (!menu.querySelector('[data-ws-idx]')) {
+        menu.innerHTML = '<li class="dropdown-item-text small text-muted px-3 py-2">Cargando…</li>';
+      }
       try {
         let list = await api('/api/workspaces');
         if (!list.length) {
@@ -11397,6 +11549,7 @@
           let ws = list[Number(item.dataset.wsIdx)];
           item.onclick = async e => {
             e.preventDefault();
+            window.hideDropdown('#workspace-switcher-btn');
             if (ws.id === workspace?.id) return;
             await window.setWorkspace({ id: ws.id, name: ws.name });
           };
@@ -11406,6 +11559,7 @@
           btn.onclick = e => {
             e.preventDefault();
             e.stopPropagation();
+            window.hideDropdown('#workspace-switcher-btn');
             openDeleteModal(
               'Eliminar Espacio de Trabajo',
               `¿Estás seguro de que deseas eliminar el espacio "${ws.name}" y todos sus cuadernos, páginas y datos asociados? Esta acción no se puede deshacer.`,
@@ -11428,6 +11582,8 @@
                     setSideRightTab(currentSideRightTab || 'notes');
                   }
                   await initWorkspace();
+                } else {
+                  renderWorkspaceSwitcher();
                 }
               }
             );
