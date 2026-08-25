@@ -4613,7 +4613,13 @@
         try {
           await loadScript('/vendor/mermaid/mermaid.min.js');
           if (window.mermaid) {
-            window.mermaid.initialize({ startOnLoad: false, theme: 'neutral', suppressErrors: true });
+            window.mermaid.initialize({
+              startOnLoad: false,
+              theme: 'neutral',
+              securityLevel: 'loose',
+              suppressErrors: true,
+              flowchart: { htmlLabels: true, curve: 'linear' },
+            });
           }
         } catch (e) {
           console.warn('[RAGPoC] No se pudo cargar la librería Mermaid:', e);
@@ -4630,15 +4636,21 @@
         let nodeArray = nodes instanceof NodeList || Array.isArray(nodes) ? Array.from(nodes) : [nodes];
         for (let node of nodeArray) {
           if (!node || node.dataset.mermaidProcessed === 'true') continue;
+          let source = (node.textContent || '').trim();
+          if (!source) continue;
+          node.dataset.mermaidProcessed = 'true';
           try {
-            await m.run({ nodes: [node], suppressErrors: true });
-            node.dataset.mermaidProcessed = 'true';
+            let uniqueId = `mermaid-node-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            let { svg, bindFunctions } = await m.render(uniqueId, source);
+            node.innerHTML = svg;
+            if (typeof bindFunctions === 'function') {
+              try { bindFunctions(node); } catch (e) { }
+            }
           } catch (diagramErr) {
-            console.warn('[Mermaid] Error de sintaxis en diagrama:', diagramErr);
-            node.dataset.mermaidProcessed = 'true';
+            console.warn('[Mermaid] Error de sintaxis o layout en diagrama:', diagramErr);
             node.innerHTML = `
               <div class="p-2 border border-danger-subtle bg-danger-subtle text-danger rounded small text-start my-1" style="font-family:var(--font-sans);">
-                <div class="fw-semibold"><i class="bi bi-exclamation-triangle-fill me-1"></i> Error en la sintaxis del diagrama Mermaid</div>
+                <div class="fw-semibold"><i class="bi bi-exclamation-triangle-fill me-1"></i> Error en el diagrama Mermaid</div>
                 <div class="text-muted small mt-1 font-monospace" style="max-height:80px; overflow:auto; font-size:11px;">${esc(diagramErr?.message || String(diagramErr))}</div>
               </div>
             `;
@@ -4810,16 +4822,17 @@
           if (preEl.parentNode) preEl.parentNode.replaceChild(wrapper, preEl);
 
           if (m && source) {
-            let mermaidDiv = document.createElement('div');
-            mermaidDiv.className = 'mermaid text-center w-100';
-            mermaidDiv.textContent = source;
-            preview.appendChild(mermaidDiv);
             try {
-              await m.run({ nodes: [mermaidDiv], suppressErrors: true });
+              let uniqueId = `mermaid-chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+              let { svg, bindFunctions } = await m.render(uniqueId, source);
+              preview.innerHTML = svg;
+              if (typeof bindFunctions === 'function') {
+                try { bindFunctions(preview); } catch (e) { }
+              }
             } catch (diagErr) {
               preview.innerHTML = `
                 <div class="p-2 border border-danger-subtle bg-danger-subtle text-danger rounded small text-start my-1 w-100" style="font-family:var(--font-sans);">
-                  <div class="fw-semibold"><i class="bi bi-exclamation-triangle-fill me-1"></i> Error en la sintaxis del diagrama Mermaid</div>
+                  <div class="fw-semibold"><i class="bi bi-exclamation-triangle-fill me-1"></i> Error en el diagrama Mermaid</div>
                   <div class="text-muted small mt-1 font-monospace" style="font-size:11px;">${esc(diagErr?.message || String(diagErr))}</div>
                 </div>`;
             }
@@ -5166,7 +5179,10 @@
 
         let pre = document.createElement('pre');
         pre.className = 'rendered-code-block-source';
-        pre.style.display = 'none';
+        // IMPORTANT: Do NOT use display: none on pre/code because ProseMirror's contentDOM
+        // requires layout in the DOM tree. If display: none is set, ProseMirror's DOMObserver
+        // fails to set DOM selections and triggers an infinite synchronous update loop!
+        pre.style.cssText = 'position: absolute; width: 0; height: 0; overflow: hidden; opacity: 0; pointer-events: none; clip: rect(0,0,0,0); margin: 0; padding: 0; border: 0;';
         let code = document.createElement('code');
         code.className = `language-${language}`;
         pre.appendChild(code);
@@ -5176,15 +5192,23 @@
         wrapper.appendChild(pre);
 
         let showingCode = false;
+        function updateViewMode(show) {
+          showingCode = show;
+          if (showingCode) {
+            pre.style.cssText = 'position: relative; width: 100%; height: auto; overflow: auto; opacity: 1; pointer-events: auto; clip: auto;';
+            preview.style.display = 'none';
+            toggleBtn.innerHTML = '<i class="bi bi-eye"></i> Ver resultado';
+            setTimeout(() => code.focus(), 0);
+          } else {
+            pre.style.cssText = 'position: absolute; width: 0; height: 0; overflow: hidden; opacity: 0; pointer-events: none; clip: rect(0,0,0,0); margin: 0; padding: 0; border: 0;';
+            preview.style.display = '';
+            toggleBtn.innerHTML = '<i class="bi bi-code-slash"></i> Ver código';
+          }
+        }
+
         toggleBtn.onclick = (e) => {
           e.stopPropagation();
-          showingCode = !showingCode;
-          pre.style.display = showingCode ? '' : 'none';
-          preview.style.display = showingCode ? 'none' : '';
-          toggleBtn.innerHTML = showingCode
-            ? '<i class="bi bi-eye"></i> Ver resultado'
-            : '<i class="bi bi-code-slash"></i> Ver código';
-          if (showingCode) setTimeout(() => code.focus(), 0);
+          updateViewMode(!showingCode);
         };
 
         let renderTimer = null;
@@ -5280,13 +5304,14 @@
       cssClass: 'mermaid-block',
       placeholderText: 'Diagrama vacío — escribe sintaxis Mermaid en "Ver código".',
       async render(source, preview) {
-        let mermaidDiv = document.createElement('div');
-        mermaidDiv.className = 'mermaid';
-        mermaidDiv.textContent = source;
-        preview.replaceChildren(mermaidDiv);
         let m = await ensureMermaid();
         if (!m) throw new Error('No se pudo inicializar la librería Mermaid.');
-        await m.run({ nodes: [mermaidDiv], suppressErrors: true });
+        let uniqueId = `mermaid-editor-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        let { svg, bindFunctions } = await m.render(uniqueId, source);
+        preview.innerHTML = svg;
+        if (typeof bindFunctions === 'function') {
+          try { bindFunctions(preview); } catch (e) { }
+        }
       },
     });
 
