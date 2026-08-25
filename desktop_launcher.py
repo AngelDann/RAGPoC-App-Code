@@ -220,18 +220,35 @@ def _show_startup_failure(detail: str) -> None:
     try:
         import ctypes
 
-        # Last non-empty line of the traceback: the exception's own message, which for
-        # everything main() raises (see wait_for_server, the migration check) is already a
-        # user-facing sentence in Spanish -- more useful here than the full stack.
         last_line = next((line for line in reversed(detail.strip().splitlines()) if line.strip()), detail)
-        message = (
-            f"RAGPoC no pudo iniciarse.\n\n{last_line}\n\n"
-            f"Detalles completos en:\n{_log_path()}\n\n"
-            "Si el problema continúa, comparte ese archivo para recibir ayuda."
-        )
+        is_en = False
+        try:
+            import locale
+            loc_tuple = locale.getlocale()
+            loc = (loc_tuple[0] or "").lower() if loc_tuple else ""
+            if loc.startswith("en"):
+                is_en = True
+        except Exception:
+            pass
+
+        if is_en:
+            message = (
+                f"RAGPoC could not be started.\n\n{last_line}\n\n"
+                f"Full details in:\n{_log_path()}\n\n"
+                "If the problem persists, share that file for assistance."
+            )
+            title = "RAGPoC — Startup Error"
+        else:
+            message = (
+                f"RAGPoC no pudo iniciarse.\n\n{last_line}\n\n"
+                f"Detalles completos en:\n{_log_path()}\n\n"
+                "Si el problema continúa, comparte ese archivo para recibir ayuda."
+            )
+            title = "RAGPoC — Error de inicio"
+
         MB_ICONERROR = 0x10
         MB_OK = 0x0
-        ctypes.windll.user32.MessageBoxW(None, message, "RAGPoC — Error de inicio", MB_OK | MB_ICONERROR)
+        ctypes.windll.user32.MessageBoxW(None, message, title, MB_OK | MB_ICONERROR)
     except Exception:
         pass
 

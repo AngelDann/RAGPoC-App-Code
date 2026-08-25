@@ -22,11 +22,18 @@ def get_effective_settings() -> Settings:
     return settings
 
 
+def get_current_language() -> str:
+    """Returns the configured app language ('es', 'en', 'auto'). Defaults to 'es'."""
+    config = _load_app_config()
+    return config.language if config and config.language else "es"
+
+
 def get_api_key_status() -> dict:
     """Describe where the active OpenRouter API key comes from, without leaking it, plus app settings."""
     config = _load_app_config()
     stored_key = config.openrouter_api_key if config else ""
     env_key = get_env_settings().openrouter_api_key or ""
+    language = config.language if config and config.language else "es"
 
     if stored_key:
         source = "byok"
@@ -43,6 +50,7 @@ def get_api_key_status() -> dict:
         "configured": bool(active_key),
         "masked_key": _mask(active_key) if active_key else None,
         "has_env_fallback": bool(env_key),
+        "language": language,
     }
 
 
@@ -53,11 +61,13 @@ def set_byok_api_key(api_key: str) -> None:
     config.save()
 
 
-def set_app_settings(api_key: str | None = None) -> None:
+def set_app_settings(api_key: str | None = None, language: str | None = None) -> None:
     from knowledge.models import AppConfig
     config = AppConfig.load()
     if api_key is not None:
         config.openrouter_api_key = api_key.strip()
+    if language is not None:
+        config.language = language.strip().lower()
     config.save()
 
 

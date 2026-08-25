@@ -3252,8 +3252,8 @@
             <i class="bi bi-collection-fill text-dark"></i>
           </div>
           <div>
-            <div class="fw-bold fs-6 text-dark">Gestor de Fuentes & Base de Conocimiento</div>
-            <div class="text-muted" style="font-size:11px;">Indexación vectorial con Gemini Embedding y sqlite-vec</div>
+            <div class="fw-bold fs-6 text-dark" data-i18n="sources_modal.title">Gestor de Fuentes & Base de Conocimiento</div>
+            <div class="text-muted" style="font-size:11px;" data-i18n="sources_modal.subtitle">Indexación vectorial con Gemini Embedding y sqlite-vec</div>
           </div>
         </div>
         <button class="btn-craft btn-craft-icon" id="close-sources-modal">
@@ -3263,41 +3263,41 @@
 
       <div class="d-flex gap-2 p-2 px-4 border-bottom" style="background: var(--canvas-bg);">
         <button class="btn-craft active" data-source-tab="add">
-          <i class="bi bi-plus-circle-fill text-dark"></i> Añadir Fuente
+          <i class="bi bi-plus-circle-fill text-dark"></i> <span data-i18n="sources_modal.add_tab">Añadir Fuente</span>
         </button>
         <button class="btn-craft" data-source-tab="list">
-          <i class="bi bi-folder2-open text-dark"></i> Fuentes Indexadas (<span id="modal-sources-count">0</span>)
+          <i class="bi bi-folder2-open text-dark"></i> <span data-i18n="sources_modal.indexed_tab">Fuentes Indexadas</span> (<span id="modal-sources-count">0</span>)
         </button>
       </div>
 
       <!-- Tab: Add New Source -->
       <div class="p-4 d-flex flex-column gap-3 overflow-auto" id="modal-tab-add">
         <div class="small text-muted d-flex align-items-center gap-1" id="sources-target-notebook-label">
-          <i class="bi bi-journal-bookmark text-warning"></i> Añadiendo fuentes a: <span class="fw-bold text-dark"></span>
+          <i class="bi bi-journal-bookmark text-warning"></i> <span data-i18n="sources_modal.adding_to">Añadiendo fuentes a:</span> <span class="fw-bold text-dark"></span>
         </div>
 
         <div>
-          <div class="section-tag mb-1">Modalidad de fuente</div>
+          <div class="section-tag mb-1" data-i18n="sources_modal.source_mode">Modalidad de fuente</div>
           <div class="d-flex flex-column gap-3">
             <!-- Local File Upload Card -->
             <div class="craft-card p-3">
               <div class="fw-bold small text-dark d-flex align-items-center justify-content-between mb-2">
                 <span class="d-flex align-items-center gap-2">
-                  <i class="bi bi-file-earmark-arrow-up text-primary fs-6"></i> Subir Archivo Local (Office, Código, Datos, Multimedia)
+                  <i class="bi bi-file-earmark-arrow-up text-primary fs-6"></i> <span data-i18n="sources_modal.upload_local">Subir Archivo Local (Office, Código, Datos, Multimedia)</span>
                 </span>
-                <span class="badge bg-light text-secondary border" style="font-size:10px;">Deduplicado SHA-256</span>
+                <span class="badge bg-light text-secondary border" style="font-size:10px;" data-i18n="sources_modal.dedup_badge">Deduplicado SHA-256</span>
               </div>
               
               <div id="modal-file-dropzone" class="source-file-dropzone d-flex flex-column align-items-center justify-content-center p-3 text-center">
                 <i class="bi bi-cloud-arrow-up fs-2 text-secondary mb-1"></i>
-                <div class="fw-bold small text-dark">Arrastra archivos aquí o haz clic para explorar</div>
-                <div class="text-muted" style="font-size:11px;">Soporta PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), Markdown, CSV, JSON, Jupyter (.ipynb), Código, Audio, Video e Imágenes</div>
+                <div class="fw-bold small text-dark" data-i18n="sources_modal.dropzone_title">Arrastra archivos aquí o haz clic para explorar</div>
+                <div class="text-muted" style="font-size:11px;" data-i18n="sources_modal.dropzone_desc">Soporta PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), Markdown, CSV, JSON, Jupyter (.ipynb), Código, Audio, Video e Imágenes</div>
                 <input type="file" id="modal-source-file-input" multiple accept=".pdf,.docx,.xlsx,.xls,.pptx,.txt,.md,.markdown,.csv,.tsv,.json,.jsonl,.yaml,.yml,.xml,.html,.htm,.sql,.ipynb,.py,.js,.ts,.tsx,.jsx,.c,.cpp,.h,.cs,.java,.go,.rs,.php,.rb,.swift,.kt,.sh,.bat,.ps1,.png,.jpg,.jpeg,.webp,.mp4,.mov,.mkv,.webm,.mp3,.wav,.m4a,.ogg,.flac" hidden>
               </div>
 
               <div id="modal-file-upload-progress" class="mt-2" style="display:none;">
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                  <span class="small fw-semibold text-dark" id="modal-file-progress-label">Subiendo archivo…</span>
+                  <span class="small fw-semibold text-dark" id="modal-file-progress-label" data-i18n="sources_modal.uploading">Subiendo archivo…</span>
                   <span class="small text-secondary" id="modal-file-progress-percent">0%</span>
                 </div>
                 <div class="progress" style="height: 5px; background-color: #eee9df;">
@@ -3309,31 +3309,33 @@
             <!-- Web / URL Ingestion Card -->
             <div class="craft-card p-3">
               <div class="fw-bold small text-dark d-flex align-items-center gap-2 mb-2">
-                <i class="bi bi-globe2 text-primary"></i> Indexar URL Web o Artículo
+                <i class="bi bi-globe2 text-primary"></i> <span data-i18n="sources_modal.index_url_title">Indexar URL Web o Artículo</span>
               </div>
               <div class="input-group">
                 <input type="url" id="source-url-input" class="form-control form-control-craft"
                   placeholder="https://ejemplo.com/documentacion-o-guia">
                 <button class="btn-craft btn-craft-primary" id="btn-index-url">
-                  <i class="bi bi-cloud-arrow-down-fill"></i> Indexar URL
+                  <i class="bi bi-cloud-arrow-down-fill"></i> <span data-i18n="sources_modal.index_url_btn">Indexar URL</span>
                 </button>
               </div>
-              <div class="text-muted mt-1" style="font-size:11px;">Extrae el texto limpio, calcula su SHA-256 y genera
+              <div class="text-muted mt-1" style="font-size:11px;" data-i18n="sources_modal.index_url_desc">Extrae el texto limpio, calcula su SHA-256 y genera
                 embeddings vectoriales.</div>
             </div>
 
             <!-- Quick Text Ingestion Card -->
             <div class="craft-card p-3">
               <div class="fw-bold small text-dark d-flex align-items-center gap-2 mb-2">
-                <i class="bi bi-file-earmark-text text-success"></i> Texto Rápido, Apuntes o Transcripción
+                <i class="bi bi-file-earmark-text text-success"></i> <span data-i18n="sources_modal.quick_text_title">Texto Rápido, Apuntes o Transcripción</span>
               </div>
               <input type="text" id="source-text-title" class="form-control form-control-craft mb-2"
+                data-i18n-placeholder="sources_modal.quick_text_title_placeholder"
                 placeholder="Título de la fuente (ej. Especificación Técnica)">
               <textarea id="source-text-content" class="form-control form-control-craft mb-2" rows="3"
+                data-i18n-placeholder="sources_modal.quick_text_content_placeholder"
                 placeholder="Pega el contenido para indexarlo en sqlite-vec…"></textarea>
               <div class="d-flex justify-content-end">
                 <button class="btn-craft btn-craft-primary" id="btn-index-text">
-                  <i class="bi bi-save2"></i> Guardar como Fuente
+                  <i class="bi bi-save2"></i> <span data-i18n="sources_modal.save_as_source">Guardar como Fuente</span>
                 </button>
               </div>
             </div>
@@ -3346,8 +3348,8 @@
       <!-- Tab: List of Indexed Sources -->
       <div class="p-4 d-flex flex-column gap-3 overflow-auto" id="modal-tab-list" style="display:none;">
         <div class="d-flex justify-content-between align-items-center mb-1">
-          <span class="small fw-bold text-secondary">Fuentes que alimentan al Asistente y RAG:</span>
-          <button class="btn-craft btn-sm" id="btn-reload-sources-list" title="Actualizar lista">
+          <span class="small fw-bold text-secondary" data-i18n="sources_modal.sources_feeding_assistant">Fuentes que alimentan al Asistente y RAG:</span>
+          <button class="btn-craft btn-sm" id="btn-reload-sources-list" data-i18n-title="sources_modal.reload_tooltip" title="Actualizar lista">
             <i class="bi bi-arrow-clockwise"></i>
           </button>
         </div>
@@ -3367,7 +3369,7 @@
         style="background: var(--sidebar-bg);">
         <div class="fw-bold fs-6 d-flex align-items-center gap-2" id="action-modal-title">
           <i class="bi bi-plus-circle text-dark"></i>
-          <span>Nuevo Elemento</span>
+          <span data-i18n="common.create">Nuevo Elemento</span>
         </div>
         <button class="btn-craft btn-craft-icon" id="close-action-modal">
           <i class="bi bi-x-lg"></i>
@@ -3378,21 +3380,21 @@
         <input type="hidden" id="action-modal-parent-id" value="">
 
         <div>
-          <label class="form-label small fw-bold text-secondary mb-1" id="action-modal-input-label">Título /
+          <label class="form-label small fw-bold text-secondary mb-1" id="action-modal-input-label" data-i18n="common.name">Título /
             Nombre</label>
           <input type="text" id="action-modal-input-name" class="form-control form-control-craft"
             placeholder="Escribe el nombre…" required autofocus>
         </div>
 
         <div id="action-modal-desc-group" style="display:none;">
-          <label class="form-label small fw-bold text-secondary mb-1">Descripción (Opcional)</label>
+          <label class="form-label small fw-bold text-secondary mb-1" data-i18n="common.description">Descripción (Opcional)</label>
           <textarea id="action-modal-input-desc" class="form-control form-control-craft" rows="2"
             placeholder="Notas sobre este cuaderno…"></textarea>
         </div>
 
         <div class="d-flex justify-content-end gap-2 mt-2">
-          <button type="button" class="btn-craft" id="btn-cancel-action-modal">Cancelar</button>
-          <button type="submit" class="btn-craft btn-craft-primary" id="btn-submit-action-modal">Crear</button>
+          <button type="button" class="btn-craft" id="btn-cancel-action-modal" data-i18n="common.cancel">Cancelar</button>
+          <button type="submit" class="btn-craft btn-craft-primary" id="btn-submit-action-modal" data-i18n="common.create">Crear</button>
         </div>
       </form>
     </div>
@@ -3405,21 +3407,21 @@
         style="background: #fef2f2;">
         <div class="fw-bold fs-6 d-flex align-items-center gap-2 text-danger">
           <i class="bi bi-exclamation-triangle-fill"></i>
-          <span id="delete-modal-title">Confirmar Eliminación</span>
+          <span id="delete-modal-title" data-i18n="common.confirm_delete">Confirmar Eliminación</span>
         </div>
         <button class="btn-craft btn-craft-icon" id="close-delete-modal">
           <i class="bi bi-x-lg"></i>
         </button>
       </div>
       <div class="p-4 d-flex flex-column gap-3">
-        <p class="text-secondary mb-0" id="delete-modal-message">
+        <p class="text-secondary mb-0" id="delete-modal-message" data-i18n="common.delete_warning">
           ¿Estás seguro de que deseas eliminar este elemento? Esta acción no se puede deshacer.
         </p>
         <div class="d-flex justify-content-end gap-2 mt-2">
-          <button type="button" class="btn-craft" id="btn-cancel-delete">Cancelar</button>
+          <button type="button" class="btn-craft" id="btn-cancel-delete" data-i18n="common.cancel">Cancelar</button>
           <button type="button" class="btn-craft text-white" id="btn-confirm-delete"
             style="background: #dc2626; border-color: #b91c1c;">
-            <i class="bi bi-trash3"></i> Eliminar
+            <i class="bi bi-trash3"></i> <span data-i18n="common.delete">Eliminar</span>
           </button>
         </div>
       </div>
@@ -3433,7 +3435,7 @@
         style="background: var(--sidebar-bg);">
         <div class="fw-bold fs-6 d-flex align-items-center gap-2" id="input-modal-title">
           <i class="bi bi-pencil-square text-dark"></i>
-          <span>Introducir Texto</span>
+          <span data-i18n="common.input_text">Introducir Texto</span>
         </div>
         <button class="btn-craft btn-craft-icon" id="close-input-modal">
           <i class="bi bi-x-lg"></i>
@@ -3441,12 +3443,12 @@
       </div>
       <form id="input-modal-form" class="p-4 d-flex flex-column gap-3">
         <div>
-          <label class="form-label small fw-bold text-secondary mb-1" id="input-modal-label">Valor</label>
+          <label class="form-label small fw-bold text-secondary mb-1" id="input-modal-label" data-i18n="common.value">Valor</label>
           <input type="text" id="input-modal-value" class="form-control form-control-craft" required autofocus>
         </div>
         <div class="d-flex justify-content-end gap-2 mt-2">
-          <button type="button" class="btn-craft" id="btn-cancel-input-modal">Cancelar</button>
-          <button type="submit" class="btn-craft btn-craft-primary" id="btn-submit-input-modal">Aceptar</button>
+          <button type="button" class="btn-craft" id="btn-cancel-input-modal" data-i18n="common.cancel">Cancelar</button>
+          <button type="submit" class="btn-craft btn-craft-primary" id="btn-submit-input-modal" data-i18n="common.accept">Aceptar</button>
         </div>
       </form>
     </div>
@@ -3459,12 +3461,13 @@
         <i class="bi bi-search fs-5 text-secondary"></i>
         <input type="text" id="omni-search-input"
           class="form-control form-control-craft flex-1 border-0 shadow-none bg-transparent"
+          data-i18n-placeholder="topbar.search_placeholder"
           placeholder="Buscar páginas, cuadernos o documentos… (Esc para cerrar)" style="font-size:14.5px;">
         <span class="badge bg-white text-muted border" style="font-size:10px;">ESC</span>
       </div>
       <div class="p-2 overflow-auto stagger-list" id="omni-search-results"
         style="max-height: 50vh; display: flex; flex-direction: column; gap: 4px;">
-        <div class="text-center p-4 text-muted small">Escribe algo para comenzar a buscar en tu espacio…</div>
+        <div class="text-center p-4 text-muted small" data-i18n="common.no_results">Escribe algo para comenzar a buscar en tu espacio…</div>
       </div>
     </div>
   </div>
@@ -3476,7 +3479,7 @@
         style="background: var(--sidebar-bg);">
         <div class="d-flex align-items-center gap-2">
           <i class="bi bi-magic fs-5 text-amber"></i>
-          <span class="fw-bold fs-6">Estudio Generador de Artefactos</span>
+          <span class="fw-bold fs-6" data-i18n="studio.guides_title">Estudio Generador de Artefactos</span>
         </div>
         <button class="btn-craft btn-craft-icon" id="close-artifacts-modal">
           <i class="bi bi-x-lg"></i>
@@ -3485,10 +3488,10 @@
 
       <div class="d-flex gap-2 p-2 px-4 border-bottom" style="background: var(--canvas-bg);">
         <button class="btn-craft active" id="tab-btn-generate" data-artifact-tab="generate">
-          <i class="bi bi-plus-circle-fill text-dark"></i> Generar Nuevo
+          <i class="bi bi-plus-circle-fill text-dark"></i> <span data-i18n="studio.generate_new">Generar Nuevo</span>
         </button>
         <button class="btn-craft" id="tab-btn-gallery" data-artifact-tab="gallery">
-          <i class="bi bi-collection-fill text-dark"></i> Galería del Cuaderno (<span
+          <i class="bi bi-collection-fill text-dark"></i> <span data-i18n="studio.notebook_gallery">Galería del Cuaderno</span> (<span
             id="notebook-artifacts-count">0</span>)
         </button>
       </div>
@@ -3500,82 +3503,82 @@
             <span class="fw-bold small" id="artifact-type-selected-label"></span>
           </div>
           <button type="button" class="btn-craft btn-sm" id="btn-change-artifact-type">
-            <i class="bi bi-arrow-left-right"></i> Cambiar tipo
+            <i class="bi bi-arrow-left-right"></i> <span data-i18n="studio.change_type">Cambiar tipo</span>
           </button>
         </div>
         <div id="artifact-type-grid-wrap">
-          <label class="form-label small fw-bold text-secondary mb-2">Selecciona el tipo de artefacto a crear:</label>
+          <label class="form-label small fw-bold text-secondary mb-2" data-i18n="studio.select_type_label">Selecciona el tipo de artefacto a crear:</label>
           <div class="row g-2">
             <div class="col-6 col-md-4">
               <button class="btn-craft w-100 p-3 d-flex flex-column align-items-center text-center gap-1 active"
                 data-artifact-type="diagram">
                 <i class="bi bi-diagram-3-fill fs-4 text-primary"></i>
-                <span class="fw-bold small">Diagrama Mermaid</span>
-                <span class="text-muted" style="font-size:10.5px;">Flujos y arquitectura</span>
+                <span class="fw-bold small" data-i18n="studio.types.diagram">Diagrama Mermaid</span>
+                <span class="text-muted" style="font-size:10.5px;" data-i18n="studio.types.diagram_desc">Flujos y arquitectura</span>
               </button>
             </div>
             <div class="col-6 col-md-4">
               <button class="btn-craft w-100 p-3 d-flex flex-column align-items-center text-center gap-1"
                 data-artifact-type="quiz">
                 <i class="bi bi-patch-question-fill fs-4 text-warning"></i>
-                <span class="fw-bold small">Cuestionario / Quiz</span>
-                <span class="text-muted" style="font-size:10.5px;">Test interactivo</span>
+                <span class="fw-bold small" data-i18n="studio.types.quiz">Cuestionario / Quiz</span>
+                <span class="text-muted" style="font-size:10.5px;" data-i18n="studio.types.quiz_desc">Test interactivo</span>
               </button>
             </div>
             <div class="col-6 col-md-4">
               <button class="btn-craft w-100 p-3 d-flex flex-column align-items-center text-center gap-1"
                 data-artifact-type="study_guide">
                 <i class="bi bi-journal-check fs-4 text-success"></i>
-                <span class="fw-bold small">Guía de Estudio</span>
-                <span class="text-muted" style="font-size:10.5px;">Conceptos y glosario</span>
+                <span class="fw-bold small" data-i18n="studio.types.study_guide">Guía de Estudio</span>
+                <span class="text-muted" style="font-size:10.5px;" data-i18n="studio.types.study_guide_desc">Conceptos y glosario</span>
               </button>
             </div>
             <div class="col-6 col-md-4">
               <button class="btn-craft w-100 p-3 d-flex flex-column align-items-center text-center gap-1"
                 data-artifact-type="flashcards">
                 <i class="bi bi-card-text fs-4 text-danger"></i>
-                <span class="fw-bold small">Flashcards</span>
-                <span class="text-muted" style="font-size:10.5px;">Tarjetas de repaso</span>
+                <span class="fw-bold small" data-i18n="studio.types.flashcards">Flashcards</span>
+                <span class="text-muted" style="font-size:10.5px;" data-i18n="studio.types.flashcards_desc">Tarjetas de repaso</span>
               </button>
             </div>
             <div class="col-6 col-md-4">
               <button class="btn-craft w-100 p-3 d-flex flex-column align-items-center text-center gap-1"
                 data-artifact-type="summary">
                 <i class="bi bi-file-earmark-spreadsheet fs-4 text-info"></i>
-                <span class="fw-bold small">Resumen Ejecutivo</span>
-                <span class="text-muted" style="font-size:10.5px;">1 página estructurada</span>
+                <span class="fw-bold small" data-i18n="studio.types.summary">Resumen Ejecutivo</span>
+                <span class="text-muted" style="font-size:10.5px;" data-i18n="studio.types.summary_desc">1 página estructurada</span>
               </button>
             </div>
             <div class="col-6 col-md-4">
               <button class="btn-craft w-100 p-3 d-flex flex-column align-items-center text-center gap-1"
                 data-artifact-type="mindmap">
                 <i class="bi bi-diagram-2-fill fs-4" style="color:#7c3aed;"></i>
-                <span class="fw-bold small">Mapa Mental</span>
-                <span class="text-muted" style="font-size:10.5px;">Jerarquía de conceptos</span>
+                <span class="fw-bold small" data-i18n="studio.types.mindmap">Mapa Mental</span>
+                <span class="text-muted" style="font-size:10.5px;" data-i18n="studio.types.mindmap_desc">Jerarquía de conceptos</span>
               </button>
             </div>
             <div class="col-6 col-md-4">
               <button class="btn-craft w-100 p-3 d-flex flex-column align-items-center text-center gap-1"
                 data-artifact-type="infographic">
                 <i class="bi bi-easel2-fill fs-4" style="color:#8b5cf6;"></i>
-                <span class="fw-bold small">Infografía</span>
-                <span class="text-muted" style="font-size:10.5px;">Póster visual generado</span>
+                <span class="fw-bold small" data-i18n="studio.types.infographic">Infografía</span>
+                <span class="text-muted" style="font-size:10.5px;" data-i18n="studio.types.infographic_desc">Póster visual generado</span>
               </button>
             </div>
             <div class="col-6 col-md-4">
               <button class="btn-craft w-100 p-3 d-flex flex-column align-items-center text-center gap-1"
                 data-artifact-type="timeline">
                 <i class="bi bi-clock-history fs-4" style="color:#0d9488;"></i>
-                <span class="fw-bold small">Línea de Tiempo</span>
-                <span class="text-muted" style="font-size:10.5px;">Hitos cronológicos</span>
+                <span class="fw-bold small" data-i18n="studio.types.timeline">Línea de Tiempo</span>
+                <span class="text-muted" style="font-size:10.5px;" data-i18n="studio.types.timeline_desc">Hitos cronológicos</span>
               </button>
             </div>
             <div class="col-6 col-md-4">
               <button class="btn-craft w-100 p-3 d-flex flex-column align-items-center text-center gap-1"
                 data-artifact-type="podcast">
                 <i class="bi bi-mic-fill fs-4" style="color:#db2777;"></i>
-                <span class="fw-bold small">Podcast</span>
-                <span class="text-muted" style="font-size:10.5px;">Diálogo en audio</span>
+                <span class="fw-bold small" data-i18n="studio.types.podcast">Podcast</span>
+                <span class="text-muted" style="font-size:10.5px;" data-i18n="studio.types.podcast_desc">Diálogo en audio</span>
               </button>
             </div>
           </div>
@@ -3584,15 +3587,16 @@
         <div id="artifact-settings-panel" class="d-flex flex-column gap-2" style="display:none;"></div>
 
         <div>
-          <label class="form-label small fw-bold text-secondary mb-1">Notas adicionales (Opcional):</label>
+          <label class="form-label small fw-bold text-secondary mb-1" data-i18n="studio.custom_prompt_label">Notas adicionales (Opcional):</label>
           <input type="text" id="artifact-custom-prompt" class="form-control form-control-craft"
+            data-i18n-placeholder="studio.custom_prompt_placeholder"
             placeholder="Ej. Enfócate en la migración de base de datos o crea 4 preguntas difíciles">
         </div>
 
         <div class="d-flex justify-content-between align-items-center pt-2">
-          <div class="small text-muted" id="artifact-scope-label">Alcance: Todo el cuaderno actual</div>
+          <div class="small text-muted" id="artifact-scope-label" data-i18n="studio.scope_all_notebook">Alcance: Todo el cuaderno actual</div>
           <button class="btn-craft btn-craft-primary" id="btn-run-generate-artifact">
-            <i class="bi bi-stars"></i> Generar Artefacto
+            <i class="bi bi-stars"></i> <span data-i18n="studio.generate_btn">Generar Artefacto</span>
           </button>
         </div>
       </div>
@@ -3617,31 +3621,31 @@
             <i class="bi bi-stars text-warning" id="art-viewer-icon"></i>
           </div>
           <div class="overflow-hidden">
-            <div class="fw-bold fs-6 text-truncate text-dark" id="art-viewer-title">Visualizador de Artefacto</div>
+            <div class="fw-bold fs-6 text-truncate text-dark" id="art-viewer-title" data-i18n="studio.guides_title">Visualizador de Artefacto</div>
             <div class="text-muted" style="font-size:11px;" id="art-viewer-meta">Vista ampliada</div>
           </div>
         </div>
         <div class="d-flex align-items-center gap-2">
-          <button class="btn-craft btn-craft-icon" id="btn-art-viewer-rename" title="Renombrar artefacto">
+          <button class="btn-craft btn-craft-icon" id="btn-art-viewer-rename" data-i18n-title="common.rename" title="Renombrar artefacto">
             <i class="bi bi-pencil"></i>
           </button>
           <button class="btn-craft btn-sm" id="btn-art-viewer-insert">
-            <i class="bi bi-pin-angle-fill text-primary"></i> Insertar en Nota
+            <i class="bi bi-pin-angle-fill text-primary"></i> <span data-i18n="common.insert_in_note">Insertar en Nota</span>
           </button>
           <button class="btn-craft btn-sm" id="btn-art-viewer-new-page">
-            <i class="bi bi-file-earmark-plus"></i> Guardar como Página
+            <i class="bi bi-file-earmark-plus"></i> <span data-i18n="common.save_as_page">Guardar como Página</span>
           </button>
           <div class="dropdown">
             <button class="btn-craft btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-display="static"
               aria-expanded="false">
-              <i class="bi bi-download"></i> Descargar
+              <i class="bi bi-download"></i> <span data-i18n="common.download">Descargar</span>
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
               <li><a class="dropdown-item" href="#" id="btn-art-viewer-download-original">
-                  <i class="bi bi-file-earmark-code text-secondary"></i> Archivo original
+                  <i class="bi bi-file-earmark-code text-secondary"></i> <span data-i18n="common.original_file">Archivo original</span>
                 </a></li>
               <li><a class="dropdown-item" href="#" id="btn-art-viewer-download-pdf">
-                  <i class="bi bi-filetype-pdf text-danger"></i> Como PDF
+                  <i class="bi bi-filetype-pdf text-danger"></i> <span data-i18n="common.as_pdf">Como PDF</span>
                 </a></li>
             </ul>
           </div>
@@ -3667,8 +3671,8 @@
             <i class="bi bi-cpu-fill text-dark"></i>
           </div>
           <div>
-            <div class="fw-bold fs-6 text-dark">Memoria Declarativa & Habilidades (Skills)</div>
-            <div class="text-muted" style="font-size:11px;">Arquitectura de Harness tipo Hermes Agent persistente en
+            <div class="fw-bold fs-6 text-dark" data-i18n="memory_skills.title">Memoria Declarativa & Habilidades (Skills)</div>
+            <div class="text-muted" style="font-size:11px;" data-i18n="memory_skills.subtitle">Arquitectura de Harness tipo Hermes Agent persistente en
               SQLite</div>
           </div>
         </div>
@@ -3679,10 +3683,10 @@
 
       <div class="d-flex gap-2 p-2 px-4 border-bottom" style="background: var(--canvas-bg);">
         <button class="btn-craft active" data-agent-tab="memories">
-          <i class="bi bi-bookmark-star-fill text-warning"></i> Memorias (<span id="agent-mem-count">0</span>)
+          <i class="bi bi-bookmark-star-fill text-warning"></i> <span data-i18n="memory_skills.memories_tab">Memorias</span> (<span id="agent-mem-count">0</span>)
         </button>
         <button class="btn-craft" data-agent-tab="skills">
-          <i class="bi bi-tools text-primary"></i> Skills & Procedimientos (<span id="agent-skill-count">0</span>)
+          <i class="bi bi-tools text-primary"></i> <span data-i18n="memory_skills.skills_tab">Skills & Procedimientos</span> (<span id="agent-skill-count">0</span>)
         </button>
       </div>
 
@@ -3690,26 +3694,27 @@
       <div class="p-4 d-flex flex-column gap-3 overflow-auto" id="agent-tab-memories">
         <div class="craft-card p-3">
           <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
-            <i class="bi bi-plus-circle-fill text-dark"></i> Añadir Hecho o Preferencia a la Memoria
+            <i class="bi bi-plus-circle-fill text-dark"></i> <span data-i18n="memory_skills.add_memory_title">Añadir Hecho o Preferencia a la Memoria</span>
           </div>
           <div class="d-flex gap-2 mb-2">
             <select id="mem-category-select" class="form-select-craft" style="max-width: 200px;">
-              <option value="user_preference">Preferencia de Usuario</option>
-              <option value="domain_fact">Hecho del Proyecto</option>
-              <option value="convention">Convención / Regla</option>
+              <option value="user_preference" data-i18n="memory_skills.category_user_pref">Preferencia de Usuario</option>
+              <option value="domain_fact" data-i18n="memory_skills.category_domain_fact">Hecho del Proyecto</option>
+              <option value="convention" data-i18n="memory_skills.category_convention">Convención / Regla</option>
             </select>
             <input type="text" id="mem-content-input" class="form-control form-control-craft flex-1"
+              data-i18n-placeholder="memory_skills.memory_placeholder"
               placeholder="Ej. El usuario prefiere código en Python y respuestas en español">
             <button class="btn-craft btn-craft-primary" id="btn-add-memory">
-              <i class="bi bi-save"></i> Guardar
+              <i class="bi bi-save"></i> <span data-i18n="common.save">Guardar</span>
             </button>
           </div>
-          <div class="text-muted" style="font-size:11px;">El agente también aprenderá y añadirá hechos automáticamente
+          <div class="text-muted" style="font-size:11px;" data-i18n="memory_skills.memory_hint">El agente también aprenderá y añadirá hechos automáticamente
             durante las conversaciones en el chat.</div>
         </div>
 
         <div>
-          <div class="section-tag mb-1">Memorias Activas inyectadas en cada turno</div>
+          <div class="section-tag mb-1" data-i18n="memory_skills.active_memories">Memorias Activas inyectadas en cada turno</div>
           <div id="memories-list-container" class="d-flex flex-column gap-2 stagger-list">
             <div class="skeleton-row"></div>
             <div class="skeleton-row"></div>
@@ -3721,27 +3726,30 @@
       <div class="p-4 d-flex flex-column gap-3 overflow-auto" id="agent-tab-skills" style="display:none;">
         <div class="craft-card p-3">
           <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
-            <i class="bi bi-plus-circle-fill text-dark"></i> Registrar Nueva Habilidad (Skill)
+            <i class="bi bi-plus-circle-fill text-dark"></i> <span data-i18n="memory_skills.add_skill_title">Registrar Nueva Habilidad (Skill)</span>
           </div>
           <div class="d-flex flex-column gap-2">
             <div class="d-flex gap-2">
               <input type="text" id="skill-name-input" class="form-control form-control-craft"
+                data-i18n-placeholder="memory_skills.skill_name_placeholder"
                 placeholder="Nombre único (ej. formatear-minuta)">
               <input type="text" id="skill-desc-input" class="form-control form-control-craft"
+                data-i18n-placeholder="memory_skills.skill_desc_placeholder"
                 placeholder="Descripción concisa">
             </div>
             <textarea id="skill-inst-input" class="form-control form-control-craft" rows="3"
+              data-i18n-placeholder="memory_skills.skill_instructions_placeholder"
               placeholder="Instrucciones paso a paso, directivas y formato que el agente debe seguir cuando use esta skill…"></textarea>
             <div class="d-flex justify-content-end">
               <button class="btn-craft btn-craft-primary" id="btn-save-skill">
-                <i class="bi bi-lightning-charge-fill"></i> Crear Skill
+                <i class="bi bi-lightning-charge-fill"></i> <span data-i18n="memory_skills.create_skill_btn">Crear Skill</span>
               </button>
             </div>
           </div>
         </div>
 
         <div>
-          <div class="section-tag mb-1">Habilidades Disponibles para el Agente</div>
+          <div class="section-tag mb-1" data-i18n="memory_skills.available_skills">Habilidades Disponibles para el Agente</div>
           <div id="skills-list-container" class="d-flex flex-column gap-2 stagger-list">
             <div class="skeleton-row"></div>
             <div class="skeleton-row"></div>
@@ -3771,11 +3779,28 @@
       </div>
 
       <div class="p-4 d-flex flex-column gap-3">
+        <!-- Language Selector Card -->
         <div class="craft-card p-3">
           <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
-            <i class="bi bi-key-fill text-dark"></i> OpenRouter API Key
+            <i class="bi bi-translate text-primary"></i> <span data-i18n="settings.language_label">Idioma de la aplicación</span>
           </div>
-          <div id="settings-key-status" class="text-muted mb-2" style="font-size:11px;">Cargando estado…</div>
+          <div class="d-flex gap-2">
+            <select id="settings-language-select" class="form-select form-select-sm border" style="border-radius: var(--radius-sm); background: #ffffff;">
+              <option value="es">🇪🇸 Español</option>
+              <option value="en">🇬🇧 English</option>
+              <option value="auto">🌐 Automático / Auto-detect</option>
+            </select>
+          </div>
+          <div class="text-muted mt-1" style="font-size:11px;" data-i18n="settings.language_hint">
+            Aplica a la interfaz de usuario, el asistente de chat y la generación de artefactos.
+          </div>
+        </div>
+
+        <div class="craft-card p-3">
+          <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
+            <i class="bi bi-key-fill text-dark"></i> <span data-i18n="settings.api_key_title">OpenRouter API Key</span>
+          </div>
+          <div id="settings-key-status" class="text-muted mb-2" style="font-size:11px;" data-i18n="settings.loading_status">Cargando estado…</div>
           <div class="input-group">
             <input type="password" id="settings-api-key-input" class="form-control form-control-craft"
               placeholder="sk-or-v1-…" autocomplete="off">
@@ -3832,20 +3857,20 @@
 
           <div class="d-flex justify-content-end gap-2 flex-wrap mt-2">
             <button class="btn-craft" id="btn-check-update">
-              <i class="bi bi-search"></i> Buscar actualizaciones
+              <i class="bi bi-search"></i> <span data-i18n="settings.check_updates_btn">Buscar actualizaciones</span>
             </button>
             <button class="btn-craft" id="btn-download-update" style="display:none;">
-              <i class="bi bi-cloud-arrow-down text-primary"></i> <span id="btn-download-update-text">Descargar en 2º plano</span>
+              <i class="bi bi-cloud-arrow-down text-primary"></i> <span id="btn-download-update-text" data-i18n="settings.download_bg_btn">Descargar en 2º plano</span>
             </button>
             <button class="btn-craft btn-craft-primary" id="btn-apply-update" style="display:none;">
-              <i class="bi bi-rocket-takeoff"></i> <span id="btn-apply-update-text">Reiniciar y actualizar</span>
+              <i class="bi bi-rocket-takeoff"></i> <span id="btn-apply-update-text" data-i18n="settings.restart_update_btn">Reiniciar y actualizar</span>
             </button>
           </div>
         </div>
 
         <div class="d-flex justify-content-end gap-2">
           <button class="btn-craft btn-craft-primary" id="btn-save-settings-key" title="Guardar Cambios (Ctrl+S)">
-            <i class="bi bi-save2"></i> Guardar Cambios
+            <i class="bi bi-save2"></i> <span data-i18n="settings.save_settings_btn">Guardar Cambios</span>
           </button>
         </div>
       </div>
@@ -3862,8 +3887,8 @@
             <i class="bi bi-speedometer2 text-dark"></i>
           </div>
           <div>
-            <div class="fw-bold fs-6 text-dark">Uso & Monitoreo</div>
-            <div class="text-muted" style="font-size:11px;">Consumo de API key, embeddings y logs de la aplicación</div>
+            <div class="fw-bold fs-6 text-dark" data-i18n="usage.title">Uso & Monitoreo</div>
+            <div class="text-muted" style="font-size:11px;" data-i18n="usage.subtitle">Consumo de API key, embeddings y logs de la aplicación</div>
           </div>
         </div>
         <button class="btn-craft btn-craft-icon" id="close-usage-modal">
@@ -3875,10 +3900,10 @@
         style="background: var(--canvas-bg);">
         <div class="d-flex gap-2">
           <button class="btn-craft active" data-usage-tab="summary">
-            <i class="bi bi-bar-chart-fill text-primary"></i> Resumen
+            <i class="bi bi-bar-chart-fill text-primary"></i> <span data-i18n="usage.summary_tab">Resumen</span>
           </button>
           <button class="btn-craft" data-usage-tab="logs">
-            <i class="bi bi-list-columns-reverse text-secondary"></i> Logs
+            <i class="bi bi-list-columns-reverse text-secondary"></i> <span data-i18n="usage.logs_tab">Logs</span>
           </button>
         </div>
         <div class="d-flex gap-1" id="usage-range-group">
@@ -3892,16 +3917,16 @@
       <div class="p-4 d-flex flex-column gap-3 overflow-auto" id="usage-tab-summary">
         <div class="craft-card p-3" id="usage-key-status-card">
           <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
-            <i class="bi bi-key-fill text-dark"></i> Estado de la API Key (OpenRouter)
+            <i class="bi bi-key-fill text-dark"></i> <span data-i18n="usage.key_status_title">Estado de la API Key (OpenRouter)</span>
           </div>
-          <div id="usage-key-status-body" class="text-muted small">Cargando…</div>
+          <div id="usage-key-status-body" class="text-muted small" data-i18n="common.loading">Cargando…</div>
         </div>
 
         <div id="usage-kpi-grid" class="usage-kpi-grid"></div>
 
         <div class="craft-card p-3">
           <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
-            <i class="bi bi-graph-up text-dark"></i> Solicitudes por día
+            <i class="bi bi-graph-up text-dark"></i> <span data-i18n="usage.requests_per_day">Solicitudes por día</span>
           </div>
           <div id="usage-daily-chart" class="usage-bar-chart"></div>
         </div>
@@ -3909,13 +3934,13 @@
         <div class="d-flex gap-3 flex-wrap">
           <div class="craft-card p-3 flex-1" style="min-width: 260px;">
             <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
-              <i class="bi bi-diagram-3-fill text-dark"></i> Por categoría
+              <i class="bi bi-diagram-3-fill text-dark"></i> <span data-i18n="usage.by_category">Por categoría</span>
             </div>
             <div id="usage-by-category"></div>
           </div>
           <div class="craft-card p-3 flex-1" style="min-width: 260px;">
             <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
-              <i class="bi bi-cpu text-dark"></i> Por modelo
+              <i class="bi bi-cpu text-dark"></i> <span data-i18n="usage.by_model">Por modelo</span>
             </div>
             <div id="usage-by-model"></div>
           </div>
@@ -3926,19 +3951,19 @@
       <div class="p-4 d-flex flex-column gap-3 overflow-auto" id="usage-tab-logs" style="display:none;">
         <div class="d-flex gap-2 flex-wrap align-items-center">
           <select id="usage-log-category-filter" class="form-select-craft" style="max-width: 200px;">
-            <option value="">Todas las categorías</option>
+            <option value="" data-i18n="usage.all_categories">Todas las categorías</option>
             <option value="chat">Chat</option>
             <option value="embedding">Embeddings</option>
             <option value="inline_ai">IA en línea</option>
             <option value="artifact">Artefactos</option>
           </select>
           <select id="usage-log-status-filter" class="form-select-craft" style="max-width: 160px;">
-            <option value="">Todos los estados</option>
-            <option value="success">Éxito</option>
-            <option value="error">Error</option>
+            <option value="" data-i18n="usage.all_statuses">Todos los estados</option>
+            <option value="success" data-i18n="common.success">Éxito</option>
+            <option value="error" data-i18n="common.error">Error</option>
           </select>
           <button class="btn-craft btn-sm" id="btn-refresh-usage-logs">
-            <i class="bi bi-arrow-clockwise"></i> Actualizar
+            <i class="bi bi-arrow-clockwise"></i> <span data-i18n="common.refresh">Actualizar</span>
           </button>
           <span class="text-muted ms-auto" style="font-size:11px;" id="usage-log-total"></span>
         </div>
@@ -3947,23 +3972,23 @@
           <table class="table table-sm usage-log-table">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Categoría</th>
-                <th>Acción</th>
-                <th>Modelo</th>
-                <th>Estado</th>
-                <th>Tokens</th>
-                <th>Duración</th>
+                <th data-i18n="usage.col_date">Fecha</th>
+                <th data-i18n="usage.col_category">Categoría</th>
+                <th data-i18n="usage.col_action">Acción</th>
+                <th data-i18n="usage.col_model">Modelo</th>
+                <th data-i18n="usage.col_status">Estado</th>
+                <th data-i18n="usage.col_tokens">Tokens</th>
+                <th data-i18n="usage.col_duration">Duración</th>
               </tr>
             </thead>
             <tbody id="usage-log-rows">
-              <tr><td colspan="7" class="text-muted text-center p-3">Cargando…</td></tr>
+              <tr><td colspan="7" class="text-muted text-center p-3" data-i18n="common.loading">Cargando…</td></tr>
             </tbody>
           </table>
         </div>
 
         <div class="d-flex justify-content-center">
-          <button class="btn-craft btn-sm" id="btn-load-more-usage-logs" style="display:none;">
+          <button class="btn-craft btn-sm" id="btn-load-more-usage-logs" style="display:none;" data-i18n="usage.load_more">
             <i class="bi bi-chevron-down"></i> Cargar más
           </button>
         </div>
@@ -3978,13 +4003,13 @@
         style="background: var(--sidebar-bg);">
         <div class="d-flex align-items-center gap-2 overflow-hidden">
           <i id="preview-modal-icon" class="bi bi-file-earmark-text text-dark fs-5"></i>
-          <span class="fw-bold fs-6 text-truncate" id="preview-modal-title">Previsualización de Archivo</span>
+          <span class="fw-bold fs-6 text-truncate" id="preview-modal-title" data-i18n="common.title">Previsualización de Archivo</span>
           <span class="badge bg-light text-dark border ms-2" id="preview-modal-badge"
             style="font-size:11px;">TEXT</span>
         </div>
         <div class="d-flex align-items-center gap-2">
           <a id="preview-modal-download" href="#" target="_blank" class="btn-craft btn-sm text-decoration-none">
-            <i class="bi bi-download"></i> Descargar
+            <i class="bi bi-download"></i> <span data-i18n="common.download">Descargar</span>
           </a>
           <button class="btn-craft btn-craft-icon" id="close-file-preview-modal">
             <i class="bi bi-x-lg"></i>
@@ -4003,7 +4028,7 @@
     <div class="d-flex justify-content-between align-items-center px-2 py-1 border-bottom mb-1">
       <span class="slash-section-label p-0 m-0 d-flex align-items-center gap-1">
         <i class="bi bi-stars text-warning"></i>
-        <span>Acciones de IA en Línea</span>
+        <span data-i18n="slash.ai_actions_title">Acciones de IA en Línea</span>
       </span>
       <button type="button" class="btn-close" id="btn-close-slash-menu" style="font-size: 10px;"
         aria-label="Cerrar"></button>
@@ -4011,121 +4036,121 @@
     <div class="slash-item ai-action" data-slash-cmd="ai-ask" data-slash-kw="preguntar pregunta ia ai redactar ask asistente">
       <div class="slash-icon text-warning"><i class="bi bi-magic"></i></div>
       <div>
-        <div class="fw-bold small">Preguntar a la IA / Redactar</div>
-        <div class="text-muted" style="font-size:10.5px;">Escribe un borrador o responde aquí</div>
+        <div class="fw-bold small" data-i18n="slash.ask_ai">Preguntar a la IA / Redactar</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.ask_ai_desc">Escribe un borrador o responde aquí</div>
       </div>
     </div>
     <div class="slash-item ai-action" data-slash-cmd="ai-continue" data-slash-kw="continuar seguir escribir continue">
       <div class="slash-icon text-primary"><i class="bi bi-pen"></i></div>
       <div>
-        <div class="fw-bold small">Continuar escribiendo</div>
-        <div class="text-muted" style="font-size:10.5px;">Sigue la redacción desde este punto</div>
+        <div class="fw-bold small" data-i18n="slash.continue_writing">Continuar escribiendo</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.continue_writing_desc">Sigue la redacción desde este punto</div>
       </div>
     </div>
     <div class="slash-item ai-action" data-slash-cmd="ai-summarize" data-slash-kw="resumir resumen summary summarize resume">
       <div class="slash-icon text-success"><i class="bi bi-journal-check"></i></div>
       <div>
-        <div class="fw-bold small">Resumir esta nota</div>
-        <div class="text-muted" style="font-size:10.5px;">Inserta un resumen en viñetas</div>
+        <div class="fw-bold small" data-i18n="slash.summarize_note">Resumir esta nota</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.summarize_note_desc">Inserta un resumen en viñetas</div>
       </div>
     </div>
     <div class="slash-item ai-action" data-slash-cmd="ai-tasks" data-slash-kw="tareas lista de tareas todo tasks pendientes checklist">
       <div class="slash-icon text-danger"><i class="bi bi-check2-square"></i></div>
       <div>
-        <div class="fw-bold small">Extraer lista de tareas</div>
-        <div class="text-muted" style="font-size:10.5px;">Encuentra pendientes en el texto</div>
+        <div class="fw-bold small" data-i18n="slash.extract_tasks">Extraer lista de tareas</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.extract_tasks_desc">Encuentra pendientes en el texto</div>
       </div>
     </div>
     <div class="slash-item ai-action" data-slash-cmd="ai-improve" data-slash-kw="mejorar redaccion improve pulir mejora">
       <div class="slash-icon text-info"><i class="bi bi-brush"></i></div>
       <div>
-        <div class="fw-bold small">Mejorar redacción</div>
-        <div class="text-muted" style="font-size:10.5px;">Corrige y pule el párrafo</div>
+        <div class="fw-bold small" data-i18n="slash.improve_writing">Mejorar redacción</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.improve_writing_desc">Corrige y pule el párrafo</div>
       </div>
     </div>
 
     <div class="slash-section-label mt-2 d-flex align-items-center gap-1">
       <i class="bi bi-layout-text-window text-secondary"></i>
-      <span>Formato de Bloques</span>
+      <span data-i18n="slash.block_formatting_title">Formato de Bloques</span>
     </div>
     <div class="slash-item" data-slash-cmd="h1" data-slash-kw="h1 heading1 heading encabezado encabezado1 titulo título title">
       <div class="slash-icon text-dark"><i class="bi bi-type-h1"></i></div>
       <div>
-        <div class="fw-bold small">Encabezado 1</div>
-        <div class="text-muted" style="font-size:10.5px;">Título de sección grande</div>
+        <div class="fw-bold small" data-i18n="slash.h1">Encabezado 1</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.h1_desc">Título de sección grande</div>
       </div>
     </div>
     <div class="slash-item" data-slash-cmd="h2" data-slash-kw="h2 heading2 subencabezado subtitulo subtítulo subheading">
       <div class="slash-icon text-dark"><i class="bi bi-type-h2"></i></div>
       <div>
-        <div class="fw-bold small">Encabezado 2</div>
-        <div class="text-muted" style="font-size:10.5px;">Subtítulo mediano</div>
+        <div class="fw-bold small" data-i18n="slash.h2">Encabezado 2</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.h2_desc">Subtítulo mediano</div>
       </div>
     </div>
     <div class="slash-item" data-slash-cmd="h3" data-slash-kw="h3 heading3 subencabezado3 subheading3">
       <div class="slash-icon text-dark"><i class="bi bi-type-h3"></i></div>
       <div>
-        <div class="fw-bold small">Encabezado 3</div>
-        <div class="text-muted" style="font-size:10.5px;">Subtítulo pequeño</div>
+        <div class="fw-bold small" data-i18n="slash.h3">Encabezado 3</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.h3_desc">Subtítulo pequeño</div>
       </div>
     </div>
     <div class="slash-item" data-slash-cmd="bullet" data-slash-kw="lista vinetas viñetas bullet bulletlist ul">
       <div class="slash-icon text-dark"><i class="bi bi-list-ul"></i></div>
       <div>
-        <div class="fw-bold small">Lista con viñetas</div>
-        <div class="text-muted" style="font-size:10.5px;">Crea una lista simple</div>
+        <div class="fw-bold small" data-i18n="slash.bullet_list">Lista con viñetas</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.bullet_list_desc">Crea una lista simple</div>
       </div>
     </div>
     <div class="slash-item" data-slash-cmd="ordered" data-slash-kw="lista numerada numeros números ordered orderedlist ol">
       <div class="slash-icon text-dark"><i class="bi bi-list-ol"></i></div>
       <div>
-        <div class="fw-bold small">Lista numerada</div>
-        <div class="text-muted" style="font-size:10.5px;">Crea una lista con números</div>
+        <div class="fw-bold small" data-i18n="slash.ordered_list">Lista numerada</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.ordered_list_desc">Crea una lista con números</div>
       </div>
     </div>
     <div class="slash-item" data-slash-cmd="quote" data-slash-kw="cita quote blockquote">
       <div class="slash-icon text-dark"><i class="bi bi-quote"></i></div>
       <div>
-        <div class="fw-bold small">Cita</div>
-        <div class="text-muted" style="font-size:10.5px;">Bloque de cita editorial</div>
+        <div class="fw-bold small" data-i18n="slash.quote">Cita</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.quote_desc">Bloque de cita editorial</div>
       </div>
     </div>
     <div class="slash-item" data-slash-cmd="divider" data-slash-kw="linea línea divisoria divisor separador hr horizontal rule">
       <div class="slash-icon text-dark"><i class="bi bi-hr"></i></div>
       <div>
-        <div class="fw-bold small">Línea divisoria</div>
-        <div class="text-muted" style="font-size:10.5px;">Separa secciones de la página</div>
+        <div class="fw-bold small" data-i18n="slash.divider">Línea divisoria</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.divider_desc">Separa secciones de la página</div>
       </div>
     </div>
     <div class="slash-item" data-slash-cmd="codeblock" data-slash-kw="codigo code codeblock json python markdown sql bash">
       <div class="slash-icon text-dark"><i class="bi bi-code-square"></i></div>
       <div>
-        <div class="fw-bold small">Bloque de código</div>
-        <div class="text-muted" style="font-size:10.5px;">Con selector de sintaxis (Python, JSON, etc.)</div>
+        <div class="fw-bold small" data-i18n="slash.code_block">Bloque de código</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.code_block_desc">Con selector de sintaxis (Python, JSON, etc.)</div>
       </div>
     </div>
     <div class="slash-item" data-slash-cmd="table" data-slash-kw="tabla table grid filas columnas">
       <div class="slash-icon text-dark"><i class="bi bi-table"></i></div>
       <div>
-        <div class="fw-bold small">Tabla</div>
-        <div class="text-muted" style="font-size:10.5px;">Cuadrícula de 3×3 con encabezado</div>
+        <div class="fw-bold small" data-i18n="slash.table">Tabla</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.table_desc">Cuadrícula de 3×3 con encabezado</div>
       </div>
     </div>
     <div class="slash-item" data-slash-cmd="embed" data-slash-kw="embed embeber sitio web iframe pagina página url link">
       <div class="slash-icon text-dark"><i class="bi bi-window-stack"></i></div>
       <div>
-        <div class="fw-bold small">Embed</div>
-        <div class="text-muted" style="font-size:10.5px;">Incrusta un sitio web por URL</div>
+        <div class="fw-bold small" data-i18n="slash.embed">Embed</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.embed_desc">Incrusta un sitio web por URL</div>
       </div>
     </div>
     <div class="slash-item" data-slash-cmd="media" data-slash-kw="imagen video audio archivo documento media upload subir file image">
       <div class="slash-icon text-dark"><i class="bi bi-plus-square"></i></div>
       <div>
-        <div class="fw-bold small">Imagen, Video, Audio o Documento</div>
-        <div class="text-muted" style="font-size:10.5px;">Sube y adjunta un archivo</div>
+        <div class="fw-bold small" data-i18n="slash.media">Imagen, Video, Audio o Documento</div>
+        <div class="text-muted" style="font-size:10.5px;" data-i18n="slash.media_desc">Sube y adjunta un archivo</div>
       </div>
     </div>
-    <div class="text-muted small p-3 text-center" id="slash-menu-empty" style="display:none;">Sin resultados</div>
+    <div class="text-muted small p-3 text-center" id="slash-menu-empty" style="display:none;" data-i18n="common.no_results">Sin resultados</div>
   </div>
 
   <!-- Chat Skills Slash Popup (invoke a saved Skill from the evidence chat with "/") -->
@@ -4133,7 +4158,7 @@
     <div class="d-flex justify-content-between align-items-center px-2 py-1 border-bottom mb-1">
       <span class="slash-section-label p-0 m-0 d-flex align-items-center gap-1">
         <i class="bi bi-tools text-primary"></i>
-        <span>Usar Skill en el Chat</span>
+        <span data-i18n="slash.use_skill_chat">Usar Skill en el Chat</span>
       </span>
       <button type="button" class="btn-close" id="btn-close-chat-skill-popup" style="font-size: 10px;"
         aria-label="Cerrar"></button>
@@ -4166,9 +4191,10 @@
       <i class="bi bi-stars text-warning fs-5"></i>
       <input type="text" id="notion-ai-prompt-input"
         class="form-control form-control-craft border-0 shadow-none bg-transparent flex-1"
+        data-i18n-placeholder="slash.prompt_placeholder"
         placeholder="Dile a la IA qué escribir o generar…" style="font-size:13.5px;">
       <button class="btn-craft btn-craft-primary btn-sm" id="btn-submit-notion-ai">
-        <i class="bi bi-arrow-return-left"></i> Generar
+        <i class="bi bi-arrow-return-left"></i> <span data-i18n="common.create">Generar</span>
       </button>
       <button class="btn-craft btn-craft-icon btn-sm" id="btn-close-notion-ai">
         <i class="bi bi-x-lg"></i>
@@ -4176,7 +4202,7 @@
     </div>
     <div id="notion-ai-status" class="small text-muted" style="font-size:11px; display:none;">
       <span class="spinner-border spinner-border-sm me-1 text-warning" style="width:12px; height:12px;"></span>
-      Generando en el lienzo…
+      <span data-i18n="slash.generating_canvas">Generando en el lienzo…</span>
     </div>
   </div>
 
@@ -4194,7 +4220,7 @@
     <!-- Left: Navigation Sidebar / Drawer -->
     <aside class="sidebar craft-panel" id="sidebar-drawer">
       <div class="panel-rail" id="sidebar-rail">
-        <button class="btn-craft btn-craft-icon btn-sm" id="btn-expand-sidebar" title="Expandir espacio de trabajo">
+        <button class="btn-craft btn-craft-icon btn-sm" id="btn-expand-sidebar" data-i18n-title="common.expand_panel" title="Expandir espacio de trabajo">
           <i class="bi bi-layout-sidebar"></i>
         </button>
       </div>
@@ -4206,10 +4232,11 @@
           <span class="fw-bold fs-6">RAGPoC Studio</span>
         </div>
         <div class="d-flex align-items-center gap-1">
-          <button class="btn-craft btn-craft-icon btn-sm" id="open-omni-btn" title="Buscar (Ctrl+K)">
+          <button class="btn-craft btn-craft-icon btn-sm" id="open-omni-btn" data-i18n-title="topbar.search_placeholder" title="Buscar (Ctrl+K)">
             <i class="bi bi-search"></i>
           </button>
           <button class="btn-craft btn-craft-icon btn-sm panel-collapse-btn" id="btn-collapse-sidebar"
+            data-i18n-title="common.collapse_panel"
             title="Colapsar panel">
             <i class="bi bi-layout-sidebar"></i>
           </button>
@@ -4218,54 +4245,55 @@
 
       <div class="nav-section">
         <div class="workspace-pill" id="ws-banner">
-          <div class="section-tag"><i class="bi bi-folder2-open"></i> Espacio de trabajo</div>
+          <div class="section-tag"><i class="bi bi-folder2-open"></i> <span data-i18n="topbar.workspace">Espacio de trabajo</span></div>
           <div class="d-flex align-items-center gap-1 mb-2">
             <div class="dropdown position-relative flex-1" style="min-width:0;">
               <button type="button" class="dropdown-toggle fw-bold fs-6 text-truncate d-flex align-items-center"
                 id="workspace-switcher-btn" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false"
+                data-i18n-title="topbar.rename_workspace"
                 title="Cambiar de espacio de trabajo"
                 style="width:100%; text-align:left; border:none; background:transparent; padding:0; color:inherit;">
-                <span id="workspace-name" class="text-truncate">Cargando espacio…</span>
+                <span id="workspace-name" class="text-truncate" data-i18n="topbar.loading_workspace">Cargando espacio…</span>
               </button>
               <ul class="dropdown-menu shadow border-0 p-1" id="workspace-switcher-menu" style="min-width:240px; max-height:320px; overflow-y:auto; z-index:1050;">
-                <li class="dropdown-item-text small text-muted px-3 py-2">Cargando…</li>
+                <li class="dropdown-item-text small text-muted px-3 py-2" data-i18n="common.loading">Cargando…</li>
               </ul>
             </div>
-            <button class="action-mini-btn" id="btn-rename-workspace" title="Renombrar espacio de trabajo">
+            <button class="action-mini-btn" id="btn-rename-workspace" data-i18n-title="topbar.rename_workspace" title="Renombrar espacio de trabajo">
               <i class="bi bi-pencil" style="font-size:11px;"></i>
             </button>
-            <button class="action-mini-btn" id="new-workspace" title="Crear nuevo espacio de trabajo">
+            <button class="action-mini-btn" id="new-workspace" data-i18n-title="topbar.new_workspace" title="Crear nuevo espacio de trabajo">
               <i class="bi bi-plus-lg" style="font-size:11px;"></i>
             </button>
           </div>
           <div class="d-flex gap-1">
             <button class="btn-craft flex-1 btn-sm" id="new-notebook">
-              <i class="bi bi-journal-plus"></i> Crear cuaderno
+              <i class="bi bi-journal-plus"></i> <span data-i18n="topbar.create_notebook">Crear cuaderno</span>
             </button>
-            <button class="btn-craft btn-sm" id="btn-ws-sources" title="Añadir fuentes a este cuaderno">
-              <i class="bi bi-folder-plus text-success"></i> Fuentes
+            <button class="btn-craft btn-sm" id="btn-ws-sources" data-i18n-title="sidebar.add_sources_to_nb" title="Añadir fuentes a este cuaderno">
+              <i class="bi bi-folder-plus text-success"></i> <span data-i18n="topbar.sources">Fuentes</span>
             </button>
           </div>
         </div>
 
         <div class="section-tag">
-          <span><i class="bi bi-journal-bookmark"></i> Cuadernos & Páginas</span>
+          <span><i class="bi bi-journal-bookmark"></i> <span data-i18n="sidebar.notebooks_and_pages">Cuadernos & Páginas</span></span>
         </div>
         <ul id="workspace-tree" class="tree"></ul>
       </div>
 
       <div class="p-2 px-3 border-top d-flex flex-column gap-2" style="background: var(--sidebar-bg);">
         <button class="btn-craft w-100" id="open-sources-modal">
-          <i class="bi bi-collection-fill text-dark"></i> Gestor de Fuentes
+          <i class="bi bi-collection-fill text-dark"></i> <span data-i18n="topbar.sources_manager">Gestor de Fuentes</span>
         </button>
         <button class="btn-craft w-100" id="open-skills-memory-modal">
-          <i class="bi bi-cpu-fill text-dark"></i> Memoria & Skills
+          <i class="bi bi-cpu-fill text-dark"></i> <span data-i18n="topbar.memory_skills">Memoria & Skills</span>
         </button>
         <button class="btn-craft w-100" id="open-usage-modal">
-          <i class="bi bi-speedometer2 text-dark"></i> Uso & Monitoreo
+          <i class="bi bi-speedometer2 text-dark"></i> <span data-i18n="topbar.usage">Uso & Monitoreo</span>
         </button>
         <button class="btn-craft w-100 position-relative" id="open-settings-modal">
-          <i class="bi bi-gear-fill text-dark"></i> Ajustes
+          <i class="bi bi-gear-fill text-dark"></i> <span data-i18n="topbar.settings">Ajustes</span>
           <span id="update-available-badge" class="status-bulb unsaved" style="display:none; position:absolute; top:4px; right:8px; width:8px; height:8px;" title="Hay una actualización disponible"></span>
         </button>
       </div>
@@ -4274,7 +4302,7 @@
     <!-- Center: Notion-style Tiptap Canvas -->
     <main class="editor-pane craft-canvas" id="page-area">
       <div class="panel-rail" id="page-rail">
-        <button class="btn-craft btn-craft-icon btn-sm" id="btn-expand-page" data-action="expand-right" title="Expandir panel">
+        <button class="btn-craft btn-craft-icon btn-sm" id="btn-expand-page" data-action="expand-right" data-i18n-title="common.expand_panel" title="Expandir panel">
           <i class="bi bi-layout-sidebar-reverse"></i>
         </button>
       </div>
@@ -4283,10 +4311,10 @@
       <div class="editor-top-nav" id="page-center-nav">
         <div class="center-mode-segmented-control">
           <button type="button" class="center-mode-seg-btn" data-switch-mode="chat">
-            <i class="bi bi-chat-quote-fill"></i> Chat
+            <i class="bi bi-chat-quote-fill"></i> <span data-i18n="topbar.chat">Chat</span>
           </button>
           <button type="button" class="center-mode-seg-btn active" data-switch-mode="editor">
-            <i class="bi bi-journal-text"></i> Notas
+            <i class="bi bi-journal-text"></i> <span data-i18n="topbar.notes">Notas</span>
           </button>
         </div>
       </div>
@@ -4295,16 +4323,17 @@
       <div class="side-editor-header" id="side-editor-header">
         <div class="studio-segmented-control">
           <button type="button" class="studio-seg-btn active" id="side-pane-switch-notes" data-side-tab="notes">
-            <i class="bi bi-journal-text"></i> Notas
+            <i class="bi bi-journal-text"></i> <span data-i18n="topbar.notes">Notas</span>
           </button>
           <button type="button" class="studio-seg-btn" id="side-pane-switch-studio" data-side-tab="studio">
-            <i class="bi bi-stars"></i> Studio
+            <i class="bi bi-stars"></i> <span data-i18n="topbar.studio">Studio</span>
           </button>
           <button type="button" class="studio-seg-btn" id="side-pane-switch-attachments" data-side-tab="attachments">
-            <i class="bi bi-paperclip"></i> Adjuntos
+            <i class="bi bi-paperclip"></i> <span data-i18n="topbar.attachments">Adjuntos</span>
           </button>
         </div>
         <button class="btn-craft btn-craft-icon btn-sm panel-collapse-btn" id="btn-collapse-side-editor" data-action="collapse-right"
+          data-i18n-title="common.collapse_panel"
           title="Colapsar panel">
           <i class="bi bi-layout-sidebar-reverse"></i>
         </button>
@@ -4312,8 +4341,8 @@
 
       <div class="empty-state text-center my-auto p-4">
         <i class="bi bi-journal-text display-3 text-muted mb-3 d-block"></i>
-        <h1 class="fw-bold">Tu Base de Conocimiento</h1>
-        <p class="text-muted">Selecciona una página en el panel lateral o crea un nuevo espacio de trabajo para
+        <h1 class="fw-bold" data-i18n="editor.empty_knowledge_title">Tu Base de Conocimiento</h1>
+        <p class="text-muted" data-i18n="editor.empty_knowledge_desc">Selecciona una página en el panel lateral o crea un nuevo espacio de trabajo para
           comenzar.</p>
       </div>
     </main>
@@ -4321,7 +4350,7 @@
     <!-- Right: Contextual Evidence Chat / Studio Switch Pane -->
     <aside class="chat-pane craft-panel" id="chat-drawer">
       <div class="panel-rail" id="chat-rail">
-        <button class="btn-craft btn-craft-icon btn-sm" id="btn-expand-chat" title="Expandir chat">
+        <button class="btn-craft btn-craft-icon btn-sm" id="btn-expand-chat" data-i18n-title="common.expand_panel" title="Expandir chat">
           <i class="bi bi-layout-sidebar-reverse"></i>
         </button>
       </div>
@@ -4330,10 +4359,10 @@
         <div class="chat-center-top-row mb-2 justify-content-center" id="chat-center-nav-row">
           <div class="center-mode-segmented-control">
             <button type="button" class="center-mode-seg-btn active" data-switch-mode="chat">
-              <i class="bi bi-chat-quote-fill"></i> Chat
+              <i class="bi bi-chat-quote-fill"></i> <span data-i18n="topbar.chat">Chat</span>
             </button>
             <button type="button" class="center-mode-seg-btn" data-switch-mode="editor">
-              <i class="bi bi-journal-text"></i> Notas
+              <i class="bi bi-journal-text"></i> <span data-i18n="topbar.notes">Notas</span>
             </button>
           </div>
         </div>
@@ -4342,16 +4371,17 @@
         <div class="chat-header-top-row">
           <div class="studio-segmented-control">
             <button type="button" class="studio-seg-btn active" id="pane-switch-chat">
-              <i class="bi bi-chat-quote-fill"></i> Chat
+              <i class="bi bi-chat-quote-fill"></i> <span data-i18n="topbar.chat">Chat</span>
             </button>
             <button type="button" class="studio-seg-btn" id="pane-switch-studio">
-              <i class="bi bi-stars"></i> Studio
+              <i class="bi bi-stars"></i> <span data-i18n="topbar.studio">Studio</span>
             </button>
             <button type="button" class="studio-seg-btn" id="pane-switch-attachments">
-              <i class="bi bi-paperclip"></i> Adjuntos
+              <i class="bi bi-paperclip"></i> <span data-i18n="topbar.attachments">Adjuntos</span>
             </button>
           </div>
           <button class="btn-craft btn-craft-icon btn-sm panel-collapse-btn" id="btn-collapse-chat"
+            data-i18n-title="common.collapse_panel"
             title="Colapsar panel">
             <i class="bi bi-layout-sidebar-reverse"></i>
           </button>
@@ -4361,29 +4391,29 @@
         <div id="chat-controls-subhdr" class="chat-controls-bar">
           <!-- Row 1: Active Thread Title, Rename Pencil & New Thread Button -->
           <div class="chat-controls-row-top">
-            <div class="active-thread-banner-wrap" id="active-thread-banner" title="Conversación actual — clic para renombrar">
+            <div class="active-thread-banner-wrap" id="active-thread-banner" data-i18n-title="chat.current_conv_tooltip" title="Conversación actual — clic para renombrar">
               <i class="bi bi-chat-quote-fill flex-shrink-0" style="font-size:12px; color: var(--accent, #9e5b23);"></i>
-              <span class="active-thread-title-text" id="active-thread-title">Nueva conversación</span>
-              <button type="button" class="action-mini-btn flex-shrink-0" id="btn-rename-thread-header" title="Renombrar conversación" style="padding:1px 5px; font-size:10.5px;">
+              <span class="active-thread-title-text" id="active-thread-title" data-i18n="chat.new_thread_title">Nueva conversación</span>
+              <button type="button" class="action-mini-btn flex-shrink-0" id="btn-rename-thread-header" data-i18n-title="chat.rename_conv_tooltip" title="Renombrar conversación" style="padding:1px 5px; font-size:10.5px;">
                 <i class="bi bi-pencil"></i>
               </button>
             </div>
-            <button class="btn-craft btn-craft-primary btn-sm d-flex align-items-center gap-1 flex-shrink-0" id="new-thread-btn" title="Iniciar nueva conversación en blanco" style="padding: 4px 10px; font-size:11.5px; font-weight:600;">
-              <i class="bi bi-plus-lg"></i> <span>Nuevo</span>
+            <button class="btn-craft btn-craft-primary btn-sm d-flex align-items-center gap-1 flex-shrink-0" id="new-thread-btn" data-i18n-title="chat.new_thread" title="Iniciar nueva conversación en blanco" style="padding: 4px 10px; font-size:11.5px; font-weight:600;">
+              <i class="bi bi-plus-lg"></i> <span data-i18n="chat.new_thread">Nuevo</span>
             </button>
           </div>
 
           <!-- Row 2: Grounded Scope Selector & History Menu -->
           <div class="chat-controls-row-bottom">
             <select id="chat-scope" style="display:none;">
-              <option value="notebook" selected>Este cuaderno</option>
-              <option value="workspace">Todo el espacio</option>
+              <option value="notebook" selected data-i18n="chat.scope_notebook">Este cuaderno</option>
+              <option value="workspace" data-i18n="chat.scope_workspace">Todo el espacio</option>
             </select>
             <div class="dropdown position-relative flex-1" style="min-width:0;">
               <button class="btn-craft btn-sm dropdown-toggle d-flex align-items-center justify-content-between gap-1 w-100 text-truncate" type="button" id="chat-scope-btn" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="Cambiar ámbito de búsqueda" style="padding: 3px 8px; font-size:11px;">
                 <span class="d-flex align-items-center gap-1 text-truncate">
                   <i class="bi bi-journal-bookmark-fill text-primary flex-shrink-0" id="chat-scope-icon" style="font-size:12px;"></i>
-                  <span id="chat-scope-label" class="fw-semibold small text-truncate">Este cuaderno</span>
+                  <span id="chat-scope-label" class="fw-semibold small text-truncate" data-i18n="chat.scope_notebook">Este cuaderno</span>
                 </span>
               </button>
               <ul class="dropdown-menu shadow border-0 p-1" style="font-size:12px; min-width:240px; z-index:1050;">
@@ -4392,8 +4422,8 @@
                     <div class="d-flex align-items-center gap-2">
                       <i class="bi bi-journal-bookmark-fill text-primary fs-6"></i>
                       <div>
-                        <div class="fw-bold text-dark">Este cuaderno</div>
-                        <div class="text-muted" style="font-size:10.5px;">Responde con notas y adjuntos del cuaderno</div>
+                        <div class="fw-bold text-dark" data-i18n="chat.scope_notebook">Este cuaderno</div>
+                        <div class="text-muted" style="font-size:10.5px;" data-i18n="chat.scope_notebook_desc">Responde con notas y adjuntos del cuaderno</div>
                       </div>
                     </div>
                     <i class="bi bi-check2 text-primary fw-bold scope-check-icon" style="font-size:16px;"></i>
@@ -4404,8 +4434,8 @@
                     <div class="d-flex align-items-center gap-2">
                       <i class="bi bi-globe2 text-success fs-6"></i>
                       <div>
-                        <div class="fw-bold text-dark">Todo el espacio</div>
-                        <div class="text-muted" style="font-size:10.5px;">Busca en todos los cuadernos del workspace</div>
+                        <div class="fw-bold text-dark" data-i18n="chat.scope_workspace">Todo el espacio</div>
+                        <div class="text-muted" style="font-size:10.5px;" data-i18n="chat.scope_workspace_desc">Busca en todos los cuadernos del workspace</div>
                       </div>
                     </div>
                     <i class="bi bi-check2 text-success fw-bold scope-check-icon" style="display:none; font-size:16px;"></i>
@@ -4415,13 +4445,13 @@
             </div>
 
             <div class="dropdown position-relative flex-shrink-0">
-              <button class="btn-craft btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" id="threads-history-btn" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="Historial de conversaciones" style="padding: 3px 8px; font-size:11px;">
+              <button class="btn-craft btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" id="threads-history-btn" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" data-i18n-title="chat.history_title" title="Historial de conversaciones" style="padding: 3px 8px; font-size:11px;">
                 <i class="bi bi-clock-history text-secondary" style="font-size:12px;"></i>
-                <span class="small" id="threads-history-count">Historial</span>
+                <span class="small" id="threads-history-count" data-i18n="chat.history">Historial</span>
               </button>
               <div class="dropdown-menu dropdown-menu-end shadow border-0 p-2" style="width: 290px; max-width: min(340px, 92vw); max-height: 390px; z-index: 1050;">
                 <div class="d-flex justify-content-between align-items-center px-2 py-1 mb-1 border-bottom">
-                  <span class="fw-bold small text-secondary" style="font-size:11px;">Historial de Chats</span>
+                  <span class="fw-bold small text-secondary" style="font-size:11px;" data-i18n="chat.history_title">Historial de Chats</span>
                   <span class="badge rounded-pill bg-light text-muted border" id="threads-badge-total" style="font-size:10px; font-weight:500;">0</span>
                 </div>
 
@@ -4431,7 +4461,7 @@
                     <span class="input-group-text bg-transparent border-0 p-0 pe-2 text-muted" style="font-size:11px;">
                       <i class="bi bi-search"></i>
                     </span>
-                    <input type="text" id="chat-thread-search" class="form-control border-0 bg-transparent shadow-none p-0" placeholder="Buscar conversación..." style="font-size:11.5px;">
+                    <input type="text" id="chat-thread-search" class="form-control border-0 bg-transparent shadow-none p-0" data-i18n-placeholder="chat.search_conversations" placeholder="Buscar conversación..." style="font-size:11.5px;">
                     <button type="button" class="btn btn-sm text-muted p-0" id="chat-thread-search-clear" style="display:none;" title="Limpiar búsqueda">
                       <i class="bi bi-x-circle-fill" style="font-size:11px;"></i>
                     </button>
@@ -4451,7 +4481,7 @@
           <div class="d-flex justify-content-between align-items-center">
             <div class="fw-bold small text-dark d-flex align-items-center gap-2">
               <i class="bi bi-magic text-amber"></i>
-              <span>Guías del Cuaderno</span>
+              <span data-i18n="studio.guides_title">Guías del Cuaderno</span>
             </div>
             <button class="btn-craft btn-sm" id="refresh-studio-gallery" title="Recargar artefactos">
               <i class="bi bi-arrow-clockwise"></i>
@@ -4464,11 +4494,11 @@
           <div class="d-flex justify-content-between align-items-center">
             <div class="fw-bold small text-dark d-flex align-items-center gap-2">
               <i class="bi bi-paperclip text-secondary"></i>
-              <span>Adjuntos reutilizables (SHA-256)</span>
+              <span data-i18n="attachments.title">Adjuntos reutilizables (SHA-256)</span>
             </div>
             <div class="d-flex gap-1">
               <button class="btn-craft btn-sm" id="btn-add-source-from-panel" title="Añadir fuentes (Página, Cuaderno o Espacio)">
-                <i class="bi bi-plus-circle-fill text-primary"></i> <span>Añadir Fuente</span>
+                <i class="bi bi-plus-circle-fill text-primary"></i> <span data-i18n="attachments.add_source">Añadir Fuente</span>
               </button>
               <label class="btn-craft btn-sm" style="cursor:pointer" title="Subir archivo rápido a esta página">
                 <i class="bi bi-upload"></i>
@@ -4484,29 +4514,29 @@
         <div id="chat-log" class="chat-stream">
           <div class="chat-welcome-box">
             <div class="fw-bold mb-1 d-flex align-items-center gap-2 text-dark">
-              <i class="bi bi-stars text-amber"></i> Asistente de Conocimiento
+              <i class="bi bi-stars text-amber"></i> <span data-i18n="chat.assistant_title">Asistente de Conocimiento</span>
             </div>
-            <div class="text-muted small mb-2">
+            <div class="text-muted small mb-2" data-i18n="chat.assistant_welcome">
               Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información en tiempo real.
             </div>
 
             <div class="suggested-questions-container pt-2 border-top">
-              <div class="small fw-bold text-secondary mb-1" style="font-size:11px;">Preguntas sugeridas:</div>
+              <div class="small fw-bold text-secondary mb-1" style="font-size:11px;" data-i18n="chat.suggested_title">Preguntas sugeridas:</div>
               <div class="suggested-questions-grid">
-                <button type="button" class="btn-suggested-question" data-question="¿Qué temas y notas principales contiene este espacio de trabajo?">
-                  <i class="bi bi-compass text-primary"></i> <span>¿Qué contiene este espacio?</span>
+                <button type="button" class="btn-suggested-question" data-question-i18n="chat.q1_full" data-question="¿Qué temas y notas principales contiene este espacio de trabajo?">
+                  <i class="bi bi-compass text-primary"></i> <span data-i18n="chat.q1">¿Qué contiene este espacio?</span>
                 </button>
-                <button type="button" class="btn-suggested-question" data-question="Haz un resumen ejecutivo con los puntos clave más importantes.">
-                  <i class="bi bi-file-text text-success"></i> <span>Resumen de puntos clave</span>
+                <button type="button" class="btn-suggested-question" data-question-i18n="chat.q2_full" data-question="Haz un resumen ejecutivo con los puntos clave más importantes.">
+                  <i class="bi bi-file-text text-success"></i> <span data-i18n="chat.q2">Resumen de puntos clave</span>
                 </button>
-                <button type="button" class="btn-suggested-question" data-question="¿Cuáles son los conceptos más importantes y cómo se relacionan entre sí?">
-                  <i class="bi bi-diagram-3 text-warning"></i> <span>Conceptos principales</span>
+                <button type="button" class="btn-suggested-question" data-question-i18n="chat.q3_full" data-question="¿Cuáles son los conceptos más importantes y cómo se relacionan entre sí?">
+                  <i class="bi bi-diagram-3 text-warning"></i> <span data-i18n="chat.q3">Conceptos principales</span>
                 </button>
-                <button type="button" class="btn-suggested-question" data-question="Genera 3 preguntas de repaso con sus respuestas para autoevaluar mi comprensión.">
-                  <i class="bi bi-patch-question text-danger"></i> <span>Preguntas de repaso</span>
+                <button type="button" class="btn-suggested-question" data-question-i18n="chat.q4_full" data-question="Genera 3 preguntas de repaso con sus respuestas para autoevaluar mi comprensión.">
+                  <i class="bi bi-patch-question text-danger"></i> <span data-i18n="chat.q4">Preguntas de repaso</span>
                 </button>
-                <button type="button" class="btn-suggested-question" data-question="¿Qué conclusiones o próximos pasos se pueden extraer de esta información?">
-                  <i class="bi bi-lightbulb text-info"></i> <span>Conclusiones y pasos</span>
+                <button type="button" class="btn-suggested-question" data-question-i18n="chat.q5_full" data-question="¿Qué conclusiones o próximos pasos se pueden extraer de esta información?">
+                  <i class="bi bi-lightbulb text-info"></i> <span data-i18n="chat.q5">Conclusiones y pasos</span>
                 </button>
               </div>
             </div>
@@ -4519,20 +4549,23 @@
           <form id="chat-form">
             <div class="craft-input-box">
               <textarea id="chat-question" class="craft-textarea" rows="2"
+                data-i18n-placeholder="chat.input_placeholder"
                 placeholder="Pregunta sobre tu conocimiento…"></textarea>
               <div class="d-flex justify-content-between align-items-center mt-2 pt-2 border-top">
                 <label class="btn-craft btn-sm" style="cursor:pointer;"
+                  data-i18n-title="chat.attach_tooltip"
                   title="Adjuntar archivo o imagen a esta consulta">
-                  <i class="bi bi-paperclip"></i> Adjuntar
+                  <i class="bi bi-paperclip"></i> <span data-i18n="chat.attach">Adjuntar</span>
                   <input id="chat-file-input" type="file" multiple hidden>
                 </label>
                 <div class="d-flex align-items-center gap-2">
                   <button type="button" class="btn-craft btn-craft-icon btn-sm" id="btn-dictate-chat"
+                    data-i18n-title="chat.dictate"
                     title="Dictado por voz">
                     <i class="bi bi-mic-fill"></i>
                   </button>
                   <button class="btn-craft btn-craft-primary btn-sm" type="submit">
-                    <i class="bi bi-send-fill"></i> Enviar
+                    <i class="bi bi-send-fill"></i> <span data-i18n="chat.send">Enviar</span>
                   </button>
                 </div>
               </div>
@@ -4547,7 +4580,7 @@
 
       <!-- VIEW 2: NotebookLM Style Studio Artifacts View -->
       <div id="studio-view-container" class="flex-column flex-1 overflow-auto p-3 gap-3" style="display:none;">
-        <div class="small fw-bold text-secondary mb-2">Crear Guía o Artefacto:</div>
+        <div class="small fw-bold text-secondary mb-2" data-i18n="studio.create_guide_title">Crear Guía o Artefacto:</div>
 
         <!-- Studio 2-Column Action Grid (NotebookLM Style) -->
         <div class="studio-grid">
@@ -4556,7 +4589,7 @@
               <i class="bi bi-mic-fill" style="color:#db2777; font-size:16px;"></i>
               <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="fw-bold small text-truncate">Audio Podcast</div>
+            <div class="fw-bold small text-truncate" data-i18n="studio.types.podcast">Audio Podcast</div>
           </div>
 
           <div class="studio-artifact-pill" data-quick-gen="diagram">
@@ -4564,7 +4597,7 @@
               <i class="bi bi-diagram-3-fill text-primary" style="font-size:16px;"></i>
               <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="fw-bold small text-truncate">Diagrama</div>
+            <div class="fw-bold small text-truncate" data-i18n="studio.types.diagram">Diagrama</div>
           </div>
 
           <div class="studio-artifact-pill" data-quick-gen="mindmap">
@@ -4572,7 +4605,7 @@
               <i class="bi bi-diagram-2-fill" style="color:#7c3aed; font-size:16px;"></i>
               <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="fw-bold small text-truncate">Mapa Mental</div>
+            <div class="fw-bold small text-truncate" data-i18n="studio.types.mindmap">Mapa Mental</div>
           </div>
 
           <div class="studio-artifact-pill" data-quick-gen="study_guide">
@@ -4580,7 +4613,7 @@
               <i class="bi bi-journal-check text-success" style="font-size:16px;"></i>
               <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="fw-bold small text-truncate">Guía Estudio</div>
+            <div class="fw-bold small text-truncate" data-i18n="studio.types.study_guide">Guía Estudio</div>
           </div>
 
           <div class="studio-artifact-pill" data-quick-gen="flashcards">
@@ -4588,7 +4621,7 @@
               <i class="bi bi-card-text text-danger" style="font-size:16px;"></i>
               <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="fw-bold small text-truncate">Flashcards</div>
+            <div class="fw-bold small text-truncate" data-i18n="studio.types.flashcards">Flashcards</div>
           </div>
 
           <div class="studio-artifact-pill" data-quick-gen="quiz">
@@ -4596,7 +4629,7 @@
               <i class="bi bi-patch-question-fill text-warning" style="font-size:16px;"></i>
               <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="fw-bold small text-truncate">Cuestionario</div>
+            <div class="fw-bold small text-truncate" data-i18n="studio.types.quiz">Cuestionario</div>
           </div>
 
           <div class="studio-artifact-pill" data-quick-gen="summary">
@@ -4604,7 +4637,7 @@
               <i class="bi bi-file-earmark-spreadsheet text-info" style="font-size:16px;"></i>
               <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="fw-bold small text-truncate">Resumen</div>
+            <div class="fw-bold small text-truncate" data-i18n="studio.types.summary">Resumen</div>
           </div>
 
           <div class="studio-artifact-pill" data-quick-gen="infographic">
@@ -4612,7 +4645,7 @@
               <i class="bi bi-easel2-fill" style="color:#8b5cf6; font-size:16px;"></i>
               <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="fw-bold small text-truncate">Infografía</div>
+            <div class="fw-bold small text-truncate" data-i18n="studio.types.infographic">Infografía</div>
           </div>
 
           <div class="studio-artifact-pill" data-quick-gen="timeline">
@@ -4620,7 +4653,7 @@
               <i class="bi bi-clock-history" style="color:#0d9488; font-size:16px;"></i>
               <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="fw-bold small text-truncate">Línea Tiempo</div>
+            <div class="fw-bold small text-truncate" data-i18n="studio.types.timeline">Línea Tiempo</div>
           </div>
 
           <div class="studio-artifact-pill" data-quick-gen="table">
@@ -4628,13 +4661,13 @@
               <i class="bi bi-table text-primary" style="font-size:16px;"></i>
               <i class="bi bi-chevron-right text-muted" style="font-size:10px;"></i>
             </div>
-            <div class="fw-bold small text-truncate">Tabla Datos</div>
+            <div class="fw-bold small text-truncate" data-i18n="studio.types.table">Tabla Datos</div>
           </div>
         </div>
 
         <!-- Section: Saved Artifacts in this Notebook -->
         <div class="d-flex justify-content-between align-items-center pt-2 border-top">
-          <span class="small fw-bold text-secondary">Artefactos Guardados (<span id="side-studio-count">0</span>)</span>
+          <span class="small fw-bold text-secondary" id="side-studio-saved-hdr">Artefactos Guardados (<span id="side-studio-count">0</span>)</span>
         </div>
 
         <div id="side-studio-gallery-list" class="d-flex flex-column gap-2 pb-4 stagger-list">
@@ -4667,6 +4700,750 @@
       d.textContent = s || '';
       return d.innerHTML;
     };
+
+    // --- Lightweight Client-Side i18n Engine ---
+    const I18N_DICTIONARY = {
+      es: {
+        common: {
+          save: 'Guardar',
+          save_changes: 'Guardar Cambios',
+          cancel: 'Cancelar',
+          close: 'Cerrar',
+          delete: 'Eliminar',
+          confirm_delete: 'Confirmar Eliminación',
+          delete_warning: '¿Estás seguro de que deseas eliminar este elemento? Esta acción no se puede deshacer.',
+          create: 'Crear',
+          edit: 'Editar',
+          rename: 'Renombrar',
+          loading: 'Cargando…',
+          search: 'Buscar',
+          download: 'Descargar',
+          copy: 'Copiar',
+          copied: '¡Copiado!',
+          error: 'Error',
+          success: 'Éxito',
+          ready: 'Listo.',
+          yes: 'Sí',
+          no: 'No',
+          name: 'Nombre',
+          title: 'Título',
+          description: 'Descripción',
+          optional: 'Opcional',
+          input_text: 'Introducir Texto',
+          value: 'Valor',
+          accept: 'Aceptar',
+          no_results: 'Sin resultados',
+          refresh: 'Actualizar',
+          insert_in_note: 'Insertar en Nota',
+          save_as_page: 'Guardar como Página',
+          original_file: 'Archivo original',
+          as_pdf: 'Como PDF',
+          expand_panel: 'Expandir panel',
+          collapse_panel: 'Colapsar panel',
+        },
+        topbar: {
+          workspace: 'Espacio de trabajo',
+          workspaces: 'Espacios de trabajo',
+          loading_workspace: 'Cargando espacio…',
+          no_workspaces: 'No hay espacios de trabajo',
+          create_workspace: 'Crear espacio de trabajo',
+          create_notebook: 'Crear cuaderno',
+          rename_workspace: 'Renombrar espacio de trabajo',
+          new_workspace: 'Crear nuevo espacio de trabajo',
+          sources: 'Fuentes',
+          sources_manager: 'Gestor de Fuentes',
+          memory_skills: 'Memoria & Skills',
+          usage: 'Uso & Monitoreo',
+          settings: 'Ajustes',
+          search_placeholder: 'Buscar páginas, cuadernos o documentos… (Ctrl+K)',
+          notes: 'Notas',
+          chat: 'Chat',
+          studio: 'Studio',
+          attachments: 'Adjuntos',
+        },
+        sidebar: {
+          notebooks_and_pages: 'Cuadernos & Páginas',
+          new_notebook: 'Nuevo Cuaderno',
+          new_page: 'Nueva Página',
+          empty_workspace: 'Espacio vacío. Crea un cuaderno para comenzar.',
+          delete_notebook: 'Eliminar cuaderno',
+          delete_page: 'Eliminar página',
+          rename_notebook: 'Renombrar cuaderno',
+          rename_page: 'Renombrar página',
+          add_sources_to_nb: 'Añadir fuentes a este cuaderno',
+          sources_count: '{count} fuentes',
+          pages_count: '{count} páginas',
+          no_pages: 'Sin páginas aún',
+        },
+        editor: {
+          title_placeholder: 'Sin título',
+          body_placeholder: 'Escribe aquí o presiona "/" para comandos de IA y bloques…',
+          words: '{count} palabras',
+          reading_time: '{count} min de lectura',
+          saving: 'Guardando…',
+          saved: 'Guardado',
+          unsaved: 'Cambios sin guardar',
+          empty_knowledge_title: 'Tu Base de Conocimiento',
+          empty_knowledge_desc: 'Selecciona una página en el panel lateral o crea un nuevo espacio de trabajo para comenzar.',
+        },
+        chat: {
+          assistant_title: 'Asistente de Conocimiento',
+          assistant_welcome: 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información en tiempo real.',
+          suggested_title: 'Preguntas sugeridas:',
+          q1: '¿Qué contiene este espacio?',
+          q1_full: '¿Qué temas y notas principales contiene este espacio de trabajo?',
+          q2: 'Resumen de puntos clave',
+          q2_full: 'Haz un resumen ejecutivo con los puntos clave más importantes.',
+          q3: 'Conceptos principales',
+          q3_full: '¿Cuáles son los conceptos más importantes y cómo se relacionan entre sí?',
+          q4: 'Preguntas de repaso',
+          q4_full: 'Genera 3 preguntas de repaso con sus respuestas para autoevaluar mi comprensión.',
+          q5: 'Conclusiones y pasos',
+          q5_full: '¿Qué conclusiones o próximos pasos se pueden extraer de esta información?',
+          input_placeholder: 'Pregunta sobre tu conocimiento…',
+          attach: 'Adjuntar',
+          attach_tooltip: 'Adjuntar archivo o imagen a esta consulta',
+          dictate: 'Dictado por voz',
+          send: 'Enviar',
+          stop: 'Detener',
+          new_thread: 'Nuevo',
+          new_thread_title: 'Nueva conversación',
+          current_conv_tooltip: 'Conversación actual — clic para renombrar',
+          rename_conv_tooltip: 'Renombrar conversación',
+          scope_notebook: 'Este cuaderno',
+          scope_notebook_desc: 'Responde con notas y adjuntos del cuaderno',
+          scope_workspace: 'Todo el espacio',
+          scope_workspace_desc: 'Busca en todos los cuadernos del workspace',
+          history: 'Historial',
+          history_title: 'Historial de Chats',
+          search_conversations: 'Buscar conversación...',
+          no_conversations: 'No hay conversaciones previas',
+          clear_history: 'Limpiar historial',
+          sources_found: 'Fuentes encontradas',
+          executing_tool: 'Ejecutando herramienta',
+          searching_kb: 'Buscando en la base de conocimiento…',
+          searching_web: 'Buscando en internet…',
+          generating_artifact: 'Generando artefacto…',
+        },
+        studio: {
+          guides_title: 'Guías del Cuaderno',
+          create_guide_title: 'Crear Guía o Artefacto:',
+          generate_btn: 'Generar Artefacto',
+          saved_artifacts: 'Artefactos Guardados ({count})',
+          empty_artifacts: 'Aún no has generado ningún artefacto para este cuaderno.',
+          generate_new: 'Generar Nuevo',
+          notebook_gallery: 'Galería del Cuaderno ({count})',
+          select_type_label: 'Selecciona el tipo de artefacto a crear:',
+          change_type: 'Cambiar tipo',
+          custom_prompt_label: 'Notas adicionales (Opcional):',
+          custom_prompt_placeholder: 'Ej. Enfócate en la migración de base de datos o crea 4 preguntas difíciles',
+          scope_all_notebook: 'Alcance: Todo el cuaderno actual',
+          types: {
+            diagram: 'Diagrama Mermaid',
+            diagram_desc: 'Flujos y arquitectura',
+            quiz: 'Cuestionario / Quiz',
+            quiz_desc: 'Test interactivo',
+            study_guide: 'Guía de Estudio',
+            study_guide_desc: 'Conceptos y glosario',
+            flashcards: 'Flashcards',
+            flashcards_desc: 'Tarjetas de repaso',
+            summary: 'Resumen Ejecutivo',
+            summary_desc: '1 página estructurada',
+            mindmap: 'Mapa Mental',
+            mindmap_desc: 'Jerarquía de conceptos',
+            infographic: 'Infografía',
+            infographic_desc: 'Póster visual generado',
+            timeline: 'Línea de Tiempo',
+            timeline_desc: 'Hitos cronológicos',
+            podcast: 'Podcast',
+            podcast_desc: 'Diálogo en audio',
+            table: 'Tabla Datos',
+            table_desc: 'Tabla estructurada',
+          }
+        },
+        attachments: {
+          title: 'Adjuntos reutilizables (SHA-256)',
+          add_source: 'Añadir Fuente',
+          empty_page: 'Selecciona una página para ver sus adjuntos.',
+          no_attachments: 'Sin adjuntos en esta página.',
+          upload_tooltip: 'Subir archivo rápido a esta página',
+        },
+        sources_modal: {
+          title: 'Gestor de Fuentes & Base de Conocimiento',
+          subtitle: 'Indexación vectorial con Gemini Embedding y sqlite-vec',
+          add_tab: 'Añadir Fuente',
+          indexed_tab: 'Fuentes Indexadas ({count})',
+          adding_to: 'Añadiendo fuentes a:',
+          source_mode: 'Modalidad de fuente',
+          upload_local: 'Subir Archivo Local (Office, Código, Datos, Multimedia)',
+          dedup_badge: 'Deduplicado SHA-256',
+          dropzone_title: 'Arrastra archivos aquí o haz clic para explorar',
+          dropzone_desc: 'Soporta PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), Markdown, CSV, JSON, Jupyter (.ipynb), Código, Audio, Video e Imágenes',
+          uploading: 'Subiendo archivo…',
+          index_url_title: 'Indexar URL Web o Artículo',
+          index_url_btn: 'Indexar URL',
+          index_url_desc: 'Extrae el texto limpio, calcula su SHA-256 y genera embeddings vectoriales.',
+          quick_text_title: 'Texto Rápido, Apuntes o Transcripción',
+          quick_text_title_placeholder: 'Título de la fuente (ej. Especificación Técnica)',
+          quick_text_content_placeholder: 'Pega el contenido para indexarlo en sqlite-vec…',
+          save_as_source: 'Guardar como Fuente',
+          sources_feeding_assistant: 'Fuentes que alimentan al Asistente y RAG:',
+          reload_tooltip: 'Actualizar lista',
+        },
+        settings: {
+          title: 'Ajustes',
+          subtitle: 'Trae tu propia API key (BYOK) de OpenRouter e idioma',
+          language_label: 'Idioma de la aplicación',
+          language_hint: 'Aplica a la interfaz de usuario, el asistente de chat y la generación de artefactos.',
+          api_key_title: 'OpenRouter API Key',
+          loading_status: 'Cargando estado…',
+          key_hint: 'Se guarda en tu base de datos local y tiene prioridad sobre la variable de entorno OPENROUTER_API_KEY. Consíguela en openrouter.ai/keys.',
+          clear_key_btn: 'Quitar y usar .env',
+          updates_title: 'Actualizaciones',
+          checking_version: 'Comprobando versión…',
+          check_updates_btn: 'Buscar actualizaciones',
+          download_bg_btn: 'Descargar en 2º plano',
+          restart_update_btn: 'Reiniciar y actualizar',
+          update_ready_title: '¡Actualización lista para instalar!',
+          update_ready_desc: 'Los archivos ya están descargados. Puedes reiniciar ahora para aplicar los cambios en 2 segundos, o seguir trabajando y reiniciar cuando quieras.',
+          downloading_bg: 'Descargando en segundo plano…',
+          save_settings_btn: 'Guardar Cambios',
+          key_using_custom: 'Usando key personalizada ({masked})',
+          key_using_env: 'Usando la key del archivo .env ({masked}). Puedes reemplazarla abajo.',
+          key_not_configured: 'No hay ninguna API key configurada todavía.',
+          settings_saved_toast: 'Ajustes guardados correctamente.',
+        },
+        memory_skills: {
+          title: 'Memoria Declarativa & Habilidades (Skills)',
+          subtitle: 'Arquitectura de Harness tipo Hermes Agent persistente en SQLite',
+          memories_tab: 'Memorias ({count})',
+          skills_tab: 'Skills & Procedimientos ({count})',
+          add_memory_title: 'Añadir Hecho o Preferencia a la Memoria',
+          category_user_pref: 'Preferencia de Usuario',
+          category_domain_fact: 'Hecho del Proyecto',
+          category_convention: 'Convención / Regla',
+          memory_placeholder: 'Ej. El usuario prefiere código en Python y respuestas en español',
+          memory_hint: 'El agente también aprenderá y añadirá hechos automáticamente durante las conversaciones en el chat.',
+          active_memories: 'Memorias Activas inyectadas en cada turno',
+          add_skill_title: 'Registrar Nueva Habilidad (Skill)',
+          skill_name_placeholder: 'Nombre único (ej. formatear-minuta)',
+          skill_desc_placeholder: 'Descripción concisa',
+          skill_instructions_placeholder: 'Instrucciones paso a paso, directivas y formato que el agente debe seguir cuando use esta skill…',
+          create_skill_btn: 'Crear Skill',
+          available_skills: 'Habilidades Disponibles para el Agente',
+        },
+        usage: {
+          title: 'Uso & Monitoreo',
+          subtitle: 'Consumo de API key, embeddings y logs de la aplicación',
+          summary_tab: 'Resumen',
+          logs_tab: 'Logs',
+          key_status_title: 'Estado de la API Key (OpenRouter)',
+          requests_per_day: 'Solicitudes por día',
+          by_category: 'Por categoría',
+          by_model: 'Por modelo',
+          all_categories: 'Todas las categorías',
+          all_statuses: 'Todos los estados',
+          col_date: 'Fecha',
+          col_category: 'Categoría',
+          col_action: 'Acción',
+          col_model: 'Modelo',
+          col_status: 'Estado',
+          col_tokens: 'Tokens',
+          col_duration: 'Duración',
+          load_more: 'Cargar más',
+        },
+        slash: {
+          ai_actions_title: 'Acciones de IA en Línea',
+          ask_ai: 'Preguntar a la IA / Redactar',
+          ask_ai_desc: 'Escribe un borrador o responde aquí',
+          continue_writing: 'Continuar escribiendo',
+          continue_writing_desc: 'Sigue la redacción desde este punto',
+          summarize_note: 'Resumir esta nota',
+          summarize_note_desc: 'Inserta un resumen en viñetas',
+          extract_tasks: 'Extraer lista de tareas',
+          extract_tasks_desc: 'Encuentra pendientes en el texto',
+          improve_writing: 'Mejorar redacción',
+          improve_writing_desc: 'Corrige y pule el párrafo',
+          block_formatting_title: 'Formato de Bloques',
+          h1: 'Encabezado 1',
+          h1_desc: 'Título de sección grande',
+          h2: 'Encabezado 2',
+          h2_desc: 'Subtítulo mediano',
+          h3: 'Encabezado 3',
+          h3_desc: 'Subtítulo pequeño',
+          bullet_list: 'Lista con viñetas',
+          bullet_list_desc: 'Crea una lista simple',
+          ordered_list: 'Lista numerada',
+          ordered_list_desc: 'Crea una lista con números',
+          quote: 'Cita',
+          quote_desc: 'Bloque de cita editorial',
+          divider: 'Línea divisoria',
+          divider_desc: 'Separa secciones de la página',
+          code_block: 'Bloque de código',
+          code_block_desc: 'Con selector de sintaxis (Python, JSON, etc.)',
+          table: 'Tabla',
+          table_desc: 'Cuadrícula de 3×3 con encabezado',
+          embed: 'Embed',
+          embed_desc: 'Incrusta un sitio web por URL',
+          media: 'Imagen, Video, Audio o Documento',
+          media_desc: 'Sube y adjunta un archivo',
+          use_skill_chat: 'Usar Skill en el Chat',
+          prompt_placeholder: 'Dile a la IA qué escribir o generar…',
+          generating_canvas: 'Generando en el lienzo…',
+        },
+        flashcards: {
+          counter: 'Tarjeta {current} de {total}',
+          click_to_flip: 'Haz clic para voltear',
+          prev: 'Anterior',
+          next: 'Siguiente',
+          shuffle: 'Mezclar',
+          restart: 'Reiniciar',
+        },
+        quiz: {
+          counter: 'Pregunta {current} de {total}',
+          submit: 'Confirmar Respuesta',
+          next: 'Siguiente Pregunta',
+          results: 'Ver Resultados',
+          correct: '¡Correcto!',
+          incorrect: 'Incorrecto',
+          score: 'Tu puntuación: {score} de {total} ({percent}%)',
+          explanation: 'Explicación',
+          restart: 'Reiniciar Quiz',
+        }
+      },
+      en: {
+        common: {
+          save: 'Save',
+          save_changes: 'Save Changes',
+          cancel: 'Cancel',
+          close: 'Close',
+          delete: 'Delete',
+          confirm_delete: 'Confirm Deletion',
+          delete_warning: 'Are you sure you want to delete this item? This action cannot be undone.',
+          create: 'Create',
+          edit: 'Edit',
+          rename: 'Rename',
+          loading: 'Loading…',
+          search: 'Search',
+          download: 'Download',
+          copy: 'Copy',
+          copied: 'Copied!',
+          error: 'Error',
+          success: 'Success',
+          ready: 'Ready.',
+          yes: 'Yes',
+          no: 'No',
+          name: 'Name',
+          title: 'Title',
+          description: 'Description',
+          optional: 'Optional',
+          input_text: 'Enter Text',
+          value: 'Value',
+          accept: 'Accept',
+          no_results: 'No results',
+          refresh: 'Refresh',
+          insert_in_note: 'Insert in Note',
+          save_as_page: 'Save as Page',
+          original_file: 'Original file',
+          as_pdf: 'As PDF',
+          expand_panel: 'Expand panel',
+          collapse_panel: 'Collapse panel',
+        },
+        topbar: {
+          workspace: 'Workspace',
+          workspaces: 'Workspaces',
+          loading_workspace: 'Loading workspace…',
+          no_workspaces: 'No workspaces found',
+          create_workspace: 'Create Workspace',
+          create_notebook: 'Create Notebook',
+          rename_workspace: 'Rename Workspace',
+          new_workspace: 'New Workspace',
+          sources: 'Sources',
+          sources_manager: 'Sources Manager',
+          memory_skills: 'Memory & Skills',
+          usage: 'Usage & Monitoring',
+          settings: 'Settings',
+          search_placeholder: 'Search pages, notebooks or documents… (Ctrl+K)',
+          notes: 'Notes',
+          chat: 'Chat',
+          studio: 'Studio',
+          attachments: 'Attachments',
+        },
+        sidebar: {
+          notebooks_and_pages: 'Notebooks & Pages',
+          new_notebook: 'New Notebook',
+          new_page: 'New Page',
+          empty_workspace: 'Empty workspace. Create a notebook to get started.',
+          delete_notebook: 'Delete notebook',
+          delete_page: 'Delete page',
+          rename_notebook: 'Rename notebook',
+          rename_page: 'Rename page',
+          add_sources_to_nb: 'Add sources to this notebook',
+          sources_count: '{count} sources',
+          pages_count: '{count} pages',
+          no_pages: 'No pages yet',
+        },
+        editor: {
+          title_placeholder: 'Untitled',
+          body_placeholder: 'Write here or type "/" for AI commands and blocks…',
+          words: '{count} words',
+          reading_time: '{count} min read',
+          saving: 'Saving…',
+          saved: 'Saved',
+          unsaved: 'Unsaved changes',
+          empty_knowledge_title: 'Your Knowledge Base',
+          empty_knowledge_desc: 'Select a page in the sidebar or create a new workspace to get started.',
+        },
+        chat: {
+          assistant_title: 'Knowledge Assistant',
+          assistant_welcome: 'Ask about notes in this workspace, upload specific attachments, or query real-time information.',
+          suggested_title: 'Suggested questions:',
+          q1: 'What does this workspace contain?',
+          q1_full: 'What main topics and notes are in this workspace?',
+          q2: 'Executive summary',
+          q2_full: 'Make an executive summary with the most important key points.',
+          q3: 'Key concepts',
+          q3_full: 'What are the key concepts and how do they relate to each other?',
+          q4: 'Review questions',
+          q4_full: 'Generate 3 review questions with answers to test my understanding.',
+          q5: 'Conclusions & next steps',
+          q5_full: 'What conclusions or next steps can be drawn from this information?',
+          input_placeholder: 'Ask about your knowledge…',
+          attach: 'Attach',
+          attach_tooltip: 'Attach file or image to this query',
+          dictate: 'Voice dictation',
+          send: 'Send',
+          stop: 'Stop',
+          new_thread: 'New',
+          new_thread_title: 'New conversation',
+          current_conv_tooltip: 'Current conversation — click to rename',
+          rename_conv_tooltip: 'Rename conversation',
+          scope_notebook: 'This notebook',
+          scope_notebook_desc: 'Answers using notes and attachments in this notebook',
+          scope_workspace: 'Entire workspace',
+          scope_workspace_desc: 'Searches across all notebooks in the workspace',
+          history: 'History',
+          history_title: 'Chat History',
+          search_conversations: 'Search conversation...',
+          no_conversations: 'No past conversations',
+          clear_history: 'Clear history',
+          sources_found: 'Sources found',
+          executing_tool: 'Executing tool',
+          searching_kb: 'Searching knowledge base…',
+          searching_web: 'Searching web…',
+          generating_artifact: 'Generating artifact…',
+        },
+        studio: {
+          guides_title: 'Notebook Guides',
+          create_guide_title: 'Create Guide or Artifact:',
+          generate_btn: 'Generate Artifact',
+          saved_artifacts: 'Saved Artifacts ({count})',
+          empty_artifacts: 'You haven\'t generated any artifacts for this notebook yet.',
+          generate_new: 'Generate New',
+          notebook_gallery: 'Notebook Gallery ({count})',
+          select_type_label: 'Select the artifact type to create:',
+          change_type: 'Change type',
+          custom_prompt_label: 'Additional notes (Optional):',
+          custom_prompt_placeholder: 'e.g. Focus on database migration or create 4 difficult questions',
+          scope_all_notebook: 'Scope: Entire current notebook',
+          types: {
+            diagram: 'Mermaid Diagram',
+            diagram_desc: 'Flows & architecture',
+            quiz: 'Quiz / Test',
+            quiz_desc: 'Interactive test',
+            study_guide: 'Study Guide',
+            study_guide_desc: 'Concepts & glossary',
+            flashcards: 'Flashcards',
+            flashcards_desc: 'Review flashcards',
+            summary: 'Executive Summary',
+            summary_desc: '1 structured page',
+            mindmap: 'Mind Map',
+            mindmap_desc: 'Concept hierarchy',
+            infographic: 'Infographic',
+            infographic_desc: 'Generated visual poster',
+            timeline: 'Timeline',
+            timeline_desc: 'Chronological milestones',
+            podcast: 'Podcast',
+            podcast_desc: 'Audio dialogue',
+            table: 'Data Table',
+            table_desc: 'Structured table',
+          }
+        },
+        attachments: {
+          title: 'Reusable Attachments (SHA-256)',
+          add_source: 'Add Source',
+          empty_page: 'Select a page to see its attachments.',
+          no_attachments: 'No attachments on this page.',
+          upload_tooltip: 'Quick upload file to this page',
+        },
+        sources_modal: {
+          title: 'Source & Knowledge Base Manager',
+          subtitle: 'Vector indexing with Gemini Embedding and sqlite-vec',
+          add_tab: 'Add Source',
+          indexed_tab: 'Indexed Sources ({count})',
+          adding_to: 'Adding sources to:',
+          source_mode: 'Source type',
+          upload_local: 'Upload Local File (Office, Code, Data, Media)',
+          dedup_badge: 'SHA-256 Deduplicated',
+          dropzone_title: 'Drag files here or click to browse',
+          dropzone_desc: 'Supports PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), Markdown, CSV, JSON, Jupyter (.ipynb), Code, Audio, Video & Images',
+          uploading: 'Uploading file…',
+          index_url_title: 'Index Web URL or Article',
+          index_url_btn: 'Index URL',
+          index_url_desc: 'Extracts clean text, calculates SHA-256, and generates vector embeddings.',
+          quick_text_title: 'Quick Text, Notes, or Transcript',
+          quick_text_title_placeholder: 'Source title (e.g. Technical Specification)',
+          quick_text_content_placeholder: 'Paste content to index in sqlite-vec…',
+          save_as_source: 'Save as Source',
+          sources_feeding_assistant: 'Sources feeding the Assistant and RAG:',
+          reload_tooltip: 'Refresh list',
+        },
+        settings: {
+          title: 'Settings',
+          subtitle: 'Bring your own API key (BYOK) from OpenRouter & language',
+          language_label: 'Application Language',
+          language_hint: 'Applies to the UI, chat assistant, and artifact generation.',
+          api_key_title: 'OpenRouter API Key',
+          loading_status: 'Loading status…',
+          key_hint: 'Stored in your local database and takes priority over the OPENROUTER_API_KEY environment variable. Get it at openrouter.ai/keys.',
+          clear_key_btn: 'Remove & use .env',
+          updates_title: 'Updates',
+          checking_version: 'Checking version…',
+          check_updates_btn: 'Check for updates',
+          download_bg_btn: 'Download in background',
+          restart_update_btn: 'Restart and update',
+          update_ready_title: 'Update ready to install!',
+          update_ready_desc: 'Files are downloaded. You can restart now to apply changes in 2 seconds, or keep working and restart whenever you wish.',
+          downloading_bg: 'Downloading in background…',
+          save_settings_btn: 'Save Changes',
+          key_using_custom: 'Using custom API key ({masked})',
+          key_using_env: 'Using .env file key ({masked}). You can override it below.',
+          key_not_configured: 'No API key configured yet.',
+          settings_saved_toast: 'Settings saved successfully.',
+        },
+        memory_skills: {
+          title: 'Declarative Memory & Skills',
+          subtitle: 'Hermes Agent style persistent SQLite memory architecture',
+          memories_tab: 'Memories ({count})',
+          skills_tab: 'Skills & Procedures ({count})',
+          add_memory_title: 'Add Fact or Preference to Memory',
+          category_user_pref: 'User Preference',
+          category_domain_fact: 'Project Fact',
+          category_convention: 'Convention / Rule',
+          memory_placeholder: 'e.g. User prefers Python code and concise English responses',
+          memory_hint: 'The agent will also learn and add facts automatically during conversations.',
+          active_memories: 'Active memories injected into every turn',
+          add_skill_title: 'Register New Skill',
+          skill_name_placeholder: 'Unique name (e.g. format-meeting-notes)',
+          skill_desc_placeholder: 'Concise description',
+          skill_instructions_placeholder: 'Step-by-step instructions, directives, and format the agent must follow when using this skill…',
+          create_skill_btn: 'Create Skill',
+          available_skills: 'Available Skills for the Agent',
+        },
+        usage: {
+          title: 'Usage & Monitoring',
+          subtitle: 'API key consumption, embeddings, and application logs',
+          summary_tab: 'Summary',
+          logs_tab: 'Logs',
+          key_status_title: 'API Key Status (OpenRouter)',
+          requests_per_day: 'Requests per day',
+          by_category: 'By category',
+          by_model: 'By model',
+          all_categories: 'All categories',
+          all_statuses: 'All statuses',
+          col_date: 'Date',
+          col_category: 'Category',
+          col_action: 'Action',
+          col_model: 'Model',
+          col_status: 'Status',
+          col_tokens: 'Tokens',
+          col_duration: 'Duration',
+          load_more: 'Load more',
+        },
+        slash: {
+          ai_actions_title: 'Inline AI Actions',
+          ask_ai: 'Ask AI / Draft',
+          ask_ai_desc: 'Draft or answer right here',
+          continue_writing: 'Continue writing',
+          continue_writing_desc: 'Continue writing from this point',
+          summarize_note: 'Summarize this note',
+          summarize_note_desc: 'Insert a bulleted summary',
+          extract_tasks: 'Extract action items',
+          extract_tasks_desc: 'Find pending tasks in the text',
+          improve_writing: 'Improve writing',
+          improve_writing_desc: 'Polish and improve the paragraph',
+          block_formatting_title: 'Block Formatting',
+          h1: 'Heading 1',
+          h1_desc: 'Large section title',
+          h2: 'Heading 2',
+          h2_desc: 'Medium section title',
+          h3: 'Heading 3',
+          h3_desc: 'Small section title',
+          bullet_list: 'Bulleted list',
+          bullet_list_desc: 'Create a simple list',
+          ordered_list: 'Numbered list',
+          ordered_list_desc: 'Create a numbered list',
+          quote: 'Quote',
+          quote_desc: 'Editorial blockquote',
+          divider: 'Divider line',
+          divider_desc: 'Separates sections of the page',
+          code_block: 'Code block',
+          code_block_desc: 'With syntax selector (Python, JSON, etc.)',
+          table: 'Table',
+          table_desc: '3×3 grid with header',
+          embed: 'Embed',
+          embed_desc: 'Embed a website by URL',
+          media: 'Image, Video, Audio or Document',
+          media_desc: 'Upload and attach a file',
+          use_skill_chat: 'Use Skill in Chat',
+          prompt_placeholder: 'Tell AI what to write or generate…',
+          generating_canvas: 'Generating on canvas…',
+        },
+        flashcards: {
+          counter: 'Card {current} of {total}',
+          click_to_flip: 'Click to flip',
+          prev: 'Previous',
+          next: 'Next',
+          shuffle: 'Shuffle',
+          restart: 'Restart',
+        },
+        quiz: {
+          counter: 'Question {current} of {total}',
+          submit: 'Submit Answer',
+          next: 'Next Question',
+          results: 'See Results',
+          correct: 'Correct!',
+          incorrect: 'Incorrect',
+          score: 'Your score: {score} of {total} ({percent}%)',
+          explanation: 'Explanation',
+          restart: 'Restart Quiz',
+        }
+      }
+    };
+
+    let _currentLang = 'es';
+
+    function getEffectiveLanguage() {
+      if (_currentLang === 'auto') {
+        const nav = (navigator.language || navigator.userLanguage || '').toLowerCase();
+        return nav.startsWith('es') ? 'es' : 'en';
+      }
+      return _currentLang === 'en' ? 'en' : 'es';
+    }
+
+    function getLanguage() {
+      return _currentLang;
+    }
+
+    function t(path, params = {}) {
+      const lang = getEffectiveLanguage();
+      const keys = path.split('.');
+      let cur = I18N_DICTIONARY[lang];
+      for (const k of keys) {
+        if (cur && cur[k] !== undefined) {
+          cur = cur[k];
+        } else {
+          cur = null;
+          break;
+        }
+      }
+      if (cur === null && lang !== 'es') {
+        let fallback = I18N_DICTIONARY.es;
+        for (const k of keys) {
+          if (fallback && fallback[k] !== undefined) {
+            fallback = fallback[k];
+          } else {
+            fallback = null;
+            break;
+          }
+        }
+        cur = fallback;
+      }
+      if (typeof cur !== 'string') return path;
+      return cur.replace(/\{(\w+)\}/g, (_, k) => params[k] !== undefined ? params[k] : `{${k}}`);
+    }
+
+    function applyI18n(root = document) {
+      const elList = root.querySelectorAll('[data-i18n]');
+      elList.forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (key) {
+          el.textContent = t(key);
+        }
+      });
+
+      const placeholderList = root.querySelectorAll('[data-i18n-placeholder]');
+      placeholderList.forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        if (key) {
+          el.placeholder = t(key);
+        }
+      });
+
+      const titleList = root.querySelectorAll('[data-i18n-title]');
+      titleList.forEach(el => {
+        const key = el.getAttribute('data-i18n-title');
+        if (key) {
+          el.title = t(key);
+        }
+      });
+    }
+
+    async function setLanguage(lang, syncBackend = true) {
+      _currentLang = (lang || 'es').toLowerCase();
+      localStorage.setItem('ragpoc_language', _currentLang);
+      document.documentElement.lang = getEffectiveLanguage();
+
+      const langSelect = $('#settings-language-select');
+      if (langSelect && langSelect.value !== _currentLang) {
+        langSelect.value = _currentLang;
+      }
+
+      applyI18n(document);
+
+      // Trigger dynamic element refreshes if already initialized
+      if (typeof window.onLanguageChanged === 'function') {
+        window.onLanguageChanged(_currentLang);
+      }
+
+      if (syncBackend) {
+        try {
+          await api('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ language: _currentLang })
+          });
+        } catch (e) {
+          console.warn('[RAGPoC] Could not sync language to backend:', e);
+        }
+      }
+    }
+
+    async function initAppLanguage() {
+      let saved = localStorage.getItem('ragpoc_language');
+      if (saved) {
+        setLanguage(saved, false);
+      } else {
+        try {
+          let settings = await api('/api/settings');
+          if (settings && settings.language) {
+            setLanguage(settings.language, false);
+          } else {
+            setLanguage('auto', false);
+          }
+        } catch (e) {
+          setLanguage('auto', false);
+        }
+      }
+    }
+
+    window.t = t;
+    window.setLanguage = setLanguage;
+    window.getLanguage = getLanguage;
+    window.getEffectiveLanguage = getEffectiveLanguage;
+    window.applyI18n = applyI18n;
+    window.initAppLanguage = initAppLanguage;
+
     async function copyRawText(text) {
       try {
         if (navigator.clipboard && window.isSecureContext) {
@@ -6451,32 +7228,34 @@
     }
 
     function chatWelcomeHTML(title, body) {
+      const defaultTitle = t('chat.assistant_title');
+      const defaultBody = t('chat.assistant_welcome');
       return `
         <div class="chat-welcome-box">
           <div class="fw-bold mb-1 d-flex align-items-center gap-2 text-dark">
-            <i class="bi bi-stars text-amber"></i> ${esc(title || 'Asistente de Conocimiento')}
+            <i class="bi bi-stars text-amber"></i> ${esc(title || defaultTitle)}
           </div>
           <div class="text-muted small mb-2">
-            ${esc(body || 'Pregunta sobre las notas de este espacio, sube adjuntos específicos o consulta información en tiempo real.')}
+            ${esc(body || defaultBody)}
           </div>
 
           <div class="suggested-questions-container pt-2 border-top">
-            <div class="small fw-bold text-secondary mb-1" style="font-size:11px;">Preguntas sugeridas:</div>
+            <div class="small fw-bold text-secondary mb-1" style="font-size:11px;">${esc(t('chat.suggested_title'))}</div>
             <div class="suggested-questions-grid">
-              <button type="button" class="btn-suggested-question" data-question="¿Qué temas y notas principales contiene este espacio de trabajo?">
-                <i class="bi bi-compass text-primary"></i> <span>¿Qué contiene este espacio?</span>
+              <button type="button" class="btn-suggested-question" data-question-i18n="chat.q1_full" data-question="${esc(t('chat.q1_full'))}">
+                <i class="bi bi-compass text-primary"></i> <span>${esc(t('chat.q1'))}</span>
               </button>
-              <button type="button" class="btn-suggested-question" data-question="Haz un resumen ejecutivo con los puntos clave más importantes.">
-                <i class="bi bi-file-text text-success"></i> <span>Resumen de puntos clave</span>
+              <button type="button" class="btn-suggested-question" data-question-i18n="chat.q2_full" data-question="${esc(t('chat.q2_full'))}">
+                <i class="bi bi-file-text text-success"></i> <span>${esc(t('chat.q2'))}</span>
               </button>
-              <button type="button" class="btn-suggested-question" data-question="¿Cuáles son los conceptos más importantes y cómo se relacionan entre sí?">
-                <i class="bi bi-diagram-3 text-warning"></i> <span>Conceptos principales</span>
+              <button type="button" class="btn-suggested-question" data-question-i18n="chat.q3_full" data-question="${esc(t('chat.q3_full'))}">
+                <i class="bi bi-diagram-3 text-warning"></i> <span>${esc(t('chat.q3'))}</span>
               </button>
-              <button type="button" class="btn-suggested-question" data-question="Genera 3 preguntas de repaso con sus respuestas para autoevaluar mi comprensión.">
-                <i class="bi bi-patch-question text-danger"></i> <span>Preguntas de repaso</span>
+              <button type="button" class="btn-suggested-question" data-question-i18n="chat.q4_full" data-question="${esc(t('chat.q4_full'))}">
+                <i class="bi bi-patch-question text-danger"></i> <span>${esc(t('chat.q4'))}</span>
               </button>
-              <button type="button" class="btn-suggested-question" data-question="¿Qué conclusiones o próximos pasos se pueden extraer de esta información?">
-                <i class="bi bi-lightbulb text-info"></i> <span>Conclusiones y pasos</span>
+              <button type="button" class="btn-suggested-question" data-question-i18n="chat.q5_full" data-question="${esc(t('chat.q5_full'))}">
+                <i class="bi bi-lightbulb text-info"></i> <span>${esc(t('chat.q5'))}</span>
               </button>
             </div>
           </div>
@@ -7662,7 +8441,7 @@
       let questions = quizJson?.questions || [];
       let total = questions.length;
       if (total === 0) {
-        container.innerHTML = '<div class="alert alert-warning small">No hay preguntas válidas en este cuestionario.</div>';
+        container.innerHTML = `<div class="alert alert-warning small">${esc(t('quiz.no_questions'))}</div>`;
         return;
       }
       let state = { idx: 0, answers: new Array(total).fill(null) };
@@ -7674,7 +8453,7 @@
         container.querySelector(`[data-quiz-opt="${chosenIdx}"]`)?.classList.add(correct ? 'btn-craft-primary' : 'active');
         fb.style.display = 'block';
         fb.className = `quiz-feedback-box small p-3 rounded ${correct ? 'bg-success-subtle text-success border border-success' : 'bg-danger-subtle text-danger border border-danger'}`;
-        fb.innerHTML = correct ? `<b>✓ ¡Correcto!</b> ${esc(q.explanation || '')}` : `<b>✗ Incorrecto.</b> ${esc(q.explanation || '')}`;
+        fb.innerHTML = correct ? `<b>✓ ${esc(t('quiz.correct'))}</b> ${esc(q.explanation || '')}` : `<b>✗ ${esc(t('quiz.incorrect'))}</b> ${esc(q.explanation || '')}`;
       }
 
       function renderQuestion() {
@@ -7685,8 +8464,8 @@
         container.innerHTML = `
           <div style="max-width:800px; margin:0 auto; width:100%;">
             <div class="d-flex justify-content-between align-items-center small text-muted mb-2">
-              <span>Pregunta ${state.idx + 1} de ${total}</span>
-              <span>${state.answers.filter(a => a !== null).length}/${total} respondidas</span>
+              <span>${esc(t('quiz.question_counter', { current: state.idx + 1, total }))}</span>
+              <span>${esc(t('quiz.answered_counter', { answered: state.answers.filter(a => a !== null).length, total }))}</span>
             </div>
             <div class="craft-card p-4 bg-white" style="box-shadow:var(--craft-shadow-md);">
               <div class="fw-bold fs-6 text-dark mb-3">${esc(q.question)}</div>
@@ -7701,7 +8480,7 @@
               <div class="quiz-feedback-box small p-3 rounded" style="display:${answered !== null ? 'block' : 'none'}; line-height:1.5;"></div>
               <div class="d-flex justify-content-end mt-3">
                 <button type="button" class="btn-craft btn-craft-primary" id="quiz-next-btn" ${answered === null ? 'disabled' : ''}>
-                  ${state.idx === total - 1 ? 'Finalizar' : 'Siguiente'} <i class="bi bi-arrow-right"></i>
+                  ${state.idx === total - 1 ? esc(t('quiz.finish')) : esc(t('quiz.next'))} <i class="bi bi-arrow-right"></i>
                 </button>
               </div>
             </div>
@@ -7740,13 +8519,13 @@
           <div style="max-width:800px; margin:0 auto; width:100%;">
             <div class="craft-card p-4 bg-white text-center" style="box-shadow:var(--craft-shadow-md);">
               <div class="display-6 fw-bold text-dark mb-1">${correctCount}/${total}</div>
-              <div class="text-muted mb-3">respuestas correctas</div>
-              <button type="button" class="btn-craft btn-craft-primary" id="quiz-retry-btn"><i class="bi bi-arrow-repeat"></i> Reintentar</button>
+              <div class="text-muted mb-3">${esc(t('quiz.correct_answers'))}</div>
+              <button type="button" class="btn-craft btn-craft-primary" id="quiz-retry-btn"><i class="bi bi-arrow-repeat"></i> ${esc(t('quiz.retry'))}</button>
             </div>
             <div class="d-flex flex-column gap-2 mt-3">
               ${questions.map((q, i) => {
                 let ok = state.answers[i] === q.correct_index;
-                let yourAnswer = state.answers[i] === null ? '(sin responder)' : esc(q.options[state.answers[i]] || '');
+                let yourAnswer = state.answers[i] === null ? `(${esc(t('quiz.unanswered'))})` : esc(q.options[state.answers[i]] || '');
                 let correctAnswer = esc(q.options[q.correct_index] || '');
                 return `
                   <div class="craft-card p-3 bg-white">
@@ -7754,7 +8533,7 @@
                       <i class="bi ${ok ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger'}"></i>
                       <div>
                         <div class="fw-bold small">${i + 1}. ${esc(q.question)}</div>
-                        ${!ok ? `<div class="small text-muted mt-1">Tu respuesta: ${yourAnswer}<br>Correcta: ${correctAnswer}</div>` : ''}
+                        ${!ok ? `<div class="small text-muted mt-1">${esc(t('quiz.your_answer'))}: ${yourAnswer}<br>${esc(t('quiz.correct_answer'))}: ${correctAnswer}</div>` : ''}
                         ${q.explanation ? `<div class="small text-muted mt-1">${esc(q.explanation)}</div>` : ''}
                       </div>
                     </div>
@@ -7802,10 +8581,10 @@
       let cards = cardsJson?.cards || [];
       return `
         <h6 class="fw-bold mb-2 small text-dark">Flashcards</h6>
-        <div class="small text-muted mb-2">${cards.length} tarjetas · abre el artefacto para repasar</div>
+        <div class="small text-muted mb-2">${esc(t('flashcards.cards_open_preview', { count: cards.length }))}</div>
         <div class="d-flex flex-column gap-1">
           ${cards.slice(0, 5).map((c, i) => `<div class="small text-truncate">${i + 1}. ${esc(c.front)}</div>`).join('')}
-          ${cards.length > 5 ? `<div class="text-muted" style="font-size:10px;">+${cards.length - 5} tarjetas más...</div>` : ''}
+          ${cards.length > 5 ? `<div class="text-muted" style="font-size:10px;">+${cards.length - 5} ${esc(t('flashcards.more_cards', { count: cards.length - 5 }))}</div>` : ''}
         </div>
       `;
     }
@@ -7816,7 +8595,7 @@
       let cards = cardsJson?.cards || [];
       let total = cards.length;
       if (total === 0) {
-        container.innerHTML = '<div class="alert alert-warning small">No hay tarjetas válidas para repasar.</div>';
+        container.innerHTML = `<div class="alert alert-warning small">${esc(t('flashcards.no_cards'))}</div>`;
         return;
       }
       let state = { idx: 0, flipped: false };
@@ -7826,8 +8605,8 @@
         container.innerHTML = `
           <div style="max-width:640px; margin:0 auto; width:100%;">
             <div class="d-flex justify-content-between align-items-center small text-muted mb-2">
-              <span>Tarjeta ${state.idx + 1} de ${total}</span>
-              <span class="text-truncate ms-2" style="max-width:60%;">Haz clic para voltear</span>
+              <span>${esc(t('flashcards.card_counter', { current: state.idx + 1, total }))}</span>
+              <span class="text-truncate ms-2" style="max-width:60%;">${esc(t('flashcards.click_flip'))}</span>
             </div>
             <div class="flashcard-flip-scene ${state.flipped ? 'is-flipped' : ''}" style="height:280px;">
               <div class="flashcard-flip-inner" id="flashcard-flip-inner">
@@ -7841,10 +8620,10 @@
             </div>
             <div class="d-flex justify-content-between align-items-center mt-3">
               <button type="button" class="btn-craft" id="flashcard-prev-btn" ${state.idx === 0 ? 'disabled' : ''}>
-                <i class="bi bi-arrow-left"></i> Anterior
+                <i class="bi bi-arrow-left"></i> ${esc(t('flashcards.previous'))}
               </button>
               <button type="button" class="btn-craft btn-craft-primary" id="flashcard-next-btn" ${state.idx === total - 1 ? 'disabled' : ''}>
-                Siguiente <i class="bi bi-arrow-right"></i>
+                ${esc(t('flashcards.next'))} <i class="bi bi-arrow-right"></i>
               </button>
             </div>
           </div>
@@ -8626,28 +9405,50 @@
 
     async function loadSettingsStatus() {
       let statusEl = $('#settings-key-status');
-      statusEl.textContent = 'Cargando estado…';
+      statusEl.textContent = t('common.loading');
       try {
         let status = await api('/api/settings');
+        let langSelect = $('#settings-language-select');
+        if (langSelect) {
+          let currentLocalLang = localStorage.getItem('ragpoc_language');
+          if (currentLocalLang) {
+            langSelect.value = currentLocalLang;
+          } else if (status.language) {
+            langSelect.value = status.language;
+          }
+        }
         if (status.source === 'byok') {
-          statusEl.innerHTML = `<i class="bi bi-check-circle-fill text-success"></i> Usando key personalizada (${esc(status.masked_key)})`;
+          statusEl.innerHTML = `<i class="bi bi-check-circle-fill text-success"></i> ${t('settings.status_byok', { masked_key: esc(status.masked_key) })}`;
         } else if (status.source === 'env') {
-          statusEl.innerHTML = `<i class="bi bi-info-circle-fill text-primary"></i> Usando la key del archivo .env (${esc(status.masked_key)}). Puedes reemplazarla abajo.`;
+          statusEl.innerHTML = `<i class="bi bi-info-circle-fill text-primary"></i> ${t('settings.status_env', { masked_key: esc(status.masked_key) })}`;
         } else {
-          statusEl.innerHTML = `<i class="bi bi-exclamation-triangle-fill text-warning"></i> No hay ninguna API key configurada todavía.`;
+          statusEl.innerHTML = `<i class="bi bi-exclamation-triangle-fill text-warning"></i> ${t('settings.status_none')}`;
         }
       } catch (e) {
-        statusEl.textContent = 'No se pudo cargar el estado: ' + e.message;
+        statusEl.textContent = t('common.error') + ': ' + e.message;
       }
+    }
+
+    if ($('#settings-language-select')) {
+      $('#settings-language-select').onchange = (e) => {
+        setLanguage(e.target.value, true);
+        showToast(t('settings.saved_success'), 'success');
+      };
     }
 
     $('#btn-save-settings-key').onclick = async () => {
       let input = $('#settings-api-key-input');
       let key = input.value.trim();
+      let langSelect = $('#settings-language-select');
+      let lang = langSelect ? langSelect.value : null;
 
       let payload = {};
       if (key) {
         payload.openrouter_api_key = key;
+      }
+      if (lang) {
+        payload.language = lang === 'auto' ? '' : lang;
+        setLanguage(lang, false);
       }
 
       try {
@@ -8658,9 +9459,9 @@
         });
         input.value = '';
         await loadSettingsStatus();
-        showToast('Ajustes guardados correctamente.', 'success');
+        showToast(t('settings.saved_success'), 'success');
       } catch (e) {
-        showToast('Error al guardar: ' + e.message, 'error');
+        showToast(t('common.error') + ': ' + e.message, 'error');
       }
     };
 
@@ -9630,7 +10431,7 @@
       let qBtn = e.target.closest('.btn-suggested-question');
       if (qBtn) {
         e.preventDefault();
-        let q = qBtn.dataset.question || qBtn.textContent.trim();
+        let q = (qBtn.dataset.questionI18n ? t(qBtn.dataset.questionI18n) : null) || qBtn.dataset.question || qBtn.textContent.trim();
         let input = $('#chat-question');
         if (input) {
           input.value = q;
@@ -12398,6 +13199,7 @@
       editor.view.focus();
     });
 
+    initAppLanguage();
     initWorkspace();
     setupDragAndDrop();
     setupPasteHandler();

@@ -187,6 +187,7 @@ class AppConfig(models.Model):
     """Singleton row holding BYOK overrides and agent settings set from the Ajustes UI."""
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
     openrouter_api_key = models.CharField(max_length=200, blank=True, default="")
+    language = models.CharField(max_length=10, default="es")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

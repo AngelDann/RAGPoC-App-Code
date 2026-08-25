@@ -59,7 +59,7 @@ class AgentDeps:
     collected_sources: list[dict] = field(default_factory=list)
 
 
-SYSTEM_PROMPT = """Eres el asistente de conocimiento y copiloto operativo RAGPoC potenciado por PydanticAI (inspirado en Hermes Agent).
+SYSTEM_PROMPT_ES = """Eres el asistente de conocimiento y copiloto operativo RAGPoC potenciado por PydanticAI (inspirado en Hermes Agent).
 Cuentas con memoria declarativa persistente (AgentMemory), memoria procedimental/habilidades (AgentSkills) y herramientas de acción en el espacio de trabajo.
 
 ══════════════════════════════════════════════
@@ -90,6 +90,50 @@ DIRECTIVAS DE OPERACIÓN (HERMES STYLE):
 - Cita las fuentes de la base de conocimiento usando [n] cuando utilices información recuperada de `search_knowledge_base`.
 - **Después de `create_workspace_page` o `update_page_notes`:** tu siguiente respuesta de texto ES el contenido que se guardará en la página. Escribe ÚNICAMENTE el contenido en Markdown — sin saludos, sin "aquí tienes", sin confirmaciones. Si quieres además comentarle algo al usuario en el chat, hazlo en un mensaje aparte, no mezclado con el contenido de la página.
 """
+
+SYSTEM_PROMPT_EN = """You are the RAGPoC knowledge assistant and operational copilot powered by PydanticAI (inspired by Hermes Agent).
+You possess persistent declarative memory (AgentMemory), procedural memory/skills (AgentSkills), and workspace action tools.
+
+══════════════════════════════════════════════
+AVAILABLE TOOLS:
+══════════════════════════════════════════════
+1. `search_knowledge_base`: Search for evidence in notes and documents (PDFs, images, videos, text) across the notebook or workspace.
+2. `search_web`: Real-time web search.
+3. `add_source_to_knowledge_base`: Save and index web URLs or text notes into the vector database at the notebook level.
+4. `manage_memory`: Save, update, or remove lasting facts about the user, preferences, conventions, and lessons learned (Hermes memory style).
+5. `manage_skill`: Create, list, or update reusable skills and workflows (Hermes skills style).
+6. `create_workspace_page`: Prepare a new page (with a title) inside the active or specified notebook. Does NOT receive content as an argument: after calling it, write the Markdown content as your NEXT normal text response — it streams live into the page and is automatically saved.
+7. `update_page_notes`: Prepare the current (or specified) page to receive additional content. Same as above: write the content as your next normal text response.
+8. `get_workspace_structure`: Explore the full hierarchy of notebooks and pages in the workspace.
+9. `search_past_conversations`: List/search past chat threads (excluding the active one) scoped to the active notebook or workspace.
+10. `get_conversation_messages`: Retrieve full messages from a past conversation by its `thread_id` to inspect what was discussed.
+11. `generate_notebook_artifact`: Generate multimedia and knowledge artifacts for the current notebook (2-speaker .wav podcasts, Mermaid diagrams, mind maps, quizzes, flashcards, study guides, summaries, infographics, timelines) and save them to the Studio gallery.
+
+══════════════════════════════════════════════
+OPERATIONAL DIRECTIVES (HERMES STYLE):
+══════════════════════════════════════════════
+- **Agentic Vector Search (100% Tool-Driven):** Your initial context contains no preloaded knowledge chunks. You MUST proactively invoke `search_knowledge_base` whenever the user's question requires facts, documents (PDFs, images, videos, text), or notes.
+- **Precise Semantic Queries:** Formulate descriptive, concrete search keywords and concepts when calling `search_knowledge_base`. You can invoke it multiple times to cross-reference or explore different sub-topics.
+- **Studio Artifacts Generation:** When asked to create or generate a podcast, diagram, mind map, quiz, flashcards, infographic, timeline, or study guide, proactively call `generate_notebook_artifact`.
+- **Proactive Declarative Memory:** When the user expresses a stable preference or a key project fact is uncovered, proactively call `manage_memory(action='add', content=...)`.
+- **Procedural Memory (Skills):** If you discover or the user teaches you a repeatable complex workflow, save it with `manage_skill(action='create', name=..., instructions=...)`.
+- **Past Conversation Context:** If the user references earlier discussions, search past conversations before saying you do not know.
+- Always respond in clear, concise English with Markdown formatting (bold, lists, tables).
+- Cite knowledge base sources using [n] whenever using information retrieved from `search_knowledge_base`.
+- **After `create_workspace_page` or `update_page_notes`:** your next text response IS the page content. Output ONLY Markdown — no greetings, no introductory filler, no conversational confirmations.
+"""
+
+
+def get_system_prompt(language: str = "es") -> str:
+    lang = (language or "es").strip().lower()
+    if lang == "en":
+        return SYSTEM_PROMPT_EN
+    if lang == "auto":
+        return SYSTEM_PROMPT_EN + "\n- **Language Matching Directive:** Detect the language used by the user in their query and respond fluently in that exact same language.\n"
+    return SYSTEM_PROMPT_ES
+
+
+SYSTEM_PROMPT = SYSTEM_PROMPT_ES
 
 
 def evidence_media_parts(source: dict) -> list[str | BinaryContent]:
@@ -138,8 +182,11 @@ def evidence_media_parts(source: dict) -> list[str | BinaryContent]:
     return parts
 
 
-def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDeps, str]:
+def create_pydantic_rag_agent(settings: Settings | None = None, language: str | None = None) -> Agent[AgentDeps, str]:
+    from knowledge.settings_store import get_current_language
+
     settings = settings or get_settings()
+    active_lang = language or get_current_language()
 
     client = AsyncOpenAI(
         base_url="https://openrouter.ai/api/v1",
@@ -154,7 +201,7 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
     agent: Agent[AgentDeps, str] = Agent(
         model=model,
         deps_type=AgentDeps,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=get_system_prompt(active_lang),
     )
 
     @agent.tool
@@ -633,8 +680,9 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
         - 'timeline': Genera una línea de tiempo cronológica visual.
         """
         from knowledge.models import Notebook, NotebookArtifact, Page
-        from knowledge.views import ARTIFACT_SYSTEM_PROMPTS, ARTIFACT_TITLES, _collect_notebook_context
+        from knowledge.views import get_artifact_system_prompt, get_artifact_title, _collect_notebook_context
         from knowledge.artifact_media import build_media_artifact, describe_artifact_settings
+        from knowledge.settings_store import get_current_language
 
         target_nb_id = notebook_id or ctx.deps.notebook_id
         if not target_nb_id and ctx.deps.page_id:
@@ -662,6 +710,9 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
             return {"error": f"Cuaderno con ID {target_nb_id} no encontrado."}
 
         try:
+            language = get_current_language()
+            is_en = language == "en"
+
             @sync_to_async
             def _get_context():
                 return _collect_notebook_context(notebook, instructions, ctx.deps.retriever)
@@ -687,15 +738,21 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
                     settings=ctx.deps.settings,
                     on_progress=on_progress,
                     preferences=preferences,
+                    language=language,
                 )
             else:
-                settings_directive = describe_artifact_settings(artifact_type, preferences)
+                settings_directive = describe_artifact_settings(artifact_type, preferences, language=language)
                 default_counts = {"quiz": "4", "flashcards": "5"}
-                count = default_counts.get(artifact_type, "")
-                chosen_system = ARTIFACT_SYSTEM_PROMPTS.get(artifact_type, ARTIFACT_SYSTEM_PROMPTS["study_guide"]).format(count=count)
-                user_prompt = f"Contenido del cuaderno '{notebook.name}':\n{full_context}\n\nInstrucciones adicionales del usuario: {instructions}"
-                if settings_directive:
-                    user_prompt += f"\n\nPreferencias de formato: {settings_directive}"
+                count = preferences.get("count") or default_counts.get(artifact_type, "")
+                chosen_system = get_artifact_system_prompt(artifact_type, count=count, language=language)
+                if is_en:
+                    user_prompt = f"Notebook content for '{notebook.name}':\n{full_context}\n\nAdditional user instructions: {instructions}"
+                    if settings_directive:
+                        user_prompt += f"\n\nFormatting preferences: {settings_directive}"
+                else:
+                    user_prompt = f"Contenido del cuaderno '{notebook.name}':\n{full_context}\n\nInstrucciones adicionales del usuario: {instructions}"
+                    if settings_directive:
+                        user_prompt += f"\n\nPreferencias de formato: {settings_directive}"
 
                 client = AsyncOpenAI(
                     base_url="https://openrouter.ai/api/v1",
@@ -711,7 +768,7 @@ def create_pydantic_rag_agent(settings: Settings | None = None) -> Agent[AgentDe
                     temperature=0.2,
                 )
                 content = completion.choices[0].message.content or ""
-                title = f"{ARTIFACT_TITLES.get(artifact_type, 'Artefacto')} · {notebook.name}"
+                title = get_artifact_title(artifact_type, notebook.name, language=language)
                 metadata = {"render_mode": "mermaid"} if artifact_type == "mindmap" else {}
 
             @sync_to_async

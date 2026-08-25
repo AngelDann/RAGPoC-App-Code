@@ -216,7 +216,11 @@ def app_settings_view(request: HttpRequest) -> JsonResponse:
             return JsonResponse({"detail": "Invalid JSON"}, status=400)
 
         api_key = body.get("openrouter_api_key")
-        set_app_settings(api_key=api_key.strip() if isinstance(api_key, str) else None)
+        language = body.get("language")
+        set_app_settings(
+            api_key=api_key.strip() if isinstance(api_key, str) else None,
+            language=language.strip() if isinstance(language, str) else None,
+        )
         reset_rag_service()
         return JsonResponse(get_api_key_status())
 
@@ -1021,7 +1025,7 @@ def _collect_notebook_context(notebook: Notebook, custom_instructions: str, rag)
     return "\n\n---\n\n".join(context_chunks) if context_chunks else "Sin fuentes específicas. Utiliza las instrucciones del usuario."
 
 
-ARTIFACT_TITLES = {
+ARTIFACT_TITLES_ES = {
     "diagram": "Diagrama de Arquitectura",
     "mindmap": "Mapa Mental",
     "quiz": "Cuestionario Interactivo",
@@ -1031,9 +1035,25 @@ ARTIFACT_TITLES = {
     "infographic": "Infografía",
     "timeline": "Línea de Tiempo",
     "podcast": "Podcast",
+    "table": "Tabla de Datos",
 }
 
-ARTIFACT_SYSTEM_PROMPTS = {
+ARTIFACT_TITLES_EN = {
+    "diagram": "Architecture Diagram",
+    "mindmap": "Mind Map",
+    "quiz": "Interactive Quiz",
+    "study_guide": "Study Guide",
+    "flashcards": "Review Flashcards",
+    "summary": "Executive Summary",
+    "infographic": "Infographic",
+    "timeline": "Timeline",
+    "podcast": "Podcast",
+    "table": "Data Table",
+}
+
+ARTIFACT_TITLES = ARTIFACT_TITLES_ES
+
+ARTIFACT_SYSTEM_PROMPTS_ES = {
     "diagram": (
         "Eres un arquitecto de software y diseñador de diagramas. Genera un diagrama Mermaid.js "
         "claro y profesional (flowchart TD o sequenceDiagram o classDiagram) que resuma la arquitectura, "
@@ -1067,6 +1087,57 @@ ARTIFACT_SYSTEM_PROMPTS = {
     ),
 }
 
+ARTIFACT_SYSTEM_PROMPTS_EN = {
+    "diagram": (
+        "You are a software architect and diagram designer. Generate a clear and professional Mermaid.js diagram "
+        "(flowchart TD, sequenceDiagram, or classDiagram) summarizing the architecture, data flow, or concepts "
+        "from the provided notes. Return ONLY the Mermaid code block enclosed in ```mermaid and ``` with no extra text."
+    ),
+    "mindmap": (
+        "You are a visual knowledge organization expert. Generate a hierarchical mind map in Mermaid.js "
+        "format (`mindmap` type) organizing the key concepts of the notes in a clear tree structure "
+        "(root = central topic, branches = subtopics, leaves = details). Return ONLY the Mermaid code "
+        "block enclosed in ```mermaid and ``` with no extra text."
+    ),
+    "quiz": (
+        "You are a pedagogical evaluator. Generate an interactive quiz with {count} multiple-choice questions "
+        "based on the notes. Return strictly valid JSON with the structure: "
+        '{{"title": "...", "questions": [{{"id": 1, "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct_index": 0, "explanation": "..."}}]}}'
+    ),
+    "study_guide": (
+        "You are an expert tutor. Generate a comprehensive and structured Study Guide in Markdown "
+        "with the following sections: 1. Executive Summary, 2. Key Concepts & Definitions, "
+        "3. Technical Decisions & Flows, 4. Self-Assessment Questions. Format with bold text, lists, and callouts."
+    ),
+    "flashcards": (
+        "You are a spaced-repetition specialist. Generate a set of {count} flashcards "
+        "covering key concepts from the notes. Return valid JSON format: "
+        '{{"cards": [{{"front": "Concept or Question", "back": "Clear and concise explanation"}}]}}'
+    ),
+    "summary": (
+        "Generate a 1-page Executive Summary in Markdown with high-impact concise bullet points "
+        "and a comparison table or decision matrix if applicable."
+    ),
+}
+
+ARTIFACT_SYSTEM_PROMPTS = ARTIFACT_SYSTEM_PROMPTS_ES
+
+
+def get_artifact_title(artifact_type: str, notebook_name: str = "", language: str = "es") -> str:
+    lang = (language or "es").strip().lower()
+    titles = ARTIFACT_TITLES_EN if lang == "en" else ARTIFACT_TITLES_ES
+    fallback = "Artifact" if lang == "en" else "Artefacto"
+    type_title = titles.get(artifact_type, fallback)
+    return f"{type_title} · {notebook_name}" if notebook_name else type_title
+
+
+def get_artifact_system_prompt(artifact_type: str, count: str = "", language: str = "es") -> str:
+    lang = (language or "es").strip().lower()
+    prompts = ARTIFACT_SYSTEM_PROMPTS_EN if lang == "en" else ARTIFACT_SYSTEM_PROMPTS_ES
+    fallback = prompts.get("study_guide", "")
+    raw = prompts.get(artifact_type, fallback)
+    return raw.format(count=count) if "{count}" in raw else raw
+
 
 @csrf_exempt
 def generate_artifact_view(request: HttpRequest) -> JsonResponse:
@@ -1080,39 +1151,51 @@ def generate_artifact_view(request: HttpRequest) -> JsonResponse:
     except Exception:
         return JsonResponse({"detail": "Invalid JSON"}, status=400)
 
+    from knowledge.settings_store import get_current_language
+
     artifact_type = body.get("artifact_type", "study_guide")
     notebook_id = body.get("notebook_id")
     page_id = body.get("page_id")
     custom_instructions = (body.get("instructions") or "").strip()
     preferences = body.get("settings") or {}
+    language = (body.get("language") or get_current_language() or "es").strip().lower()
+    is_en = language == "en"
 
     if not notebook_id and page_id:
         p = Page.objects.filter(id=page_id).first()
         if p: notebook_id = p.notebook_id
 
     if not notebook_id:
-        return JsonResponse({"detail": "notebook_id is required to generate notebook artifacts."}, status=422)
+        detail = "notebook_id is required to generate notebook artifacts." if is_en else "notebook_id es requerido para generar artefactos de cuaderno."
+        return JsonResponse({"detail": detail}, status=422)
 
     try:
         notebook = Notebook.objects.get(id=notebook_id)
     except Notebook.DoesNotExist:
-        return JsonResponse({"detail": "Notebook not found."}, status=404)
+        detail = "Notebook not found." if is_en else "Cuaderno no encontrado."
+        return JsonResponse({"detail": detail}, status=404)
 
     settings = get_settings()
     rag = get_rag_service()
     full_context = _collect_notebook_context(notebook, custom_instructions, rag)
 
     from knowledge.artifact_media import describe_artifact_settings
-    settings_directive = describe_artifact_settings(artifact_type, preferences)
+    settings_directive = describe_artifact_settings(artifact_type, preferences, language=language)
 
     # quiz/flashcards' base prompts hardcode a default item count via {count} — the settings
     # chip's value (already a plain number, e.g. "8") slots in directly, no phrase lookup needed.
     default_counts = {"quiz": "4", "flashcards": "5"}
     count = preferences.get("count") or default_counts.get(artifact_type, "")
-    chosen_system = ARTIFACT_SYSTEM_PROMPTS.get(artifact_type, ARTIFACT_SYSTEM_PROMPTS["study_guide"]).format(count=count)
-    user_prompt = f"Contenido del cuaderno '{notebook.name}':\n{full_context}\n\nInstrucciones adicionales del usuario: {custom_instructions}"
-    if settings_directive:
-        user_prompt += f"\n\nPreferencias de formato: {settings_directive}"
+    chosen_system = get_artifact_system_prompt(artifact_type, count=count, language=language)
+
+    if is_en:
+        user_prompt = f"Notebook content for '{notebook.name}':\n{full_context}\n\nAdditional user instructions: {custom_instructions}"
+        if settings_directive:
+            user_prompt += f"\n\nFormatting preferences: {settings_directive}"
+    else:
+        user_prompt = f"Contenido del cuaderno '{notebook.name}':\n{full_context}\n\nInstrucciones adicionales del usuario: {custom_instructions}"
+        if settings_directive:
+            user_prompt += f"\n\nPreferencias de formato: {settings_directive}"
 
     started = time.perf_counter()
     try:
@@ -1142,7 +1225,7 @@ def generate_artifact_view(request: HttpRequest) -> JsonResponse:
         )
 
         # Save to NotebookArtifact gallery automatically
-        artifact_title = f"{ARTIFACT_TITLES.get(artifact_type, 'Artefacto')} · {notebook.name}"
+        artifact_title = get_artifact_title(artifact_type, notebook.name, language=language)
         metadata = {"render_mode": "mermaid"} if artifact_type == "mindmap" else {}
         saved_artifact = NotebookArtifact.objects.create(
             notebook=notebook,
@@ -1331,6 +1414,10 @@ def generate_artifact_stream_view(request: HttpRequest) -> HttpResponse:
     settings = get_settings()
     rag = get_rag_service()
 
+    from knowledge.settings_store import get_current_language
+    language = (body.get("language") or get_current_language() or "es").strip().lower()
+    is_en = language == "en"
+
     # `async def` (not a plain generator) so StreamingHttpResponse's ASGI path treats this as a
     # genuine async iterator and forwards each `yield` to the client as it happens. A synchronous
     # generator here hits Django's `__aiter__` fallback (see django/http/response.py), which
@@ -1345,7 +1432,8 @@ def generate_artifact_stream_view(request: HttpRequest) -> HttpResponse:
 
         def background_task():
             try:
-                q.put({"type": "status", "message": "Analizando notas del cuaderno…"})
+                init_msg = "Analyzing notebook notes…" if is_en else "Analizando notas del cuaderno…"
+                q.put({"type": "status", "message": init_msg})
                 # _collect_notebook_context spins up (and closes) its own event loop, so it must
                 # run to completion here, BEFORE the media pipeline's own loop starts below —
                 # asyncio forbids starting a new loop while another is already running on this thread.
@@ -1365,6 +1453,7 @@ def generate_artifact_stream_view(request: HttpRequest) -> HttpResponse:
                             settings=settings,
                             on_progress=lambda message: q.put({"type": "status", "message": message}),
                             preferences=preferences,
+                            language=language,
                         )
                     )
                 finally:
