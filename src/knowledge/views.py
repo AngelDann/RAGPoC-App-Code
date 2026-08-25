@@ -17,6 +17,7 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.static import serve as serve_static_file
+from pydantic_ai.messages import ModelMessagesTypeAdapter, ModelRequest
 from knowledge.models import (
     AgentMemory,
     AgentSkill,
@@ -1950,21 +1951,43 @@ def thread_detail_dispatch(request: HttpRequest, thread_id: str) -> JsonResponse
 MAX_HISTORY_TURNS = 12
 
 
-def _trim_message_history(messages: list, max_turns: int = MAX_HISTORY_TURNS) -> list:
-    """Keep only the last `max_turns` user turns, cut on whole-turn boundaries.
+def _compact_tool_return_content(content: Any) -> Any:
+    """Compact bulky tool return payloads for historical turns (observation masking)."""
+    if isinstance(content, str):
+        if len(content) > 1000:
+            return content[:800] + "\n... [contenido truncado para optimizar el contexto]"
+        return content
+    elif isinstance(content, dict):
+        compacted = dict(content)
+        for key in ("content_preview", "content", "raw_text", "text", "body"):
+            if key in compacted and isinstance(compacted[key], str) and len(compacted[key]) > 1000:
+                compacted[key] = compacted[key][:800] + "\n... [truncado para optimizar contexto]"
+        if "chunks" in compacted and isinstance(compacted["chunks"], list) and len(compacted["chunks"]) > 4:
+            compacted["chunks"] = compacted["chunks"][:3] + [{"text": f"... y {len(compacted['chunks']) - 3} fragmentos adicionales consultados"}]
+        if "results" in compacted and isinstance(compacted["results"], list) and len(compacted["results"]) > 5:
+            compacted["results"] = compacted["results"][:4]
+        return compacted
+    return content
 
-    A turn's ModelRequest/ModelResponse pairs can span multiple messages when tools are
-    involved (tool call -> tool return -> ... -> final text), and pydantic-ai requires those
-    to stay together. Only a ModelRequest carrying a real UserPromptPart marks the start of a
-    new turn, so those are the only safe places to cut.
+
+def _trim_message_history(messages: list, max_turns: int = MAX_HISTORY_TURNS) -> list:
+    """Keep only the last `max_turns` user turns, cut on whole-turn boundaries,
+    and compact bulky tool returns in prior turns (observation masking).
     """
     boundaries = [
         i for i, m in enumerate(messages)
         if isinstance(m, ModelRequest) and any(getattr(p, "part_kind", None) == "user-prompt" for p in m.parts)
     ]
-    if len(boundaries) <= max_turns:
-        return messages
-    return messages[boundaries[-max_turns]:]
+    if len(boundaries) > max_turns:
+        messages = messages[boundaries[-max_turns]:]
+
+    # Compact bulky tool return payloads in past messages
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if getattr(part, "part_kind", None) == "tool-return" and hasattr(part, "content"):
+                    part.content = _compact_tool_return_content(part.content)
+    return messages
 
 
 @csrf_exempt

@@ -471,9 +471,10 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
                 ctx.deps.record_tool_end("add_source_to_knowledge_base", "Sin contenido para la fuente", status="error")
                 return {"error": "No se pudo extraer ni proporcionar contenido para la fuente."}
 
-            content_hash = calculate_content_hash(filename, raw_text)
+            import hashlib
+            digest = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
             ctx.deps.settings.allowed_upload_dir.mkdir(parents=True, exist_ok=True)
-            temp_file = ctx.deps.settings.allowed_upload_dir / f"{content_hash[:16]}-{filename}"
+            temp_file = ctx.deps.settings.allowed_upload_dir / f"{digest[:16]}-{filename}"
             temp_file.write_text(raw_text, encoding="utf-8")
 
             report = await rag.ingestor.ingest(temp_file)
@@ -481,17 +482,21 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
 
             @sync_to_async
             def link_in_django():
-                doc, _ = Document.objects.get_or_create(
-                    content_hash=content_hash,
-                    defaults={
-                        "id": doc_id,
-                        "original_filename": filename,
-                        "media_type": "text",
-                        "byte_size": len(raw_text.encode("utf-8")),
-                        "source_path": str(temp_file),
-                        "status": report.get("status", "indexed"),
-                    }
-                )
+                doc = Document.objects.filter(id=doc_id).first()
+                if not doc:
+                    doc = Document.objects.filter(source_path=str(temp_file)).first()
+                if not doc:
+                    doc = Document.objects.filter(content_hash=digest).first()
+                if not doc:
+                    doc = Document.objects.create(
+                        id=doc_id,
+                        original_filename=filename,
+                        media_type="text",
+                        byte_size=len(raw_text.encode("utf-8")),
+                        source_path=str(temp_file),
+                        content_hash=digest,
+                        status=report.get("status", "indexed"),
+                    )
                 target_nb = None
                 target_nb_id = notebook_id or ctx.deps.notebook_id
                 if target_nb_id:

@@ -7158,8 +7158,11 @@
         return;
       }
 
+      let isErrorStep = (step) => step.status === 'error' || (typeof step.summary === 'string' && step.summary.startsWith('Error:')) || (typeof step.label === 'string' && step.label.startsWith('Error:'));
       let tCount = toolsTrace ? toolsTrace.length : 0;
       let sCount = sources ? sources.length : 0;
+      let errCount = toolsTrace ? toolsTrace.filter(isErrorStep).length : 0;
+
       let summaryText = '';
       if (tCount > 0 && sCount > 0) {
         summaryText = `${tCount} ${tCount === 1 ? 'proceso completado' : 'procesos completados'} · ${sCount} ${sCount === 1 ? 'fuente' : 'fuentes'}`;
@@ -7169,24 +7172,33 @@
         summaryText = `${sCount} ${sCount === 1 ? 'fuente consultada' : 'fuentes consultadas'}`;
       }
 
+      let badgeIcon = errCount > 0
+        ? `<i class="bi bi-exclamation-triangle-fill text-warning" style="font-size:10px;"></i>`
+        : `<i class="bi bi-check-circle-fill text-success" style="font-size:10px;"></i>`;
+
       let wrapper = document.createElement('div');
       wrapper.className = 'agent-steps-wrapper mb-2';
       wrapper.innerHTML = `
         <div class="agent-steps-badge" title="Ver detalles del proceso y fuentes consultadas">
-          <i class="bi bi-check-circle-fill text-success" style="font-size:10px;"></i>
+          ${badgeIcon}
           <span>${esc(summaryText)}</span>
           <i class="bi bi-chevron-down chevron"></i>
         </div>
         <div class="agent-steps-timeline">
-          ${tCount > 0 ? toolsTrace.map(step => `
+          ${tCount > 0 ? toolsTrace.map(step => {
+            let isErr = isErrorStep(step);
+            let iconClass = isErr ? 'bi-exclamation-circle-fill text-danger' : `${esc(getAgentToolIcon(step.icon || step.tool))}`;
+            let textClass = isErr ? 'agent-step-text text-danger opacity-90' : 'agent-step-text';
+            return `
             <div class="agent-step-item">
               <div class="agent-step-left">
-                <i class="bi ${esc(getAgentToolIcon(step.icon || step.tool))} agent-step-icon"></i>
-                <span class="agent-step-text" title="${esc(step.summary || step.label)}">${esc(step.summary || step.label)}</span>
+                <i class="bi ${iconClass} agent-step-icon"></i>
+                <span class="${textClass}" title="${esc(step.summary || step.label)}">${esc(step.summary || step.label)}</span>
               </div>
               ${step.duration_ms != null && step.duration_ms > 0 ? `<span class="agent-step-meta">${step.duration_ms}ms</span>` : ''}
             </div>
-          `).join('') : ''}
+            `;
+          }).join('') : ''}
           ${sCount > 0 ? `
             <div class="mt-2 pt-2 ${tCount > 0 ? 'border-top' : ''}" style="border-color: #eeebe3 !important;">
               <div class="fw-semibold text-uppercase text-secondary mb-1" style="font-size: 9.5px; letter-spacing: 0.5px;">Fuentes RAG</div>

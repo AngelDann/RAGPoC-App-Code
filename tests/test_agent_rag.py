@@ -343,3 +343,27 @@ async def test_agent_deps_tool_tracing_and_events():
     assert "duration_ms" in deps.executed_tools[0]
 
 
+@pytest.mark.django_db(transaction=True)
+def test_trim_message_history_observation_masking():
+    """Verify that _trim_message_history compacts bulky tool return payloads in past turns."""
+    from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart, UserPromptPart, TextPart
+    from knowledge.views import _trim_message_history
+
+    req1 = ModelRequest(parts=[UserPromptPart(content="Explica este tema")])
+    call1 = ModelResponse(parts=[ToolCallPart(tool_name="fetch_web_page", args="{}", tool_call_id="call_1")])
+    ret1 = ModelRequest(parts=[ToolReturnPart(tool_name="fetch_web_page", content={"content_preview": "A" * 5000, "status": "success"}, tool_call_id="call_1")])
+    resp1 = ModelResponse(parts=[TextPart(content="Resumen del tema...")])
+
+    req2 = ModelRequest(parts=[UserPromptPart(content="Agrega otro ejemplo")])
+
+    history = [req1, call1, ret1, resp1, req2]
+    compacted = _trim_message_history(history, max_turns=5)
+
+    assert len(compacted) == 5
+    tool_ret = compacted[2].parts[0]
+    assert isinstance(tool_ret, ToolReturnPart)
+    assert len(tool_ret.content["content_preview"]) < 1000
+    assert "truncado" in tool_ret.content["content_preview"]
+
+
+
