@@ -502,7 +502,7 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
                         status=report.get("status", "indexed"),
                     )
                 target_nb = None
-                target_nb_id = notebook_id or ctx.deps.notebook_id
+                target_nb_id = ctx.deps.notebook_id or notebook_id
                 if target_nb_id:
                     target_nb = Notebook.objects.filter(id=target_nb_id).first()
                 if not target_nb and ctx.deps.page_id:
@@ -653,10 +653,13 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
         ctx.deps.record_tool_start("create_workspace_page", f"Creando página de notas: '{page_title[:35]}'…", "file-earmark-plus")
 
         def _create():
-            target_nb_id = notebook_id or ctx.deps.notebook_id
+            target_nb_id = ctx.deps.notebook_id or notebook_id
             if not target_nb_id:
-                # Find first available notebook
-                ws = Workspace.objects.first()
+                ws = None
+                if ctx.deps.workspace_id:
+                    ws = Workspace.objects.filter(id=ctx.deps.workspace_id).first()
+                if not ws:
+                    ws = Workspace.objects.first()
                 nb = Notebook.objects.filter(workspace=ws).first() if ws else Notebook.objects.first()
                 if not nb:
                     return {"error": "No hay cuadernos disponibles en el espacio para crear la página."}
@@ -680,9 +683,6 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
         try:
             result = await sync_to_async(_create)()
             if result.get("status") == "ready_for_content":
-                # Hands off to chat_stream_view: the model's NEXT text-producing step is what
-                # actually contains the page content now (see AgentDeps.page_write_state), not
-                # this tool call's own return value.
                 ctx.deps.page_write_state = {
                     "page_id": result["page_id"],
                     "notebook_id": result["notebook_id"],
@@ -716,9 +716,11 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
             target_page_id = page_id or ctx.deps.page_id
             if not target_page_id:
                 return {"error": "No hay página activa seleccionada para actualizar."}
-            p = Page.objects.filter(id=target_page_id).first()
+            p = Page.objects.select_related("notebook").filter(id=target_page_id).first()
             if not p:
                 return {"error": f"Página con ID {target_page_id} no encontrada."}
+            if ctx.deps.notebook_id and p.notebook_id != ctx.deps.notebook_id:
+                return {"error": f"Acceso restringido: la página '{p.title}' pertenece a otro cuaderno ('{p.notebook.name}'). El ámbito actual está limitado al cuaderno activo."}
             return {"status": "ready_for_content", "page_id": p.id, "notebook_id": p.notebook_id, "title": p.title, "mode": "append"}
 
         try:
@@ -745,14 +747,19 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
     @agent.tool
     async def get_workspace_structure(ctx: RunContext[AgentDeps]) -> dict:
         """Obtiene la jerarquía completa de cuadernos y páginas disponibles en el espacio de trabajo actual."""
-        from knowledge.models import Workspace
+        from knowledge.models import Notebook, Workspace
 
         ctx.deps.record_tool_start("get_workspace_structure", "Explorando jerarquía del espacio de trabajo…", "folder2-open")
 
         def _tree():
-            ws = Workspace.objects.first()
+            ws = None
             if ctx.deps.workspace_id:
-                ws = Workspace.objects.filter(id=ctx.deps.workspace_id).first() or ws
+                ws = Workspace.objects.filter(id=ctx.deps.workspace_id).first()
+            if not ws and ctx.deps.notebook_id:
+                nb = Notebook.objects.filter(id=ctx.deps.notebook_id).first()
+                ws = nb.workspace if nb else None
+            if not ws:
+                ws = Workspace.objects.first()
             if not ws:
                 return {"error": "No hay espacios de trabajo configurados."}
 
@@ -913,7 +920,7 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
 
         ctx.deps.record_tool_start("generate_notebook_artifact", f"Generando artefacto Studio ({artifact_type})…", "stars")
 
-        target_nb_id = notebook_id or ctx.deps.notebook_id
+        target_nb_id = ctx.deps.notebook_id or notebook_id
         if not target_nb_id and ctx.deps.page_id:
             @sync_to_async
             def _find_nb():
