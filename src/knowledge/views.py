@@ -793,22 +793,32 @@ def list_or_add_sources(request: HttpRequest) -> JsonResponse:
         media_type = "text"
 
         if source_type == "web" or url:
-            # Fetch URL or text from URL
-            import urllib.request
+            from knowledge.pydantic_agent import extract_clean_text_from_html, fetch_remote_resource
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (RAGPoC Assistant)"})
-                with urllib.request.urlopen(req, timeout=15) as resp:
-                    raw_bytes = resp.read()
-                filename = url.split("://")[-1].replace("/", "_")[:60] + ".html"
-                # If HTML, extract text or keep raw
-                media_type = "text"
-            except Exception:
-                # Fallback: store URL and summary
-                raw_bytes = f"URL: {url}\nTitulo: {title}\n\n{content}".encode()
-                filename = (title[:40].replace(" ", "_") or "web_source") + ".txt"
+                raw_bytes, ctype, fname, ext = fetch_remote_resource(url)
+                filename = fname
+                if ext == ".pdf" or "pdf" in ctype or raw_bytes.startswith(b"%PDF-"):
+                    media_type = "pdf"
+                elif ext in {".docx", ".xlsx", ".pptx"}:
+                    media_type = "office"
+                else:
+                    if ext in {".html", ".htm"} or "html" in ctype or b"<html" in raw_bytes[:1000].lower():
+                        clean_text = extract_clean_text_from_html(raw_bytes.decode("utf-8", errors="replace"))
+                        if clean_text:
+                            raw_bytes = clean_text.encode("utf-8")
+                            filename = (Path(filename).stem or "web_article") + ".txt"
+                    media_type = "text"
+            except Exception as ex:
+                if content.strip():
+                    raw_bytes = f"URL: {url}\nTitulo: {title}\n\n{content}".encode()
+                    filename = (title[:40].replace(" ", "_") or "web_source") + ".txt"
+                    media_type = "text"
+                else:
+                    return JsonResponse({"detail": f"No se pudo descargar la URL: {str(ex)}"}, status=400)
         elif source_type == "text":
             raw_bytes = f"{title}\n\n{content}".encode()
             filename = (title[:40].replace(" ", "_") or "nota_fuente") + ".txt"
+            media_type = "text"
         elif file_obj:
             raw_bytes = file_obj.read()
             filename = Path(file_obj.name or "upload").name
@@ -841,17 +851,22 @@ def list_or_add_sources(request: HttpRequest) -> JsonResponse:
                 doc = Document.objects.filter(id=report["document_id"]).first()
                 if not doc:
                     doc_row = rag.retriever.get_document(report["document_id"])
-                    media_type = doc_row["media_type"] if doc_row else "text"
+                    m_type = doc_row["media_type"] if doc_row else media_type
                     doc = Document.objects.create(
                         id=report["document_id"],
                         source_path=str(dest),
                         original_filename=filename,
-                        media_type=media_type,
+                        media_type=m_type,
                         content_hash=digest,
                         byte_size=len(raw_bytes),
                         status=report["status"],
                         indexed_at=timezone.now() if report["status"] == "indexed" else None,
                     )
+                else:
+                    doc_row = rag.retriever.get_document(doc.id)
+                    if doc_row and doc_row.get("media_type") and doc.media_type != doc_row["media_type"]:
+                        doc.media_type = doc_row["media_type"]
+                        doc.save(update_fields=["media_type"])
             except Exception as e:
                 dest.unlink(missing_ok=True)
                 return JsonResponse({"detail": f"Error al indexar: {str(e)}"}, status=400)
@@ -998,6 +1013,100 @@ def document_detail_dispatch(request: HttpRequest, document_id: str) -> JsonResp
         })
 
     return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+
+@csrf_exempt
+def document_source_guide_view(request: HttpRequest, document_id: str) -> JsonResponse:
+    """Generate or retrieve a NotebookLM-style Source Guide (Summary, Key Topics, Suggested Questions) for a document."""
+    try:
+        doc = Document.objects.get(id=document_id)
+    except Document.DoesNotExist:
+        return JsonResponse({"detail": "Document not found."}, status=404)
+
+    settings = get_settings()
+    rag = get_rag_service()
+
+    # Extract text from chunks or source file
+    text_content = ""
+    try:
+        chunks = rag.connection.execute(
+            "SELECT text_content FROM chunks WHERE document_id = ? AND text_content IS NOT NULL ORDER BY ordinal ASC",
+            (document_id,),
+        ).fetchall()
+        extracted_chunks = []
+        for c in chunks:
+            val = c["text_content"] if (isinstance(c, dict) or hasattr(c, "keys")) else c[0]
+            if val:
+                extracted_chunks.append(str(val))
+        text_content = "\n\n".join(extracted_chunks)
+    except Exception:
+        pass
+
+    if not text_content and Path(doc.source_path).is_file():
+        from ragpoc.extractors.text import extract_text
+        try:
+            text_content = extract_text(Path(doc.source_path))
+        except Exception:
+            pass
+
+    if not text_content.strip():
+        return JsonResponse({
+            "status": "success",
+            "document_id": document_id,
+            "filename": doc.original_filename,
+            "media_type": doc.media_type,
+            "guide": {
+                "summary": f"Documento '{doc.original_filename}' ({doc.media_type}) indexado en la base de conocimiento.",
+                "key_topics": [doc.media_type.upper(), "Documento"],
+                "suggested_questions": [f"¿De qué trata {doc.original_filename}?"],
+            },
+        })
+
+    # Generate guide using LLM
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=settings.openrouter_api_key,
+        )
+        sys_prompt = (
+            "Eres un analista de conocimiento especializado estilo Google NotebookLM. "
+            "Genera una ficha 'Source Guide' completa, profesional y estructurada para el documento suministrado. "
+            "Debes responder estrictamente un objeto JSON con las claves:\n"
+            "- 'summary': Resumen ejecutivo claro y sustancial (2 a 3 párrafos).\n"
+            "- 'key_topics': Lista de 4 a 8 temas, conceptos o entidades centrales.\n"
+            "- 'suggested_questions': Lista de 3 a 5 preguntas concretas y sugerentes que un usuario podría hacer sobre este documento.\n"
+            "Responde únicamente el JSON."
+        )
+        sample_text = text_content[:15000]
+        completion = client.chat.completions.create(
+            model=settings.chat_model,
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": f"Documento: {doc.original_filename}\nTipo: {doc.media_type}\n\nContenido:\n{sample_text}"},
+            ],
+            temperature=0.2,
+        )
+        raw_guide = completion.choices[0].message.content or "{}"
+        cleaned = raw_guide.replace("```json", "").replace("```", "").strip()
+        guide_data = json.loads(cleaned)
+    except Exception:
+        guide_data = {
+            "summary": f"Documento '{doc.original_filename}' indexado con {len(text_content)} caracteres.",
+            "key_topics": [doc.media_type.capitalize(), "Análisis de fuente"],
+            "suggested_questions": [
+                f"¿Cuáles son los puntos principales de {doc.original_filename}?",
+                f"¿Qué conclusiones destaca {doc.original_filename}?",
+            ],
+        }
+
+    return JsonResponse({
+        "status": "success",
+        "document_id": document_id,
+        "filename": doc.original_filename,
+        "media_type": doc.media_type,
+        "guide": guide_data,
+    })
 
 
 def _collect_notebook_context(notebook: Notebook, custom_instructions: str, rag) -> str:
@@ -2011,6 +2120,7 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
     notebook_id = body.get("notebook_id")
     workspace_id = body.get("workspace_id")
     thread_id = body.get("thread_id")
+    selected_source_ids = body.get("selected_source_ids") or []
     attachments = body.get("attachments") or []  # List of {id, name, url, text}
 
     # Sources only ever live at notebook level, so every chat scope bottoms out at one or more
@@ -2119,13 +2229,10 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                     retriever=rag.retriever,
                     settings=settings,
                     page_id=page_id,
-                    # Derived from `selected` (the same scope resolution used for notebook/workspace),
-                    # not the raw body value — otherwise a stale/irrelevant notebook_id sent alongside
-                    # scope="workspace" would wrongly narrow the agent's own search_knowledge_base
-                    # tool calls to a single notebook.
                     notebook_id=selected.get("notebook_id"),
                     workspace_id=workspace_id,
                     thread_id=thread.id,
+                    selected_source_ids=selected_source_ids or None,
                     attached_docs_context="",
                     on_tool_event=lambda evt: q.put(evt),
                 )

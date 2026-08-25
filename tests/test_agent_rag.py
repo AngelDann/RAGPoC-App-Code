@@ -432,5 +432,436 @@ async def test_past_conversations_notebook_scope_isolation():
     assert "Acceso restringido" in roma_res["error"]
 
 
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_search_web_tool_results_and_limits():
+    """Verify that search_web tool executes DDGS search with configurable max_results and clamps bounds."""
+    emitted_events = []
+    deps = AgentDeps(
+        retriever=MagicMock(spec=Retriever),
+        settings=Settings(openrouter_api_key="test-key"),
+        on_tool_event=lambda evt: emitted_events.append(evt),
+    )
+
+    agent = create_pydantic_rag_agent(deps.settings)
+    search_tool = agent._function_toolset.tools["search_web"]
+
+    ctx = RunContext(
+        deps=deps,
+        model=TestModel(),
+        usage=MagicMock(),
+        prompt="Busca en internet",
+    )
+
+    fake_ddgs_results = [
+        {"title": f"Resultado {i}", "href": f"https://example.com/{i}", "body": f"Snippet {i}"}
+        for i in range(1, 11)
+    ]
+
+    mock_ddgs_instance = MagicMock()
+    mock_ddgs_instance.text.return_value = fake_ddgs_results
+    mock_ddgs_class = MagicMock()
+    mock_ddgs_class.return_value.__enter__.return_value = mock_ddgs_instance
+
+    with patch("knowledge.pydantic_agent.DDGS", mock_ddgs_class):
+        # 1. Test default max_results (10)
+        res = await search_tool.function(ctx, query="python 3.13 novedades")
+        assert len(res) == 10
+        mock_ddgs_instance.text.assert_called_with("python 3.13 novedades", max_results=10)
+
+        # 2. Test custom max_results within bounds
+        await search_tool.function(ctx, query="django tutorial", max_results=15)
+        mock_ddgs_instance.text.assert_called_with("django tutorial", max_results=15)
+
+        # 3. Test clamping above upper limit (25)
+        await search_tool.function(ctx, query="machine learning", max_results=100)
+        mock_ddgs_instance.text.assert_called_with("machine learning", max_results=25)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_fetch_web_page_pdf_support():
+    """Verify that fetch_web_page cleanly extracts page text from remote PDFs via PyMuPDF."""
+    import pymupdf
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((50, 50), "Atencion es todo lo que necesitas: Arquitectura Transformer.")
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    emitted_events = []
+    deps = AgentDeps(
+        retriever=MagicMock(spec=Retriever),
+        settings=Settings(openrouter_api_key="test-key"),
+        on_tool_event=lambda evt: emitted_events.append(evt),
+    )
+
+    agent = create_pydantic_rag_agent(deps.settings)
+    tool_def = agent._function_toolset.tools["fetch_web_page"]
+
+    ctx = RunContext(
+        deps=deps,
+        model=TestModel(),
+        usage=MagicMock(),
+        prompt="Lee el PDF",
+    )
+
+    with patch("knowledge.pydantic_agent.fetch_remote_resource", return_value=(pdf_bytes, "application/pdf", "paper.pdf", ".pdf")):
+        res = await tool_def.function(ctx, url="https://arxiv.org/pdf/1706.03762.pdf")
+
+    assert res["status"] == "success"
+    assert res["media_type"] == "pdf"
+    assert res["page_count"] == 1
+    assert "Atencion es todo lo que necesitas" in res["content_preview"]
+    assert "stream" not in res["content_preview"]
+    assert "endobj" not in res["content_preview"]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_add_source_to_knowledge_base_remote_pdf():
+    """Verify that add_source_to_knowledge_base downloads remote PDF as .pdf, runs native PDF ingestor, and links in DB."""
+    import pymupdf
+    from knowledge.models import Document, Notebook, NotebookDocument, Workspace
+
+    ws = await sync_to_async(Workspace.objects.create)(name="Workspace PDF Test")
+    nb = await sync_to_async(Notebook.objects.create)(workspace=ws, name="Cuaderno ML")
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((50, 50), "Capacidades multimodales y agentes RAG.")
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    mock_retriever = MagicMock(spec=Retriever)
+    emitted_events = []
+    deps = AgentDeps(
+        retriever=mock_retriever,
+        settings=Settings(openrouter_api_key="test-key"),
+        notebook_id=str(nb.id),
+        on_tool_event=lambda evt: emitted_events.append(evt),
+    )
+
+    agent = create_pydantic_rag_agent(deps.settings)
+    tool_def = agent._function_toolset.tools["add_source_to_knowledge_base"]
+
+    ctx = RunContext(
+        deps=deps,
+        model=TestModel(),
+        usage=MagicMock(),
+        prompt="Indexa este PDF",
+    )
+
+    with patch("knowledge.pydantic_agent.fetch_remote_resource", return_value=(pdf_bytes, "application/pdf", "attention_paper.pdf", ".pdf")):
+        res = await tool_def.function(
+            ctx,
+            source_type="web",
+            title_or_url="https://arxiv.org/pdf/1706.03762.pdf",
+        )
+
+    assert res["status"] == "success"
+    assert "attention_paper.pdf" in res["filename"]
+    assert res["media_type"] == "pdf"
+    assert res["notebook"] == "Cuaderno ML"
+
+    # Check Document in DB has media_type == 'pdf'
+    db_doc = await sync_to_async(lambda: Document.objects.filter(id=res["document_id"]).first())()
+    assert db_doc is not None
+    assert db_doc.media_type == "pdf"
+    assert db_doc.original_filename == "attention_paper.pdf"
+
+    # Check NotebookDocument link
+    nb_doc = await sync_to_async(lambda: NotebookDocument.objects.filter(notebook=nb, document=db_doc).first())()
+    assert nb_doc is not None
+
+    # Check SSE event emitted with media_type
+    assert any(e.get("type") == "source_added" and e.get("media_type") == "pdf" for e in emitted_events)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_list_or_add_sources_remote_pdf_view():
+    """Verify that Django view list_or_add_sources handles remote PDF URLs by saving .pdf and ingesting."""
+    import pymupdf
+    from django.test import RequestFactory
+    from knowledge.models import Document, Notebook, NotebookDocument, Workspace
+    from knowledge.views import list_or_add_sources
+
+    ws = Workspace.objects.create(name="WS View Test")
+    nb = Notebook.objects.create(workspace=ws, name="NB View Test")
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((50, 50), "Texto de prueba vista Django.")
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    factory = RequestFactory()
+    request = factory.post(
+        "/api/sources/",
+        data=json.dumps({
+            "source_type": "web",
+            "url": "https://example.com/research_doc.pdf",
+            "notebook_id": str(nb.id),
+        }),
+        content_type="application/json",
+    )
+
+    with patch("knowledge.pydantic_agent.fetch_remote_resource", return_value=(pdf_bytes, "application/pdf", "research_doc.pdf", ".pdf")):
+        resp = list_or_add_sources(request)
+
+    assert resp.status_code == 200 or resp.status_code == 201
+    body = json.loads(resp.content)
+    assert body.get("media_type") == "pdf"
+    assert body.get("filename") == "research_doc.pdf"
+    assert body.get("notebook_id") == str(nb.id)
+    assert body.get("status") == "indexed"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_retriever_search_filtered_by_document_ids():
+    """Verify that Retriever.search restricts results when document_ids are provided."""
+    import uuid
+    from knowledge.models import Document, Notebook, NotebookDocument, Workspace
+    from knowledge.views import get_rag_service
+    from ragpoc.config import Settings
+
+    rag = get_rag_service()
+    ws = await sync_to_async(Workspace.objects.create)(name="WS Grounding Focus")
+    nb = await sync_to_async(Notebook.objects.create)(workspace=ws, name="NB Grounding Focus")
+
+    u1 = uuid.uuid4().hex[:8]
+    doc1_id = f"doc-focus-{u1}-1"
+    doc2_id = f"doc-focus-{u1}-2"
+
+    # Insert into rag.connection to satisfy SQLite foreign keys
+    rag.connection.execute(
+        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?, ?, datetime('now'), datetime('now'))",
+        (str(ws.id), ws.name),
+    )
+    rag.connection.execute(
+        "INSERT INTO notebooks (id, workspace_id, name, position, created_at, updated_at) VALUES (?, ?, ?, 0, datetime('now'), datetime('now'))",
+        (str(nb.id), str(ws.id), nb.name),
+    )
+    rag.connection.execute(
+        "INSERT INTO documents (id, source_path, original_filename, media_type, content_hash, byte_size, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+        (doc1_id, f"c:/tmp/test_focus_doc1_{u1}.txt", "doc1.txt", "text", f"hash1_{u1}", 100, "indexed"),
+    )
+    rag.connection.execute(
+        "INSERT INTO documents (id, source_path, original_filename, media_type, content_hash, byte_size, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+        (doc2_id, f"c:/tmp/test_focus_doc2_{u1}.txt", "doc2.txt", "text", f"hash2_{u1}", 100, "indexed"),
+    )
+    rag.connection.execute(
+        "INSERT INTO notebook_documents (notebook_id, document_id, attached_at) VALUES (?, ?, datetime('now'))",
+        (str(nb.id), doc1_id),
+    )
+    rag.connection.execute(
+        "INSERT INTO notebook_documents (notebook_id, document_id, attached_at) VALUES (?, ?, datetime('now'))",
+        (str(nb.id), doc2_id),
+    )
+
+    c1_id = f"c_focus_{u1}_1"
+    c2_id = f"c_focus_{u1}_2"
+
+    # Insert mock chunks in SQLite
+    rag.connection.execute(
+        "INSERT INTO chunks (id, document_id, ordinal, kind, text_content, metadata_json) VALUES (?, ?, ?, ?, ?, ?)",
+        (c1_id, doc1_id, 0, "text", "Contenido sobre arquitectura limpia.", "{}"),
+    )
+    rag.connection.execute(
+        "INSERT INTO chunks (id, document_id, ordinal, kind, text_content, metadata_json) VALUES (?, ?, ?, ?, ?, ?)",
+        (c2_id, doc2_id, 0, "text", "Contenido sobre finanzas y presupuestos.", "{}"),
+    )
+    from ragpoc.db import persist_dimension
+    persist_dimension(rag.connection, 8)
+
+    import json
+    rag.connection.execute(
+        "INSERT INTO chunk_vectors (chunk_id, embedding) VALUES (?, ?)",
+        (c1_id, json.dumps([0.1] * 8)),
+    )
+    rag.connection.execute(
+        "INSERT INTO chunk_vectors (chunk_id, embedding) VALUES (?, ?)",
+        (c2_id, json.dumps([0.1] * 8)),
+    )
+    rag.connection.commit()
+
+    # Search without filter (returns both)
+    all_res = await rag.retriever.search(query="arquitectura", top_k=5, notebook_id=str(nb.id))
+    assert len(all_res) == 2
+
+    # Search with document_ids=[doc1_id] only
+    filtered_res = await rag.retriever.search(
+        query="arquitectura",
+        top_k=5,
+        document_ids=[doc1_id],
+    )
+    assert len(filtered_res) == 1
+    assert filtered_res[0]["document_id"] == doc1_id
+    assert filtered_res[0]["filename"] == "doc1.txt"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_agent_search_knowledge_base_respects_selected_source_ids():
+    """Verify that search_knowledge_base uses deps.selected_source_ids when provided."""
+    mock_retriever = MagicMock(spec=Retriever)
+    mock_retriever.search = AsyncMock(return_value=[
+        {
+            "chunk_id": "c1",
+            "document_id": "doc-focus-1",
+            "filename": "focus_doc.pdf",
+            "media_type": "pdf",
+            "page_number": 1,
+            "text": "Evidencia de documento seleccionado.",
+            "derived_path": None,
+            "source_path": None,
+            "metadata": {},
+        }
+    ])
+
+    emitted_events = []
+    deps = AgentDeps(
+        retriever=mock_retriever,
+        settings=Settings(),
+        notebook_id="nb-1",
+        selected_source_ids=["doc-focus-1"],
+        on_tool_event=lambda evt: emitted_events.append(evt),
+    )
+
+    agent = create_pydantic_rag_agent(Settings())
+    agent.model = TestModel(call_tools=["search_knowledge_base"])
+
+    result = await agent.run("Busca información en las fuentes", deps=deps)
+    assert result is not None
+
+    # Verify search was called with document_ids
+    assert mock_retriever.search.await_count >= 1
+    assert mock_retriever.search.call_args.kwargs.get("document_ids") == ["doc-focus-1"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_youtube_transcript_and_metadata_extractor():
+    """Verify YouTube transcript extractor parses video info and timedtext into structured Markdown."""
+    from knowledge.pydantic_agent import extract_youtube_transcript_and_metadata
+
+    sample_html = """
+    <html>
+      <head><title>Aprende Python en 10 Minutos - YouTube</title></head>
+      <body>
+        <script>
+          var ytInitialPlayerResponse = {
+            "videoDetails": {
+              "title": "Aprende Python en 10 Minutos",
+              "author": "Tech Academy",
+              "videoId": "dQw4w9WgXcQ"
+            },
+            "captions": {
+              "playerCaptionsTracklistRenderer": {
+                "captionTracks": [
+                  {"baseUrl": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=es", "languageCode": "es"}
+                ]
+              }
+            }
+          };
+        </script>
+      </body>
+    </html>
+    """
+
+    sample_transcript_xml = """<?xml version="1.0" encoding="utf-8" ?>
+    <transcript>
+      <text start="0.5" dur="2.1">Bienvenidos al curso intensivo de Python.</text>
+      <text start="65.0" dur="3.0">Veamos ahora cómo definir variables y funciones.</text>
+    </transcript>
+    """
+
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_resp1 = MagicMock()
+        mock_resp1.read.return_value = sample_html.encode("utf-8")
+        mock_resp1.__enter__.return_value = mock_resp1
+
+        mock_resp2 = MagicMock()
+        mock_resp2.read.return_value = sample_transcript_xml.encode("utf-8")
+        mock_resp2.__enter__.return_value = mock_resp2
+
+        mock_urlopen.side_effect = [mock_resp1, mock_resp2]
+
+        result = extract_youtube_transcript_and_metadata("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+    assert result is not None
+    raw_bytes, mime, filename, ext = result
+    assert mime == "text/plain"
+    assert ext == ".txt"
+    assert "YouTube_" in filename
+    text = raw_bytes.decode("utf-8")
+    assert "# Aprende Python en 10 Minutos" in text
+    assert "**Canal/Autor:** Tech Academy" in text
+    assert "**[00:00]** Bienvenidos al curso intensivo de Python." in text
+    assert "**[01:05]** Veamos ahora cómo definir variables y funciones." in text
+
+
+@pytest.mark.django_db(transaction=True)
+def test_document_source_guide_view():
+    """Verify document_source_guide_view returns executive summary, key topics and suggested questions."""
+    from django.test import RequestFactory
+    from knowledge.models import Document, Workspace
+    from knowledge.views import document_source_guide_view, get_rag_service
+
+    rag = get_rag_service()
+    doc = Document.objects.create(
+        original_filename="manual_arquitectura_guide.txt",
+        source_path="c:/tmp/manual_arquitectura_guide.txt",
+        media_type="text",
+        content_hash="arch_hash_guide_1",
+        status="indexed",
+    )
+
+    # Insert document and chunk in SQLite
+    rag.connection.execute(
+        "INSERT INTO documents (id, source_path, original_filename, media_type, content_hash, byte_size, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+        (str(doc.id), doc.source_path, doc.original_filename, doc.media_type, doc.content_hash, 100, "indexed"),
+    )
+    rag.connection.execute(
+        "INSERT INTO chunks (id, document_id, ordinal, kind, text_content, metadata_json) VALUES (?, ?, ?, ?, ?, ?)",
+        ("c_guide_unique_test", str(doc.id), 0, "text", "Este manual describe los principios fundamentales de diseño desacoplado.", "{}"),
+    )
+    rag.connection.commit()
+
+    factory = RequestFactory()
+    request = factory.get(f"/api/documents/{doc.id}/guide")
+
+    mock_guide_json = json.dumps({
+        "summary": "Este manual describe los principios de arquitectura limpia y patrones desacoplados.",
+        "key_topics": ["Clean Architecture", "Inversión de Dependencias", "Escalabilidad"],
+        "suggested_questions": [
+            "¿Cuáles son las capas principales de la arquitectura?",
+            "¿Cómo se gestionan las dependencias externas?",
+        ],
+    })
+
+    with patch("openai.OpenAI") as mock_openai_cls:
+        mock_client = MagicMock()
+        mock_completion = MagicMock()
+        mock_completion.choices = [MagicMock(message=MagicMock(content=mock_guide_json))]
+        mock_client.chat.completions.create.return_value = mock_completion
+        mock_openai_cls.return_value = mock_client
+
+        response = document_source_guide_view(request, str(doc.id))
+
+    assert response.status_code == 200
+    data = json.loads(response.content)
+    assert data["status"] == "success"
+    assert data["document_id"] == str(doc.id)
+    assert "summary" in data["guide"]
+    assert len(data["guide"]["key_topics"]) == 3
+    assert len(data["guide"]["suggested_questions"]) == 2
+
+
+
+
+
+
 
 

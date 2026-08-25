@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
 import re
 import time
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Literal
+
+import pymupdf
 
 
 def extract_clean_text_from_html(raw_html: str) -> str:
@@ -34,6 +38,181 @@ def extract_clean_text_from_html(raw_html: str) -> str:
     cleaned = re.sub(r"[ \t]+", " ", cleaned)
     cleaned = re.sub(r"\n\s*\n+", "\n\n", cleaned)
     return cleaned.strip()
+
+
+def extract_youtube_transcript_and_metadata(url: str, timeout: int = 15) -> tuple[bytes, str, str, str] | None:
+    """Extract transcript and metadata from a YouTube video URL, returning a structured markdown file."""
+    yt_regex = r"(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})"
+    match = re.search(yt_regex, url)
+    if not match:
+        return None
+
+    video_id = match.group(1)
+    watch_url = f"https://www.youtube.com/watch?v={video_id}"
+
+    req = urllib.request.Request(
+        watch_url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            html_text = resp.read().decode("utf-8", errors="ignore")
+    except Exception:
+        return None
+
+    title = f"YouTube_{video_id}"
+    author = "YouTube"
+    title_match = re.search(r"<title>(.*?)(?: - YouTube)?</title>", html_text, re.IGNORECASE)
+    if title_match:
+        title = html.unescape(title_match.group(1).replace(" - YouTube", "").strip())
+
+    caption_tracks = []
+    idx = html_text.find("ytInitialPlayerResponse")
+    if idx != -1:
+        brace_idx = html_text.find("{", idx)
+        if brace_idx != -1:
+            try:
+                decoder = json.JSONDecoder()
+                player_data, _ = decoder.raw_decode(html_text[brace_idx:])
+                video_details = player_data.get("videoDetails", {})
+                if video_details.get("title"):
+                    title = video_details["title"]
+                if video_details.get("author"):
+                    author = video_details["author"]
+                captions = player_data.get("captions", {}).get("playerCaptionsTracklistRenderer", {})
+                caption_tracks = captions.get("captionTracks", [])
+            except Exception:
+                pass
+
+    transcript_lines: list[str] = []
+    if caption_tracks:
+        selected_track = next((t for t in caption_tracks if t.get("languageCode", "").startswith("es")), None)
+        if not selected_track:
+            selected_track = next((t for t in caption_tracks if t.get("languageCode", "").startswith("en")), None)
+        if not selected_track:
+            selected_track = caption_tracks[0]
+
+        track_url = selected_track.get("baseUrl")
+        if track_url:
+            try:
+                treq = urllib.request.Request(track_url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(treq, timeout=timeout) as tresp:
+                    track_data = tresp.read().decode("utf-8", errors="ignore")
+
+                if "<transcript>" in track_data:
+                    import xml.etree.ElementTree as ET
+                    root = ET.fromstring(track_data)
+                    for text_elem in root.findall("text"):
+                        start_sec = float(text_elem.get("start", "0"))
+                        m = int(start_sec) // 60
+                        s = int(start_sec) % 60
+                        time_str = f"{m:02d}:{s:02d}"
+                        text_val = html.unescape("".join(text_elem.itertext()).strip())
+                        if text_val:
+                            transcript_lines.append(f"- **[{time_str}]** {text_val}")
+            except Exception:
+                pass
+
+    doc_lines = [
+        f"# {title}",
+        f"**Canal/Autor:** {author}",
+        f"**URL:** {watch_url}",
+        f"**Video ID:** {video_id}",
+        "",
+        "## Transcripción del Video:",
+    ]
+    if transcript_lines:
+        doc_lines.extend(transcript_lines)
+    else:
+        doc_lines.append("*(Transcripción automática no disponible para este video)*")
+
+    doc_text = "\n\n".join(doc_lines)
+    safe_title = re.sub(r"[^a-zA-Z0-9_\-]", "_", title)[:40].strip("_") or f"video_{video_id}"
+    filename = f"YouTube_{safe_title}.txt"
+    return doc_text.encode("utf-8"), "text/plain", filename, ".txt"
+
+
+def fetch_remote_resource(url: str, timeout: int = 20) -> tuple[bytes, str, str, str]:
+    """Fetch a remote resource over HTTP, identifying its MIME type, filename and extension.
+
+    Returns:
+        tuple[raw_bytes, content_type, filename_hint, extension]
+    """
+    target_url = url.strip()
+    if not target_url.startswith("http://") and not target_url.startswith("https://"):
+        target_url = "https://" + target_url
+
+    # Check for YouTube URL
+    yt_res = extract_youtube_transcript_and_metadata(target_url, timeout=timeout)
+    if yt_res:
+        return yt_res
+
+    req = urllib.request.Request(
+        target_url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf,*/*;q=0.8",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw_bytes = resp.read()
+        headers = getattr(resp, "headers", None)
+        content_type_header = headers.get("Content-Type", "").lower() if headers and hasattr(headers, "get") else ""
+        content_disposition = headers.get("Content-Disposition", "") if headers and hasattr(headers, "get") else ""
+
+        content_type = content_type_header.split(";")[0].strip() if content_type_header else ""
+
+        # Extract filename from Content-Disposition if available
+        filename_hint = ""
+        if "filename=" in content_disposition:
+            parts = content_disposition.split("filename=")
+            if len(parts) > 1:
+                filename_hint = parts[1].split(";")[0].strip("\"' ")
+
+        parsed_url = urllib.parse.urlparse(target_url)
+        path_name = Path(parsed_url.path).name
+        if not filename_hint and path_name and "." in path_name:
+            filename_hint = path_name
+
+        ext = ""
+        if filename_hint and "." in filename_hint:
+            ext = Path(filename_hint).suffix.lower()
+
+        if not ext:
+            if "application/pdf" in content_type or raw_bytes.startswith(b"%PDF-"):
+                ext = ".pdf"
+                content_type = "application/pdf"
+            elif "text/html" in content_type or "application/xhtml" in content_type or b"<html" in raw_bytes[:1000].lower():
+                ext = ".html"
+                content_type = "text/html"
+            elif "application/json" in content_type:
+                ext = ".json"
+            elif "text/plain" in content_type:
+                ext = ".txt"
+            elif "application/vnd.openxmlformats-officedocument.wordprocessingml.document" in content_type:
+                ext = ".docx"
+            elif "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in content_type:
+                ext = ".xlsx"
+            elif "application/vnd.openxmlformats-officedocument.presentationml.presentation" in content_type:
+                ext = ".pptx"
+            else:
+                ext = ".html" if b"<html" in raw_bytes[:1000].lower() else ".txt"
+
+        if not filename_hint:
+            domain_part = parsed_url.netloc.replace(":", "_") or "web_doc"
+            clean_path = re.sub(r"[^a-zA-Z0-9_\-]", "_", parsed_url.path.strip("/"))
+            if clean_path:
+                filename_hint = f"{domain_part}_{clean_path[:35]}{ext}"
+            else:
+                filename_hint = f"{domain_part}_doc{ext}"
+        elif not filename_hint.lower().endswith(ext):
+            filename_hint += ext
+
+        return raw_bytes, content_type, filename_hint, ext
+
 
 
 ArtifactType = Literal[
@@ -85,6 +264,7 @@ class AgentDeps:
     # already exposes token-by-token via stream_text) is mirrored live into that page as it
     # arrives, and persisted once the turn's text stream ends. See chat_stream_view.
     page_write_state: dict | None = None
+    selected_source_ids: list[str] | None = None
     collected_sources: list[dict] = field(default_factory=list)
     executed_tools: list[dict] = field(default_factory=list)
 
@@ -136,8 +316,8 @@ HERRAMIENTAS DISPONIBLES:
 ══════════════════════════════════════════════
 1. `search_knowledge_base`: Busca evidencia en notas, documentos (PDFs, imágenes, videos, texto) del cuaderno o espacio de trabajo.
 2. `search_web`: Búsquedas en tiempo real en internet.
-3. `fetch_web_page`: Extrae y lee el texto limpio de cualquier página web (URL) para análisis profundo.
-4. `add_source_to_knowledge_base`: Guarda e indexa URLs o notas de texto/resúmenes en la base de conocimiento vectorial del cuaderno actual (estilo NotebookLM).
+3. `fetch_web_page`: Extrae y lee el texto limpio de cualquier página web o documento PDF remoto (URL) para análisis profundo.
+4. `add_source_to_knowledge_base`: Guarda e indexa URLs (páginas web, PDFs directos, etc.) o notas de texto en la base de conocimiento vectorial del cuaderno actual (estilo NotebookLM).
 5. `manage_memory`: Guarda, actualiza o elimina hechos duraderos sobre el usuario, preferencias, convenciones y lecciones aprendidas (estilo Hermes memory).
 6. `manage_skill`: Crea, consulta o actualiza habilidades y flujos de trabajo reutilizables (estilo Hermes skills).
 7. `create_workspace_page`: Prepara una página nueva (con título) dentro del cuaderno activo o especificado. NO recibe el contenido como argumento: después de llamarla, escribe el contenido en Markdown como tu siguiente respuesta de texto normal — se transmite en vivo a la página y se guarda automáticamente al terminar.
@@ -151,10 +331,10 @@ HERRAMIENTAS DISPONIBLES:
 DIRECTIVAS DE OPERACIÓN (HERMES STYLE):
 ══════════════════════════════════════════════
 - **Búsqueda Vectorial Agéntica (100% Tool-Driven):** Tu contexto inicial no incluye fragmentos pre-cargados de la base de conocimiento. Por lo tanto, DEBES invocar proactivamente `search_knowledge_base` siempre que la pregunta del usuario requiera información, hechos, documentos (PDFs, imágenes, videos, texto) o notas del cuaderno/espacio de trabajo.
-- **Investigación e Indexación Agéntica (Flujo Estilo NotebookLM):** Cuando el usuario te pida buscar información externa en internet, investigar un tema o agregar/indexar nuevas fuentes a la base de conocimiento o al cuaderno:
+- **Investigación e Indexación Agéntica (Flujo Estilo NotebookLM):** Cuando el usuario te pida buscar información externa en internet, investigar un tema o agregar/indexar nuevas fuentes o PDFs a la base de conocimiento o al cuaderno:
   1. Usa `search_web` para encontrar enlaces y fuentes relevantes sobre el tema.
-  2. Si requieres leer el contenido de una URL antes de sintetizar o guardar, usa `fetch_web_page`.
-  3. Invoca proactivamente `add_source_to_knowledge_base` (con `source_type='web'` pasando la URL o `source_type='text'` con una nota técnica/resumen estructurado) para registrar e indexar cada fuente en el cuaderno.
+  2. Si requieres leer el contenido de una URL o PDF antes de sintetizar o responder, usa `fetch_web_page`.
+  3. Invoca proactivamente `add_source_to_knowledge_base` pasando la URL directamente (con `source_type='web'`) para que el sistema descargue e indexe el documento original completo (PDF con PyMuPDF, HTML, etc.). NUNCA sustituyas una URL o PDF por una redacción o resumen inventado por ti; reserva `source_type='text'` exclusivamente para notas de texto explícitamente dictadas por el usuario.
   4. Confirma al usuario las fuentes que han sido indexadas exitosamente en el cuaderno para que sepa que ya están integradas en la base de conocimiento.
 - **Consultas Semánticas Precisas:** Al invocar `search_knowledge_base`, formula términos de búsqueda y conceptos clave concretos y descriptivos (en lugar de copiar literalmente preguntas conversacionales completas del usuario). Puedes invocar la herramienta múltiples veces si necesitas contrastar información o profundizar en diferentes temas.
 - **Generación de Artefactos (Studio Artifacts):** Cuando el usuario te pida crear o generar un podcast, diagrama, mapa mental, quiz, tarjetas de estudio (flashcards), infografía, línea de tiempo o guía, invoca proactivamente `generate_notebook_artifact` con el tipo (`podcast`, `diagram`, `mindmap`, `quiz`, `flashcards`, `study_guide`, `summary`, `infographic`, `timeline`) e instrucciones pertinentes.
@@ -177,8 +357,8 @@ AVAILABLE TOOLS:
 ══════════════════════════════════════════════
 1. `search_knowledge_base`: Search for evidence in notes and documents (PDFs, images, videos, text) across the notebook or workspace.
 2. `search_web`: Real-time web search.
-3. `fetch_web_page`: Extract and read clean text content from any web URL for deep analysis.
-4. `add_source_to_knowledge_base`: Save and index web URLs or text notes/summaries into the vector database at the notebook level (NotebookLM style).
+3. `fetch_web_page`: Extract and read clean text content from any web URL or remote PDF for deep analysis.
+4. `add_source_to_knowledge_base`: Save and index web URLs, remote PDFs, or text notes into the vector database at the notebook level (NotebookLM style).
 5. `manage_memory`: Save, update, or remove lasting facts about the user, preferences, conventions, and lessons learned (Hermes memory style).
 6. `manage_skill`: Create, list, or update reusable skills and workflows (Hermes skills style).
 7. `create_workspace_page`: Prepare a new page (with a title) inside the active or specified notebook. Does NOT receive content as an argument: after calling it, write the Markdown content as your NEXT normal text response — it streams live into the page and is automatically saved.
@@ -192,10 +372,10 @@ AVAILABLE TOOLS:
 OPERATIONAL DIRECTIVES (HERMES STYLE):
 ══════════════════════════════════════════════
 - **Agentic Vector Search (100% Tool-Driven):** Your initial context contains no preloaded knowledge chunks. You MUST proactively invoke `search_knowledge_base` whenever the user's question requires facts, documents (PDFs, images, videos, text), or notes.
-- **Agentic Research & Indexing (NotebookLM Style):** When asked to search external information, research a topic, or add/index sources into the knowledge base or notebook:
+- **Agentic Research & Indexing (NotebookLM Style):** When asked to search external information, research a topic, or add/index sources or PDFs into the knowledge base or notebook:
   1. Use `search_web` to discover relevant sources and URLs.
-  2. Use `fetch_web_page` if you need to read a page's full content before synthesizing.
-  3. Call `add_source_to_knowledge_base` (with `source_type='web'` or `source_type='text'`) to save and index each source in the notebook.
+  2. Use `fetch_web_page` if you need to read a page's or PDF's content before answering.
+  3. Call `add_source_to_knowledge_base` passing the URL directly (with `source_type='web'`) so the system downloads and indexes the authentic complete document or PDF. NEVER replace a URL/PDF with a synthetic summary fabricated by you; reserve `source_type='text'` strictly for explicit user notes.
   4. Confirm to the user which sources have been indexed into the notebook's knowledge base.
 - **Precise Semantic Queries:** Formulate descriptive, concrete search keywords and concepts when calling `search_knowledge_base`. You can invoke it multiple times to cross-reference or explore different sub-topics.
 - **Studio Artifacts Generation:** When asked to create or generate a podcast, diagram, mind map, quiz, flashcards, infographic, timeline, or study guide, proactively call `generate_notebook_artifact`.
@@ -203,8 +383,6 @@ OPERATIONAL DIRECTIVES (HERMES STYLE):
 - **Procedural Memory (Skills):** If you discover or the user teaches you a repeatable complex workflow, save it with `manage_skill(action='create', name=..., instructions=...)`.
 - **Current vs. Past Conversation Isolation:** For questions about the current session (e.g. "what are we talking about?", "summary of this chat"), rely EXCLUSIVELY on your active message history (`message_history`). NEVER call `search_past_conversations` to answer about the active conversation.
 - **Strict Scope Segregation:** When scoped to a notebook ('This notebook'), do NOT search or leak discussions or information from other notebooks unless explicitly requested.
-- Always respond in clear, concise English with Markdown formatting (bold, lists, tables).
-- Cite knowledge base sources using [n] whenever using information retrieved from `search_knowledge_base`.
 - **After `create_workspace_page` or `update_page_notes`:** your next text response IS the page content. Output ONLY Markdown — no greetings, no introductory filler, no conversational confirmations.
 """
 
@@ -295,32 +473,38 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
         query: str,
         top_k: int = 5,
     ) -> list[dict] | ToolReturn:
-        """Busca en la base de conocimiento local (notas, imágenes, PDFs, videos) del cuaderno actual."""
-        ctx.deps.record_tool_start("search_knowledge_base", f"Buscando en la base de conocimiento: '{query[:40]}'…", "search")
+        """Busca en la base de conocimiento local (notas, imágenes, PDFs, videos) del cuaderno actual o fuentes seleccionadas."""
+        doc_ids = ctx.deps.selected_source_ids
+        if doc_ids:
+            ctx.deps.record_tool_start("search_knowledge_base", f"Buscando en {len(doc_ids)} fuente(s) seleccionada(s): '{query[:35]}'…", "search")
+        else:
+            ctx.deps.record_tool_start("search_knowledge_base", f"Buscando en la base de conocimiento: '{query[:40]}'…", "search")
         try:
             from knowledge.models import Notebook, Page
 
             notebook_id = ctx.deps.notebook_id
             notebook_ids: list[str] | None = None
-            if not notebook_id and ctx.deps.page_id:
-                @sync_to_async
-                def _resolve_notebook_id():
-                    p = Page.objects.filter(id=ctx.deps.page_id).first()
-                    return p.notebook_id if p else None
+            if not doc_ids:
+                if not notebook_id and ctx.deps.page_id:
+                    @sync_to_async
+                    def _resolve_notebook_id():
+                        p = Page.objects.filter(id=ctx.deps.page_id).first()
+                        return p.notebook_id if p else None
 
-                notebook_id = await _resolve_notebook_id()
-            elif not notebook_id and ctx.deps.workspace_id:
-                @sync_to_async
-                def _resolve_notebook_ids():
-                    return list(Notebook.objects.filter(workspace_id=ctx.deps.workspace_id).values_list("id", flat=True))
+                    notebook_id = await _resolve_notebook_id()
+                elif not notebook_id and ctx.deps.workspace_id:
+                    @sync_to_async
+                    def _resolve_notebook_ids():
+                        return list(Notebook.objects.filter(workspace_id=ctx.deps.workspace_id).values_list("id", flat=True))
 
-                notebook_ids = await _resolve_notebook_ids()
+                    notebook_ids = await _resolve_notebook_ids()
 
             results = await ctx.deps.retriever.search(
                 query=query,
                 top_k=top_k,
                 notebook_id=notebook_id,
                 notebook_ids=notebook_ids,
+                document_ids=doc_ids,
             )
             formatted = []
             refs = []
@@ -359,14 +543,20 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
             return [{"error": str(e)}]
 
     @agent.tool
-    async def search_web(ctx: RunContext[AgentDeps], query: str, max_results: int = 5) -> list[dict]:
-        """Realiza una búsqueda en internet en tiempo real para obtener información actualizada."""
+    async def search_web(ctx: RunContext[AgentDeps], query: str, max_results: int = 10) -> list[dict]:
+        """Realiza una búsqueda en internet en tiempo real para obtener información actualizada.
+
+        Parámetros:
+        - query: Consulta o palabras clave a buscar.
+        - max_results: Cantidad de resultados deseados (por defecto 10, configurable entre 1 y 25).
+        """
         ctx.deps.record_tool_start("search_web", f"Buscando en la web: '{query[:40]}'…", "globe")
         try:
+            clamped_results = max(1, min(int(max_results), 25))
             loop = asyncio.get_event_loop()
             def _sync_search():
                 with DDGS() as ddgs:
-                    return list(ddgs.text(query, max_results=max_results))
+                    return list(ddgs.text(query, max_results=clamped_results))
 
             raw_results = await loop.run_in_executor(None, _sync_search)
             results = [
@@ -381,24 +571,46 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
 
     @agent.tool
     async def fetch_web_page(ctx: RunContext[AgentDeps], url: str) -> dict:
-        """Extrae y lee el contenido de texto limpio de cualquier página web (URL) para análisis profundo antes o durante la indexación."""
-        ctx.deps.record_tool_start("fetch_web_page", f"Leyendo página web: {url[:45]}…", "link-45deg")
+        """Extrae y lee el contenido limpio de cualquier página web o documento PDF remoto (URL) para análisis profundo."""
+        ctx.deps.record_tool_start("fetch_web_page", f"Leyendo recurso web: {url[:45]}…", "link-45deg")
         try:
             target_url = url.strip()
             if not target_url.startswith("http://") and not target_url.startswith("https://"):
                 target_url = "https://" + target_url
 
             loop = asyncio.get_event_loop()
-            def _fetch():
-                req = urllib.request.Request(
-                    target_url,
-                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
-                )
-                with urllib.request.urlopen(req, timeout=15) as resp:
-                    raw_html = resp.read().decode("utf-8", errors="ignore")
-                    return extract_clean_text_from_html(raw_html)
+            raw_bytes, content_type, filename_hint, ext = await loop.run_in_executor(
+                None, lambda: fetch_remote_resource(target_url)
+            )
 
-            content = await loop.run_in_executor(None, _fetch)
+            if ext == ".pdf" or "pdf" in content_type or raw_bytes.startswith(b"%PDF-"):
+                def _extract_pdf():
+                    doc = pymupdf.open(stream=raw_bytes, filetype="pdf")
+                    pages_text = []
+                    for idx, page in enumerate(doc):
+                        page_str = page.get_text().strip()
+                        if page_str:
+                            pages_text.append(f"--- Página {idx + 1} ---\n{page_str}")
+                    return len(doc), "\n\n".join(pages_text)
+
+                page_count, content = await loop.run_in_executor(None, _extract_pdf)
+                if not content:
+                    content = f"[Documento PDF de {page_count} páginas procesado]"
+
+                ctx.deps.record_tool_end("fetch_web_page", f"PDF analizado ({page_count} págs, {len(content)} car.)")
+                return {
+                    "status": "success",
+                    "url": target_url,
+                    "media_type": "pdf",
+                    "filename": filename_hint,
+                    "page_count": page_count,
+                    "content_preview": content[:20000],
+                    "char_count": len(content),
+                }
+
+            # HTML or text
+            raw_text = raw_bytes.decode("utf-8", errors="replace")
+            content = extract_clean_text_from_html(raw_text)
             if not content:
                 ctx.deps.record_tool_end("fetch_web_page", "Sin contenido legible", status="error")
                 return {"error": f"No se pudo extraer texto legible de {target_url}."}
@@ -407,12 +619,14 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
             return {
                 "status": "success",
                 "url": target_url,
+                "media_type": "text",
+                "filename": filename_hint,
                 "content_preview": content[:15000],
                 "char_count": len(content),
             }
         except Exception as e:
             ctx.deps.record_tool_end("fetch_web_page", f"Error: {str(e)[:30]}", status="error")
-            return {"error": f"Error al acceder a la página {url}: {str(e)}"}
+            return {"error": f"Error al acceder al recurso {url}: {str(e)}"}
 
     @agent.tool
     async def add_source_to_knowledge_base(
@@ -422,14 +636,13 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
         content: str = "",
         notebook_id: str | None = None,
     ) -> dict:
-        """Añade e indexa una nueva fuente (URL web o nota de texto/resumen) en la base de conocimiento vectorial, a nivel del cuaderno actual (estilo NotebookLM)."""
+        """Añade e indexa una nueva fuente (URL web, PDF remoto o nota de texto) en la base de conocimiento vectorial del cuaderno actual (estilo NotebookLM)."""
         from knowledge.models import (
             Document,
             Notebook,
             NotebookDocument,
             Page,
             Workspace,
-            calculate_content_hash,
         )
         from knowledge.services import get_rag_service
 
@@ -439,47 +652,53 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
 
         try:
             rag = get_rag_service()
-            raw_text = ""
+            raw_bytes: bytes = b""
             filename = ""
+            media_type = "text"
 
             if is_url:
                 url = target_str if (target_str.startswith("http://") or target_str.startswith("https://")) else f"https://{target_str}"
                 loop = asyncio.get_event_loop()
-                def fetch_url():
-                    req = urllib.request.Request(
-                        url,
-                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
-                    )
-                    with urllib.request.urlopen(req, timeout=15) as resp:
-                        raw_html = resp.read().decode("utf-8", errors="ignore")
-                        return extract_clean_text_from_html(raw_html)
-
                 try:
-                    raw_text = await loop.run_in_executor(None, fetch_url)
+                    raw_bytes, ctype, fname, ext = await loop.run_in_executor(
+                        None, lambda: fetch_remote_resource(url)
+                    )
+                    filename = fname
+                    if ext == ".pdf" or "pdf" in ctype or raw_bytes.startswith(b"%PDF-"):
+                        media_type = "pdf"
+                    elif ext in {".docx", ".xlsx", ".pptx"}:
+                        media_type = "office"
+                    else:
+                        if ext in {".html", ".htm"} or "html" in ctype or b"<html" in raw_bytes[:1000].lower():
+                            clean_text = extract_clean_text_from_html(raw_bytes.decode("utf-8", errors="replace"))
+                            if clean_text:
+                                raw_bytes = clean_text.encode("utf-8")
+                                filename = (Path(filename).stem or "web_article") + ".txt"
+                        media_type = "text"
                 except Exception as fetch_err:
                     if content.strip():
-                        raw_text = content.strip()
+                        raw_bytes = content.strip().encode("utf-8")
+                        filename = (target_str.replace("://", "_").replace("/", "_")[:40] or "web_note") + ".txt"
+                        media_type = "text"
                     else:
                         ctx.deps.record_tool_end("add_source_to_knowledge_base", f"Error descargando URL", status="error")
                         return {"error": f"No se pudo descargar la URL {url}: {str(fetch_err)}"}
-
-                domain_part = url.replace("https://", "").replace("http://", "").split("/")[0].replace(":", "_")
-                filename = f"{domain_part}_web_doc.txt"
             else:
                 filename = (target_str or "Nota_Agente").replace("/", "_").replace("\\", "_")
                 if not filename.endswith(".txt"):
                     filename += ".txt"
-                raw_text = content.strip() or target_str
+                raw_bytes = (content.strip() or target_str).encode("utf-8")
+                media_type = "text"
 
-            if not raw_text:
+            if not raw_bytes:
                 ctx.deps.record_tool_end("add_source_to_knowledge_base", "Sin contenido para la fuente", status="error")
                 return {"error": "No se pudo extraer ni proporcionar contenido para la fuente."}
 
             import hashlib
-            digest = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+            digest = hashlib.sha256(raw_bytes).hexdigest()
             ctx.deps.settings.allowed_upload_dir.mkdir(parents=True, exist_ok=True)
             temp_file = ctx.deps.settings.allowed_upload_dir / f"{digest[:16]}-{filename}"
-            temp_file.write_text(raw_text, encoding="utf-8")
+            temp_file.write_bytes(raw_bytes)
 
             report = await rag.ingestor.ingest(temp_file)
             doc_id = report.get("document_id")
@@ -492,15 +711,23 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
                 if not doc:
                     doc = Document.objects.filter(content_hash=digest).first()
                 if not doc:
+                    doc_row = rag.retriever.get_document(doc_id) if doc_id else None
+                    m_type = doc_row["media_type"] if doc_row else media_type
                     doc = Document.objects.create(
                         id=doc_id,
                         original_filename=filename,
-                        media_type="text",
-                        byte_size=len(raw_text.encode("utf-8")),
+                        media_type=m_type,
+                        byte_size=len(raw_bytes),
                         source_path=str(temp_file),
                         content_hash=digest,
                         status=report.get("status", "indexed"),
                     )
+                else:
+                    doc_row = rag.retriever.get_document(doc.id)
+                    if doc_row and doc_row.get("media_type") and doc.media_type != doc_row["media_type"]:
+                        doc.media_type = doc_row["media_type"]
+                        doc.save(update_fields=["media_type"])
+
                 target_nb = None
                 target_nb_id = ctx.deps.notebook_id or notebook_id
                 if target_nb_id:
@@ -527,8 +754,9 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
                     "notebook_id": str(target_nb.id),
                     "notebook": target_nb.name,
                     "document_id": str(doc.id),
+                    "media_type": doc.media_type,
                     "chunk_count": report.get("chunk_count", 0),
-                    "message": f"Fuente '{filename}' indexada con éxito en el cuaderno '{target_nb.name}'.",
+                    "message": f"Fuente '{filename}' ({doc.media_type}) indexada con éxito en el cuaderno '{target_nb.name}'.",
                 }
 
             res = await link_in_django()
@@ -542,6 +770,7 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
                         "notebook_name": res["notebook"],
                         "filename": res["filename"],
                         "document_id": res["document_id"],
+                        "media_type": res["media_type"],
                         "title": res["filename"],
                     })
             else:

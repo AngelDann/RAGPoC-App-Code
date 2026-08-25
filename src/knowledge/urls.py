@@ -24,6 +24,7 @@ urlpatterns = [
     path("api/pages/<str:page_id>/append-html", views.append_html_to_page_view, name="append_html_to_page_view"),
     path("api/sources", views.list_or_add_sources, name="list_or_add_sources"),
     path("api/documents/<str:document_id>", views.document_detail_dispatch, name="document_detail_dispatch"),
+    path("api/documents/<str:document_id>/guide", views.document_source_guide_view, name="document_source_guide_view"),
     path("api/artifacts/generate", views.generate_artifact_view, name="generate_artifact_view"),
     path("api/artifacts/generate-stream", views.generate_artifact_stream_view, name="generate_artifact_stream_view"),
     path("api/ai/inline-action", views.inline_ai_action_view, name="inline_ai_action_view"),

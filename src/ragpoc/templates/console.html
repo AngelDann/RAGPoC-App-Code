@@ -3437,19 +3437,19 @@
             </div>
 
             <!-- Web / URL Ingestion Card -->
+            <!-- Web / URL / YouTube Ingestion Card -->
             <div class="craft-card p-3">
               <div class="fw-bold small text-dark d-flex align-items-center gap-2 mb-2">
-                <i class="bi bi-globe2 text-primary"></i> <span data-i18n="sources_modal.index_url_title">Indexar URL Web o Artículo</span>
+                <i class="bi bi-globe2 text-primary"></i> <span>Indexar URL Web, Artículo o Video de YouTube</span>
               </div>
               <div class="input-group">
                 <input type="url" id="source-url-input" class="form-control form-control-craft"
-                  placeholder="https://ejemplo.com/documentacion-o-guia">
+                  placeholder="https://ejemplo.com/doc o https://youtube.com/watch?v=...">
                 <button class="btn-craft btn-craft-primary" id="btn-index-url">
-                  <i class="bi bi-cloud-arrow-down-fill"></i> <span data-i18n="sources_modal.index_url_btn">Indexar URL</span>
+                  <i class="bi bi-cloud-arrow-down-fill"></i> <span>Indexar URL</span>
                 </button>
               </div>
-              <div class="text-muted mt-1" style="font-size:11px;" data-i18n="sources_modal.index_url_desc">Extrae el texto limpio, calcula su SHA-256 y genera
-                embeddings vectoriales.</div>
+              <div class="text-muted mt-1" style="font-size:11px;">Soporta páginas web, PDFs remotos y URLs de YouTube (extrayendo transcripciones automáticas con marcas de tiempo [MM:SS]).</div>
             </div>
 
             <!-- Quick Text Ingestion Card -->
@@ -3527,6 +3527,29 @@
           <button type="submit" class="btn-craft btn-craft-primary" id="btn-submit-action-modal" data-i18n="common.create">Crear</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Source Guide Modal (NotebookLM Style) -->
+  <div class="modal-backdrop-custom" id="source-guide-modal-backdrop">
+    <div class="craft-dialog" style="max-width: 680px; max-height: 85vh;">
+      <div class="d-flex justify-content-between align-items-center p-3 px-4 border-bottom" style="background: var(--sidebar-bg);">
+        <div class="d-flex align-items-center gap-2">
+          <div class="file-icon-box" style="width:32px; height:32px; font-size:16px;">
+            <i class="bi bi-compass-fill text-primary"></i>
+          </div>
+          <div>
+            <div class="fw-bold fs-6 text-dark" id="source-guide-title">Guía de la Fuente</div>
+            <div class="text-muted" style="font-size:11px;" id="source-guide-subtitle">Resumen ejecutivo y preguntas sugeridas estilo NotebookLM</div>
+          </div>
+        </div>
+        <button class="btn-craft btn-craft-icon" id="close-source-guide-modal">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+      <div class="p-4 overflow-auto d-flex flex-column gap-3" id="source-guide-content">
+        <!-- Contenido generado por IA -->
+      </div>
     </div>
   </div>
 
@@ -7301,10 +7324,14 @@
       ],
       podcast: [
         { key: 'duration', label: 'Duración', default: 'estandar', options: [
-          { value: 'corto', label: 'Corto' }, { value: 'estandar', label: 'Estándar' }, { value: 'largo', label: 'Largo' },
+          { value: 'corto', label: 'Corto (5-6 turnos)' }, { value: 'estandar', label: 'Estándar (8-10 turnos)' }, { value: 'largo', label: 'Profundo (12-16 turnos)' },
         ] },
-        { key: 'tone', label: 'Tono', default: 'informal', options: [
-          { value: 'informal', label: 'Informal' }, { value: 'formal', label: 'Formal' },
+        { key: 'tone', label: 'Estilo de Conversación', default: 'dinamico', options: [
+          { value: 'dinamico', label: 'Dinámico & Cautivador' },
+          { value: 'debate', label: 'Debate & Contraste' },
+          { value: 'educativo', label: 'Educativo & Didáctico' },
+          { value: 'informal', label: 'Informal & Ameno' },
+          { value: 'formal', label: 'Formal & Analítico' },
         ] },
       ],
     };
@@ -11001,6 +11028,7 @@
         listContainer.innerHTML = sources.map(s => `
           <div class="source-item-row" id="source-row-${s.id}">
             <div class="d-flex align-items-center gap-3 overflow-hidden" style="cursor: pointer;" onclick="window.openFilePreviewModal('${s.id}', '${esc(s.filename)}', '${s.media_type}')" title="Clic para previsualizar">
+              <input type="checkbox" class="form-check-input source-select-checkbox me-1" value="${s.id}" checked title="Incluir en las respuestas del chat" onclick="event.stopPropagation();">
               <div class="file-icon-box" style="width:36px; height:36px; font-size:17px;">
                 <i class="bi ${s.media_type === 'image' ? 'bi-image text-primary' : s.media_type === 'video' ? 'bi-camera-video text-danger' : s.media_type === 'pdf' ? 'bi-file-earmark-pdf text-danger' : s.media_type === 'audio' ? 'bi-music-note-beamed text-success' : 'bi-file-earmark-code text-secondary'}"></i>
               </div>
@@ -11015,6 +11043,9 @@
               </div>
             </div>
             <div class="d-flex align-items-center gap-2 flex-shrink-0">
+              <button class="action-mini-btn" data-modal-source-guide="${s.id}" data-source-name="${esc(s.filename)}" title="Ver Guía de la Fuente (NotebookLM)" onclick="event.stopPropagation();">
+                <i class="bi bi-compass text-primary"></i>
+              </button>
               <button class="action-mini-btn" onclick="window.openFilePreviewModal('${s.id}', '${esc(s.filename)}', '${s.media_type}')" title="Previsualizar archivo">
                 <i class="bi bi-eye"></i>
               </button>
@@ -11024,6 +11055,14 @@
             </div>
           </div>
         `).join('');
+
+        // Bind Source Guide buttons in modal
+        listContainer.querySelectorAll('[data-modal-source-guide]').forEach(btn => {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            window.openSourceGuideModal(btn.dataset.modalSourceGuide, btn.dataset.sourceName);
+          };
+        });
 
         // Bind Rename source buttons
         listContainer.querySelectorAll('[data-rename-source]').forEach(btn => {
@@ -11064,6 +11103,69 @@
         listContainer.innerHTML = `<div class="text-danger small">Error al cargar fuentes: ${esc(e.message)}</div>`;
       }
     }
+
+    const sourceGuideModal = $('#source-guide-modal-backdrop');
+    if ($('#close-source-guide-modal')) {
+      $('#close-source-guide-modal').onclick = () => {
+        if (sourceGuideModal) sourceGuideModal.classList.remove('active');
+      };
+    }
+
+    window.openSourceGuideModal = async function(docId, docName) {
+      if (!sourceGuideModal) return;
+      sourceGuideModal.classList.add('active');
+      $('#source-guide-title').textContent = docName || 'Guía de la Fuente';
+      $('#source-guide-content').innerHTML = `
+        <div class="text-center py-5">
+          <div class="spinner-border spinner-border-sm text-primary mb-2" role="status"></div>
+          <div class="small text-muted">Generando análisis y guía de la fuente con IA…</div>
+        </div>
+      `;
+      try {
+        let res = await api(`/api/documents/${docId}/guide`);
+        let guide = res.guide || {};
+        let topicsHtml = (guide.key_topics || []).map(t => `<span class="badge bg-light text-dark border px-2 py-1">${esc(t)}</span>`).join(' ');
+        let questionsHtml = (guide.suggested_questions || []).map(q => `
+          <div class="p-2 border rounded bg-light d-flex justify-content-between align-items-center gap-2 mb-2">
+            <span class="small text-dark fw-medium">${esc(q)}</span>
+            <button class="btn-craft btn-craft-sm flex-shrink-0" onclick="window.askSourceGuideQuestion('${esc(q).replace(/'/g, "\\'")}')" title="Preguntar al Asistente">
+              <i class="bi bi-chat-dots-fill text-primary"></i> Preguntar
+            </button>
+          </div>
+        `).join('');
+
+        $('#source-guide-content').innerHTML = `
+          <div class="mb-3">
+            <div class="section-tag mb-1"><i class="bi bi-file-text"></i> Resumen Ejecutivo</div>
+            <div class="p-3 border rounded bg-white text-dark small" style="line-height:1.6; white-space:pre-line;">${esc(guide.summary || 'Sin resumen disponible.')}</div>
+          </div>
+          ${topicsHtml ? `
+          <div class="mb-3">
+            <div class="section-tag mb-1"><i class="bi bi-tags"></i> Temas y Conceptos Clave</div>
+            <div class="d-flex flex-wrap gap-1">${topicsHtml}</div>
+          </div>` : ''}
+          ${questionsHtml ? `
+          <div>
+            <div class="section-tag mb-1"><i class="bi bi-lightbulb"></i> Preguntas Sugeridas de Investigación</div>
+            <div>${questionsHtml}</div>
+          </div>` : ''}
+        `;
+      } catch (e) {
+        $('#source-guide-content').innerHTML = `<div class="text-danger small p-3">Error cargando la guía: ${esc(e.message)}</div>`;
+      }
+    };
+
+    window.askSourceGuideQuestion = function(q) {
+      if (sourceGuideModal) sourceGuideModal.classList.remove('active');
+      if (sourcesModal) sourcesModal.classList.remove('active');
+      let chatInput = $('#chat-input');
+      if (chatInput) {
+        chatInput.value = q;
+        chatInput.focus();
+        let sendBtn = $('#chat-send-btn') || $('#btn-send-chat');
+        if (sendBtn) sendBtn.click();
+      }
+    };
 
     $('#btn-reload-sources-list').onclick = () => loadModalSourcesList();
 
@@ -12523,9 +12625,6 @@
         : d.media_type === 'audio' ? 'bi-music-note-beamed text-success'
         : 'bi-file-earmark-text text-secondary';
       let sizeKb = ((d.byte_size || 0) / 1024).toFixed(1);
-      // 'unindexed' means the file is stored fine but couldn't be embedded (no OpenRouter key,
-      // or no internet reaching it) -- not deleted like a genuine failure, so a retry from here
-      // can pick it back up without re-uploading. See upload_page_attachment/document_detail_dispatch.
       let unindexed = d.status === 'unindexed';
       let warningBadge = unindexed
         ? `<i class="bi bi-cloud-slash text-warning" style="font-size:11px;" title="${esc(d.error_message || 'Sin indexar: sin conexión o falta la API key.')}"></i>`
@@ -12537,6 +12636,7 @@
         : '';
       return `
         <div class="attachment-row" draggable="true" data-drag-doc-id="${d.id}" data-drag-doc-url="/api/documents/${d.id}/file" data-drag-doc-type="${d.media_type}" data-drag-doc-name="${esc(d.filename)}" data-drag-doc-size="${d.byte_size}">
+          <input type="checkbox" class="form-check-input source-select-checkbox me-1" value="${d.id}" checked title="Incluir en las respuestas del chat" onclick="event.stopPropagation();">
           <i class="bi bi-grip-vertical text-muted attachment-row-icon" style="font-size:12px;"></i>
           <i class="bi ${icon} attachment-row-icon"></i>
           <div class="attachment-row-main" onclick="window.openFilePreviewModal('${d.id}', '${esc(d.filename)}', '${d.media_type}')" title="${esc(d.filename)} — clic para previsualizar">
@@ -12544,6 +12644,9 @@
             <div class="attachment-row-meta">${sizeKb} KB${unindexed ? ' · sin indexar' : ''}</div>
           </div>
           <div class="attachment-row-actions">
+            <button type="button" class="action-mini-btn" data-source-guide-btn="${d.id}" data-source-name="${esc(d.filename)}" style="width:20px; height:20px;" title="Ver Ficha Source Guide (NotebookLM)">
+              <i class="bi bi-compass" style="font-size:11px; color:#2563eb;"></i>
+            </button>
             ${retryBtn}
             <button type="button" class="action-mini-btn" data-insert-doc-btn="${d.id}" data-doc-url="/api/documents/${d.id}/file" data-doc-type="${d.media_type}" data-doc-name="${esc(d.filename)}" data-doc-size="${d.byte_size}" title="Incrustar en el editor de la nota" style="width:22px; height:22px;">
               <i class="bi bi-plus-lg" style="font-size:12px;"></i>
@@ -12581,6 +12684,14 @@
       }
 
       container.innerHTML = sources.map(attachmentRowHTML).join('');
+
+      // Bind Source Guide buttons
+      container.querySelectorAll('[data-source-guide-btn]').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          window.openSourceGuideModal(btn.dataset.sourceGuideBtn, btn.dataset.sourceName);
+        };
+      });
 
       // Make attachment rows draggable into the editor canvas
       container.querySelectorAll('[data-drag-doc-id]').forEach(row => {
@@ -13182,6 +13293,10 @@
           schedulePageWriteRender();
         });
 
+        let checkedCbs = Array.from(document.querySelectorAll('.source-select-checkbox:checked')).map(cb => cb.value);
+        let totalCbs = document.querySelectorAll('.source-select-checkbox').length;
+        let selectedSourceIds = (totalCbs > 0 && checkedCbs.length > 0 && checkedCbs.length < totalCbs) ? checkedCbs : (checkedCbs.length > 0 ? checkedCbs : null);
+
         for await (let ev of postEventStream('/chat/stream', {
           question: q,
           scope: effectiveScope,
@@ -13189,6 +13304,7 @@
           notebook_id: await getTargetNotebookId(),
           workspace_id: workspace?.id || null,
           thread_id: ctx.threadId,
+          selected_source_ids: selectedSourceIds,
           attachments: attsToSend,
           selected_text: selectedText,
           cursor_text: cursorText,

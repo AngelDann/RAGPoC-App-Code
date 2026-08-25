@@ -32,6 +32,7 @@ class Retriever:
         media_type: str | None = None,
         notebook_id: str | None = None,
         notebook_ids: list[str] | None = None,
+        document_ids: list[str] | None = None,
     ) -> list[dict]:
         if not query.strip():
             raise ValueError("Query cannot be empty.")
@@ -45,7 +46,11 @@ class Retriever:
             JOIN chunk_vectors v ON v.chunk_id = c.id
         """
         params: list[str] = []
-        if notebook_id:
+        if document_ids:
+            placeholders = ", ".join("?" for _ in document_ids)
+            sql += f" AND d.id IN ({placeholders})"
+            params.extend(document_ids)
+        elif notebook_id:
             sql += " AND d.id IN (SELECT document_id FROM notebook_documents WHERE notebook_id = ?)"
             params.append(notebook_id)
         elif notebook_ids:

@@ -105,11 +105,14 @@ _SETTINGS_PHRASES: dict[str, dict[str, dict[str, dict[str, str]]]] = {
             "duration": {
                 "corto": "El episodio debe ser corto: entre 5 y 6 turnos de diálogo.",
                 "estandar": "El episodio debe tener duración estándar: entre 8 y 10 turnos de diálogo.",
-                "largo": "El episodio debe ser largo: entre 12 y 14 turnos de diálogo.",
+                "largo": "El episodio debe ser profundo y largo: entre 12 y 16 turnos de diálogo.",
             },
             "tone": {
-                "informal": "Tono informal, cercano y ameno.",
-                "formal": "Tono formal y educativo.",
+                "dinamico": "Estilo muy dinámico, con ida y vuelta enérgico y analogías vivas.",
+                "debate": "Estilo de debate amistoso, contrastando perspectivas y analizando pros y contras.",
+                "educativo": "Estilo educativo, claro y pedagógico, desglosando conceptos complejos.",
+                "informal": "Tono informal, cercano y ameno, como una charla entre amigos.",
+                "formal": "Tono formal, profesional y analítico.",
             },
         },
     },
@@ -178,13 +181,16 @@ _SETTINGS_PHRASES: dict[str, dict[str, dict[str, dict[str, str]]]] = {
         },
         "podcast": {
             "duration": {
-                "corto": "Short episode: between 5 and 6 dialogue turns.",
-                "estandar": "Standard episode: between 8 and 10 dialogue turns.",
-                "largo": "Long episode: between 12 and 14 dialogue turns.",
+                "corto": "Short episode: 5 to 6 dialogue turns.",
+                "estandar": "Standard length episode: 8 to 10 dialogue turns.",
+                "largo": "Deep-dive long episode: 12 to 16 dialogue turns.",
             },
             "tone": {
-                "informal": "Informal, engaging and friendly tone.",
-                "formal": "Formal and educational tone.",
+                "dinamico": "High energy dynamic style with lively banter and relatable analogies.",
+                "debate": "Friendly debate style, contrasting viewpoints and evaluating pros and cons.",
+                "educativo": "Educational and crystal-clear pedagogical style.",
+                "informal": "Casual, conversational, friendly chat tone.",
+                "formal": "Formal, professional and analytical tone.",
             },
         },
     },
@@ -392,16 +398,26 @@ async def _build_poster(
 # ---------------------------------------------------------------------------
 
 _PODCAST_SCRIPT_PROMPT_ES = (
-    "Eres guionista de un podcast educativo de 2 conductores (Ana y Marco) que conversan de forma natural y "
-    "dinámica sobre las notas proporcionadas, explicando los conceptos clave como en un episodio real. "
-    "Entre 8 y 14 turnos de diálogo, turnos cortos (2-4 frases). Devuelve JSON estricto: "
-    '{"title": "...", "turns": [{"speaker": "A", "text": "..."}, {"speaker": "B", "text": "..."}]}. Responde solo el JSON.'
+    "Eres el guionista y productor ejecutivo de un podcast conversacional dinámico y cautivador (estilo NotebookLM Audio Overview) "
+    "protagonizado por dos locutores inteligentes y amenos: Ana y Marco. "
+    "Reglas de oro de la conversación:\n"
+    "1. Tono y dinámica: Conversación viva y natural con ida y vuelta real, interjecciones espontáneas ('¡Totalmente!', 'Espera, ¿en serio?', 'Exacto'), "
+    "analogías cotidianas fáciles de entender, momentos de sorpresa y preguntas mutuas que profundizan en los conceptos.\n"
+    "2. Personalización: Si se proporcionan 'Instrucciones adicionales' (foco, audiencia, tono, nivel de debate o temas a resaltar), DEBES adaptar prioritariamente la conversación a dichas directivas.\n"
+    "3. Estructura: 10 a 16 turnos de diálogo bien equilibrados entre Ana (A) y Marco (B), turnos concisos y fluidos (2 a 4 frases cada uno).\n"
+    "Devuelve estrictamente JSON con la estructura: "
+    '{"title": "...", "turns": [{"speaker": "A", "text": "..."}, {"speaker": "B", "text": "..."}]}. Responde únicamente el JSON.'
 )
 
 _PODCAST_SCRIPT_PROMPT_EN = (
-    "You are a scriptwriter for an educational podcast with 2 hosts (Alex and Jordan) having a natural and "
-    "dynamic conversation about the provided notes, explaining key concepts like in a real podcast episode. "
-    "Between 8 and 14 dialogue turns, short turns (2-4 sentences). Return strictly valid JSON: "
+    "You are the executive scriptwriter for a dynamic, engaging conversational podcast (NotebookLM Audio Overview style) "
+    "hosted by two intelligent, lively hosts: Alex and Jordan. "
+    "Conversation Golden Rules:\n"
+    "1. Tone & dynamics: Real human banter with back-and-forth dialogue, spontaneous interjections ('Exactly!', 'Wait, really?', 'Totally!'), "
+    "relatable real-world analogies, insightful questions, and natural pacing.\n"
+    "2. Customization: If 'Additional instructions' are given (focus area, target audience, debate style, tone), you MUST strictly align the discussion to those directives.\n"
+    "3. Structure: 10 to 16 well-balanced dialogue turns between Alex (A) and Jordan (B), concise and engaging turns (2 to 4 sentences each).\n"
+    "Return strictly valid JSON with the structure: "
     '{"title": "...", "turns": [{"speaker": "A", "text": "..."}, {"speaker": "B", "text": "..."}]}. Return only the JSON.'
 )
 
