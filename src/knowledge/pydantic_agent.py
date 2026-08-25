@@ -160,7 +160,10 @@ DIRECTIVAS DE OPERACIÓN (HERMES STYLE):
 - **Generación de Artefactos (Studio Artifacts):** Cuando el usuario te pida crear o generar un podcast, diagrama, mapa mental, quiz, tarjetas de estudio (flashcards), infografía, línea de tiempo o guía, invoca proactivamente `generate_notebook_artifact` con el tipo (`podcast`, `diagram`, `mindmap`, `quiz`, `flashcards`, `study_guide`, `summary`, `infographic`, `timeline`) e instrucciones pertinentes.
 - **Memoria Declarativa Proactiva:** Cuando el usuario exprese una preferencia estable o descubras un hecho clave del proyecto, invoca proactivamente `manage_memory(action='add', content=...)`.
 - **Memoria Procedimental (Skills):** Si descubres o el usuario te enseña un flujo de trabajo complejo repetible, guárdalo con `manage_skill(action='create', name=..., instructions=...)`.
-- **Contexto de conversaciones pasadas:** Si la pregunta del usuario parece referirse a algo de una conversación anterior (p. ej. "como te dije antes", "eso que hablamos", "revisa la otra conversación de X") y no tienes esa información en el historial actual, usa `search_past_conversations` (y luego `get_conversation_messages` si encuentras un hilo relevante) antes de responder que no lo sabes.
+- **Aislamiento de Sesión Actual vs. Conversaciones Pasadas:**
+  - Cuando el usuario pregunte sobre la conversación en curso (ej. "¿de qué estamos hablando?", "resumen de esta conversación", "¿qué te acabo de pedir?"), responde usando EXCLUSIVAMENTE el historial de mensajes de la sesión actual (`message_history`). NUNCA llames a `search_past_conversations` para responder sobre la sesión en curso.
+  - Invoca `search_past_conversations` ÚNICAMENTE si el usuario hace referencia explícita a otro hilo o conversación anterior (ej. "en la otra conversación", "lo que te pregunté ayer", "busca en mis chats anteriores").
+- **Aislamiento Estricto de Ámbito (Scope Segregation):** Cuando estés en el ámbito de un cuaderno ('Este cuaderno'), NO busques ni mezcles información de otros cuadernos a menos que el usuario lo pida expresamente cambiando el ámbito a 'Espacio de trabajo'.
 - Responde siempre en español claro y conciso con formato Markdown (negritas, listas, tablas).
 - Cita las fuentes de la base de conocimiento usando [n] cuando utilices información recuperada de `search_knowledge_base`.
 - **Después de `create_workspace_page` o `update_page_notes`:** tu siguiente respuesta de texto ES el contenido que se guardará en la página. Escribe ÚNICAMENTE el contenido en Markdown — sin saludos, sin "aquí tienes", sin confirmaciones. Si quieres además comentarle algo al usuario en el chat, hazlo en un mensaje aparte, no mezclado con el contenido de la página.
@@ -198,7 +201,8 @@ OPERATIONAL DIRECTIVES (HERMES STYLE):
 - **Studio Artifacts Generation:** When asked to create or generate a podcast, diagram, mind map, quiz, flashcards, infographic, timeline, or study guide, proactively call `generate_notebook_artifact`.
 - **Proactive Declarative Memory:** When the user expresses a stable preference or a key project fact is uncovered, proactively call `manage_memory(action='add', content=...)`.
 - **Procedural Memory (Skills):** If you discover or the user teaches you a repeatable complex workflow, save it with `manage_skill(action='create', name=..., instructions=...)`.
-- **Past Conversation Context:** If the user references earlier discussions, search past conversations before saying you do not know.
+- **Current vs. Past Conversation Isolation:** For questions about the current session (e.g. "what are we talking about?", "summary of this chat"), rely EXCLUSIVELY on your active message history (`message_history`). NEVER call `search_past_conversations` to answer about the active conversation.
+- **Strict Scope Segregation:** When scoped to a notebook ('This notebook'), do NOT search or leak discussions or information from other notebooks unless explicitly requested.
 - Always respond in clear, concise English with Markdown formatting (bold, lists, tables).
 - Cite knowledge base sources using [n] whenever using information retrieved from `search_knowledge_base`.
 - **After `create_workspace_page` or `update_page_notes`:** your next text response IS the page content. Output ONLY Markdown — no greetings, no introductory filler, no conversational confirmations.
@@ -775,14 +779,15 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
     async def search_past_conversations(
         ctx: RunContext[AgentDeps],
         query: str = "",
-        scope: str = "workspace",
+        scope: str | None = None,
         limit: int = 10,
     ) -> list[dict] | dict:
-        """Lista o busca conversaciones de chat anteriores (hilos distintos al actual).
+        """Lista o busca conversaciones de chat anteriores o pasadas (hilos distintos a la conversación en curso).
+        
+        IMPORTANTE: NUNCA uses esta herramienta para responder qué se ha hablado en la sesión o conversación actual ("¿de qué estamos hablando?", "resumen de lo hablado"). Esa información ya está en tu historial de mensajes inmediato.
+        Úsala ÚNICAMENTE cuando el usuario haga referencia explícita a un hilo o conversación pasada/anterior.
 
-        scope: 'notebook' (solo el cuaderno activo), 'workspace' (todo el espacio de trabajo
-        activo, cualquier cuaderno) o 'all' (todos los espacios de trabajo). query: texto
-        opcional para filtrar por título o contenido de los mensajes."""
+        scope: 'notebook' (solo conversaciones del cuaderno activo) o 'workspace' (del espacio de trabajo). Si se omite, se ajusta automáticamente al ámbito activo."""
         from django.db.models import Q
 
         from knowledge.models import ChatThread, Notebook
@@ -790,12 +795,17 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
         ctx.deps.record_tool_start("search_past_conversations", f"Consultando conversaciones anteriores: '{query[:30]}'…", "chat-square-text")
 
         def _search():
+            effective_scope = scope
+            if not effective_scope or effective_scope not in ("notebook", "workspace", "all"):
+                effective_scope = "notebook" if ctx.deps.notebook_id else "workspace"
+
             qs = ChatThread.objects.all()
-            if scope == "notebook":
-                if not ctx.deps.notebook_id:
+            if effective_scope == "notebook" or ctx.deps.notebook_id:
+                if ctx.deps.notebook_id:
+                    qs = qs.filter(notebook_id=ctx.deps.notebook_id)
+                else:
                     return {"error": "No hay un cuaderno activo para acotar la búsqueda a 'notebook'."}
-                qs = qs.filter(notebook_id=ctx.deps.notebook_id)
-            elif scope == "workspace":
+            elif effective_scope == "workspace":
                 ws_id = ctx.deps.workspace_id
                 if not ws_id and ctx.deps.notebook_id:
                     nb = Notebook.objects.filter(id=ctx.deps.notebook_id).first()
@@ -803,7 +813,6 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
                 if not ws_id:
                     return {"error": "No hay un espacio de trabajo activo para acotar la búsqueda a 'workspace'."}
                 qs = qs.filter(Q(workspace_id=ws_id) | Q(notebook__workspace_id=ws_id))
-            # scope == "all": sin filtro adicional.
 
             if ctx.deps.thread_id:
                 qs = qs.exclude(id=ctx.deps.thread_id)  # no listar la conversación en curso
@@ -844,8 +853,7 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
         thread_id: str,
         limit: int = 40,
     ) -> dict:
-        """Recupera los mensajes completos de una conversación pasada, dado el `thread_id`
-        obtenido con `search_past_conversations`."""
+        """Recupera los mensajes completos de una conversación pasada dada su `thread_id` (obtenida con `search_past_conversations`)."""
         from knowledge.models import ChatThread
 
         ctx.deps.record_tool_start("get_conversation_messages", "Leyendo mensajes de conversación previa…", "chat-left-dots")
@@ -854,6 +862,9 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
             t = ChatThread.objects.select_related("notebook", "notebook__workspace", "workspace").filter(id=thread_id).first()
             if not t:
                 return {"error": f"Conversación con ID {thread_id} no encontrada."}
+            # Scope validation: enforce notebook segregation
+            if ctx.deps.notebook_id and t.notebook_id and t.notebook_id != ctx.deps.notebook_id:
+                return {"error": f"Acceso restringido: la conversación '{t.title}' pertenece a otro cuaderno ('{t.notebook.name}'). El ámbito actual está restringido a este cuaderno."}
             msgs = list(t.messages.order_by("created_at").values("role", "content", "created_at")[: max(1, min(limit, 100))])
             for m in msgs:
                 m["created_at"] = m["created_at"].isoformat()

@@ -366,4 +366,71 @@ def test_trim_message_history_observation_masking():
     assert "truncado" in tool_ret.content["content_preview"]
 
 
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_past_conversations_notebook_scope_isolation():
+    """Verify that search_past_conversations and get_conversation_messages strictly respect notebook scope."""
+    from knowledge.models import ChatThread, ChatMessage, Notebook, Workspace
+
+    ws = await sync_to_async(Workspace.objects.create)(name="Espacio Test")
+    nb_aws = await sync_to_async(Notebook.objects.create)(workspace=ws, name="AWS ML")
+    nb_roma = await sync_to_async(Notebook.objects.create)(workspace=ws, name="Historia Roma")
+
+    # Create thread in Rome notebook
+    t_roma = await sync_to_async(ChatThread.objects.create)(
+        notebook=nb_roma,
+        workspace=ws,
+        title="Caída del Imperio Romano",
+        scope="notebook",
+    )
+    await sync_to_async(ChatMessage.objects.create)(
+        thread=t_roma,
+        role="user",
+        content="¿Cuándo cayó el imperio romano?",
+    )
+    await sync_to_async(ChatMessage.objects.create)(
+        thread=t_roma,
+        role="assistant",
+        content="El imperio romano de occidente cayó en 476 d.C.",
+    )
+
+    # Create thread in AWS notebook
+    t_aws = await sync_to_async(ChatThread.objects.create)(
+        notebook=nb_aws,
+        workspace=ws,
+        title="AWS Certified Machine Learning",
+        scope="notebook",
+    )
+
+    deps = AgentDeps(
+        retriever=MagicMock(spec=Retriever),
+        settings=Settings(openrouter_api_key="test-key"),
+        notebook_id=str(nb_aws.id),
+        workspace_id=str(ws.id),
+        thread_id=str(t_aws.id),
+    )
+
+    agent = create_pydantic_rag_agent(deps.settings)
+    search_tool = agent._function_toolset.tools["search_past_conversations"]
+    get_tool = agent._function_toolset.tools["get_conversation_messages"]
+
+    ctx = RunContext(
+        deps=deps,
+        model=TestModel(),
+        usage=MagicMock(),
+        prompt="Consulta conversaciones anteriores",
+    )
+
+    # Search without query in notebook scope should NOT find Rome thread
+    results = await search_tool.function(ctx, query="")
+    assert isinstance(results, list)
+    assert not any(r["thread_id"] == str(t_roma.id) for r in results)
+
+    # Attempting to load Rome thread directly under AWS notebook scope must fail with restricted access
+    roma_res = await get_tool.function(ctx, thread_id=str(t_roma.id))
+    assert "error" in roma_res
+    assert "Acceso restringido" in roma_res["error"]
+
+
+
 
