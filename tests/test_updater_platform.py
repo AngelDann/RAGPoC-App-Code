@@ -137,3 +137,144 @@ async def test_check_update_view_with_query_param():
         data = json.loads(response.content)
         assert data["platform"] == "android"
         assert data["asset_name"] == "RAGPoC-android.apk"
+
+
+@pytest.mark.asyncio
+async def test_update_manager_background_download_and_staging(tmp_path, monkeypatch):
+    import io
+    import zipfile
+    from ragpoc.updater import UpdateManager, UpdateState
+
+    manager = UpdateManager()
+    assert manager.state == UpdateState.IDLE
+
+    # Mock platform as windows
+    monkeypatch.setattr("ragpoc.updater.get_current_platform", lambda: "windows")
+
+    # Create dummy zip payload
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w") as zf:
+        zf.writestr("RAGPoC.exe", "fake binary")
+        zf.writestr("_internal/marker.txt", "marker")
+    zip_bytes = zip_buf.getvalue()
+
+    class _FakeStreamResponse:
+        headers = {"content-length": str(len(zip_bytes))}
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *exc):
+            return False
+        def raise_for_status(self):
+            pass
+        async def aiter_bytes(self):
+            chunk_size = len(zip_bytes) // 2 or 1
+            yield zip_bytes[:chunk_size]
+            yield zip_bytes[chunk_size:]
+
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *exc):
+            return False
+        def stream(self, *a, **kw):
+            return _FakeStreamResponse()
+
+    monkeypatch.setattr("ragpoc.updater.new_async_client", lambda *a, **kw: _FakeClient())
+
+    status = await manager.start_download(
+        download_url="https://github.com/AngelDann/RAGPoC-App-Code/releases/download/v9.0.0/RAGPoC-windows.zip",
+        target_version="9.0.0",
+    )
+    assert status["state"] in (UpdateState.DOWNLOADING, UpdateState.READY_TO_INSTALL)
+
+    # Wait for the background task to complete
+    if manager._download_task:
+        await manager._download_task
+
+    assert manager.state == UpdateState.READY_TO_INSTALL
+    assert manager.progress_percent == 100.0
+    assert manager.staging_dir is not None
+    assert manager.staging_dir.exists()
+    assert (manager.staging_dir / "RAGPoC.exe").exists()
+    assert (manager.staging_dir / "_internal" / "marker.txt").exists()
+
+    # Clean up
+    manager._cleanup_download_files()
+
+
+@pytest.mark.asyncio
+async def test_update_manager_cancel_download(monkeypatch):
+    import asyncio
+    from ragpoc.updater import UpdateManager, UpdateState
+
+    manager = UpdateManager()
+    monkeypatch.setattr("ragpoc.updater.get_current_platform", lambda: "windows")
+
+    class _HangingStreamResponse:
+        headers = {"content-length": "1000000"}
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *exc):
+            return False
+        def raise_for_status(self):
+            pass
+        async def aiter_bytes(self):
+            yield b"part1"
+            await asyncio.sleep(10)
+            yield b"part2"
+
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *exc):
+            return False
+        def stream(self, *a, **kw):
+            return _HangingStreamResponse()
+
+    monkeypatch.setattr("ragpoc.updater.new_async_client", lambda *a, **kw: _FakeClient())
+
+    await manager.start_download(
+        download_url="https://github.com/AngelDann/RAGPoC-App-Code/releases/download/v9.0.0/RAGPoC-windows.zip",
+        target_version="9.0.0",
+    )
+    assert manager.state == UpdateState.DOWNLOADING
+
+    cancel_res = await manager.cancel_download()
+    assert cancel_res["state"] == UpdateState.UPDATE_AVAILABLE
+    assert manager.progress_percent == 0.0
+
+
+@pytest.mark.asyncio
+async def test_update_views_integration(monkeypatch):
+    import json
+    from knowledge.views import (
+        cancel_download_update_view,
+        start_download_update_view,
+        update_status_view,
+    )
+    from ragpoc.updater import updater_manager
+
+    factory = RequestFactory()
+
+    # Test status endpoint
+    req_status = factory.get("/api/updates/status")
+    res_status = update_status_view(req_status)
+    assert res_status.status_code == 200
+    data_status = json.loads(res_status.content)
+    assert "state" in data_status
+    assert "ready_to_install" in data_status
+
+    # Test start download endpoint validation
+    req_dl_invalid = factory.post(
+        "/api/updates/download",
+        data=json.dumps({"download_url": "https://malicious.com/app.zip"}),
+        content_type="application/json",
+    )
+    res_dl_invalid = await start_download_update_view(req_dl_invalid)
+    assert res_dl_invalid.status_code == 400
+
+    # Test cancel endpoint
+    req_cancel = factory.post("/api/updates/cancel")
+    res_cancel = await cancel_download_update_view(req_cancel)
+    assert res_cancel.status_code == 200
+

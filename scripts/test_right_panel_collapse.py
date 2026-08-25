@@ -164,9 +164,21 @@ try:
         print("Switched back to Modo Notas: Center editor and right collapsed rail intact!")
         page.screenshot(path="qa-output/test_6_back_to_editor_mode.png")
 
-        # Step 7: Open page with right panel collapsed and test layout toggle
-        print("--- Step 7: Open page with right panel collapsed and test layout toggle ---")
-        first_page = page.locator(".page-link").first
+        # Step 7: Open or create page with right panel collapsed and test layout toggle
+        print("--- Step 7: Open or create page with right panel collapsed and test layout toggle ---")
+        first_page = page.locator(".page-select-btn, .page-link").first
+        if first_page.count() == 0:
+            add_page_btn = page.locator("[data-add-page]").first
+            if add_page_btn.count() > 0:
+                add_page_btn.click()
+                page.wait_for_timeout(300)
+                input_val = page.locator("#action-modal-input-name")
+                if input_val.is_visible():
+                    input_val.fill("Nota de Prueba")
+                    page.locator("#btn-submit-action-modal").click()
+                    page.wait_for_timeout(600)
+
+        first_page = page.locator(".page-select-btn, .page-link").first
         if first_page.count() > 0:
             first_page.click()
             page.wait_for_timeout(500)
@@ -176,23 +188,81 @@ try:
             assert page.locator("#page-center-nav").is_visible()
             print("Note opened in Editor Mode while right panel collapsed")
             
-            # Switch to Chat mode
-            page.locator("#page-center-nav [data-switch-mode='chat']").click()
-            page.wait_for_timeout(300)
-            
-            assert "chat-focus-mode" in (app_shell.get_attribute("class") or "")
-            assert page.locator("#chat-center-nav-row").is_visible()
-            assert page.locator("#btn-expand-page").is_visible()
-            print("Switched to Modo Chat with note loaded: center chat toggle and right expand button intact!")
-            page.screenshot(path="qa-output/test_7_note_chat_mode_collapsed.png")
+        # Switch to Chat mode
+        page.locator("#page-center-nav [data-switch-mode='chat'], #chat-center-nav-row [data-switch-mode='chat']").first.click()
+        page.wait_for_timeout(300)
+        
+        assert "chat-focus-mode" in (app_shell.get_attribute("class") or "")
+        assert page.locator("#chat-center-nav-row").is_visible()
+        assert page.locator("#btn-expand-page").is_visible()
+        print("Switched to Modo Chat: center chat toggle and right expand button intact!")
+        page.screenshot(path="qa-output/test_7_note_chat_mode_collapsed.png")
 
-            # Expand right panel
-            page.locator("#btn-expand-page").click()
-            page.wait_for_timeout(300)
-            assert page.locator(".editor-container").is_visible()
-            assert page.locator("#btn-collapse-side-editor").is_visible()
-            print("Expanded right panel: note editor is visible in side panel!")
-            page.screenshot(path="qa-output/test_8_note_chat_mode_expanded.png")
+        # Step 8: Expand right panel
+        print("--- Step 8: Expand right panel in Modo Chat ---")
+        page.locator("#btn-expand-page").click()
+        page.wait_for_timeout(300)
+        assert page.locator("#btn-collapse-side-editor").is_visible()
+        print("Expanded right panel: side editor header is visible in side panel!")
+        page.screenshot(path="qa-output/test_8_note_chat_mode_expanded.png")
+
+        # Step 9: Test Studio tab collapse in Chat Mode
+        print("--- Step 9: Test Studio tab collapse in Chat Mode ---")
+        btn_studio_tab = page.locator("#side-pane-switch-studio")
+        assert btn_studio_tab.is_visible()
+        btn_studio_tab.click()
+        page.wait_for_timeout(300)
+
+        studio_view = page.locator("#studio-view-container")
+        assert studio_view.is_visible()
+        print("Studio container is visible in right panel in Chat Mode")
+        page.screenshot(path="qa-output/test_9_chat_mode_studio_expanded.png")
+
+        # Collapse while in Studio tab
+        page.locator("#btn-collapse-side-editor").click()
+        page.wait_for_timeout(300)
+
+        assert "chat-collapsed" in (app_shell.get_attribute("class") or "")
+        assert "panel-collapsed" in (page_area.get_attribute("class") or "")
+        assert not studio_view.is_visible(), "Studio view container should NOT be visible when right panel is collapsed!"
+        assert page.locator("#btn-expand-page").is_visible()
+        print("Studio view is successfully hidden when collapsed in Chat Mode!")
+        page.screenshot(path="qa-output/test_10_chat_mode_studio_collapsed.png")
+
+        # Expand again
+        page.locator("#btn-expand-page").click()
+        page.wait_for_timeout(300)
+        assert studio_view.is_visible()
+        print("Studio view restored on expand in Chat Mode")
+
+        # Step 10: Test Attachments tab collapse in Chat Mode
+        print("--- Step 10: Test Attachments tab collapse in Chat Mode ---")
+        btn_attach_tab = page.locator("#side-pane-switch-attachments")
+        assert btn_attach_tab.is_visible()
+        btn_attach_tab.click()
+        page.wait_for_timeout(300)
+
+        attach_view = page.locator("#attachments-view-container")
+        assert attach_view.is_visible()
+        print("Attachments container is visible in right panel in Chat Mode")
+        page.screenshot(path="qa-output/test_11_chat_mode_attachments_expanded.png")
+
+        # Collapse while in Attachments tab
+        page.locator("#btn-collapse-side-editor").click()
+        page.wait_for_timeout(300)
+
+        assert "chat-collapsed" in (app_shell.get_attribute("class") or "")
+        assert "panel-collapsed" in (page_area.get_attribute("class") or "")
+        assert not attach_view.is_visible(), "Attachments view container should NOT be visible when right panel is collapsed!"
+        assert page.locator("#btn-expand-page").is_visible()
+        print("Attachments view is successfully hidden when collapsed in Chat Mode!")
+        page.screenshot(path="qa-output/test_12_chat_mode_attachments_collapsed.png")
+
+        # Expand again
+        page.locator("#btn-expand-page").click()
+        page.wait_for_timeout(300)
+        assert attach_view.is_visible()
+        print("Attachments view restored on expand in Chat Mode")
 
         print("Console errors count:", len(errors))
         if errors:

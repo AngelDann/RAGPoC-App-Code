@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import subprocess
@@ -24,6 +25,17 @@ _ALLOWED_DOWNLOAD_HOSTS = {"github.com", "objects.githubusercontent.com", "relea
 
 class UpdateError(RuntimeError):
     pass
+
+
+class UpdateState:
+    IDLE = "idle"
+    CHECKING = "checking"
+    UPDATE_AVAILABLE = "update_available"
+    DOWNLOADING = "downloading"
+    EXTRACTING = "extracting"
+    READY_TO_INSTALL = "ready_to_install"
+    APPLYING = "applying"
+    ERROR = "error"
 
 
 def get_current_platform() -> str:
@@ -71,6 +83,220 @@ def select_release_asset(assets: list[dict], target_os: str) -> dict | None:
     return None
 
 
+class UpdateManager:
+    """Manages the lifecycle of background downloading, staging, and deferred execution of app updates."""
+
+    def __init__(self) -> None:
+        self.state: str = UpdateState.IDLE
+        self.target_version: str | None = None
+        self.download_url: str | None = None
+        self.asset_name: str | None = None
+        self.release_notes: str = ""
+        self.release_url: str | None = None
+        self.platform: str = get_current_platform()
+        self.bytes_downloaded: int = 0
+        self.total_bytes: int = 0
+        self.progress_percent: float = 0.0
+        self.error_message: str | None = None
+        self.staging_dir: Path | None = None
+        self.zip_path: Path | None = None
+        self._download_task: asyncio.Task | None = None
+        self._lock: asyncio.Lock | None = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
+
+    def get_status(self) -> dict:
+        return {
+            "current_version": __version__,
+            "state": self.state,
+            "target_version": self.target_version or __version__,
+            "download_url": self.download_url,
+            "asset_name": self.asset_name,
+            "platform": self.platform,
+            "bytes_downloaded": self.bytes_downloaded,
+            "total_bytes": self.total_bytes,
+            "progress_percent": round(self.progress_percent, 1),
+            "ready_to_install": self.state == UpdateState.READY_TO_INSTALL,
+            "error_message": self.error_message,
+        }
+
+    async def check(self, target_os: str | None = None) -> dict:
+        current_os = target_os or get_current_platform()
+        self.platform = current_os
+        info = await check_for_update(target_os=current_os)
+        if info.get("update_available"):
+            self.target_version = info.get("latest_version")
+            self.download_url = info.get("download_url")
+            self.asset_name = info.get("asset_name")
+            self.release_notes = info.get("release_notes", "")
+            self.release_url = info.get("release_url")
+            if self.state not in (UpdateState.DOWNLOADING, UpdateState.EXTRACTING, UpdateState.READY_TO_INSTALL):
+                self.state = UpdateState.UPDATE_AVAILABLE
+        else:
+            if self.state not in (UpdateState.DOWNLOADING, UpdateState.EXTRACTING, UpdateState.READY_TO_INSTALL):
+                self.state = UpdateState.IDLE
+        info["state"] = self.state
+        info["ready_to_install"] = self.state == UpdateState.READY_TO_INSTALL
+        info["progress_percent"] = round(self.progress_percent, 1)
+        info["bytes_downloaded"] = self.bytes_downloaded
+        info["total_bytes"] = self.total_bytes
+        return info
+
+    async def start_download(self, download_url: str | None = None, target_version: str | None = None) -> dict:
+        url = download_url or self.download_url
+        if not url:
+            raise UpdateError("download_url es requerido para iniciar la descarga.")
+        if urlparse(url).hostname not in _ALLOWED_DOWNLOAD_HOSTS:
+            raise UpdateError("download_url debe apuntar a un asset de GitHub Releases.")
+
+        ver = target_version or self.target_version or "latest"
+
+        async with self._get_lock():
+            if self.state in (UpdateState.DOWNLOADING, UpdateState.EXTRACTING):
+                return self.get_status()
+            if self.state == UpdateState.READY_TO_INSTALL and self.staging_dir and self.staging_dir.exists():
+                return self.get_status()
+
+            self.state = UpdateState.DOWNLOADING
+            self.download_url = url
+            self.target_version = ver
+            self.bytes_downloaded = 0
+            self.total_bytes = 0
+            self.progress_percent = 0.0
+            self.error_message = None
+
+            loop = asyncio.get_running_loop()
+            self._download_task = loop.create_task(self._run_download_and_stage(url, ver))
+
+        return self.get_status()
+
+    async def _run_download_and_stage(self, download_url: str, version: str) -> None:
+        tmp_dir = Path(tempfile.gettempdir())
+        pid = os.getpid()
+        zip_path = tmp_dir / f"ragpoc_update_staged_{pid}.zip"
+        staging_dir = tmp_dir / f"ragpoc_update_staging_{pid}"
+        self.zip_path = zip_path
+        self.staging_dir = staging_dir
+
+        current_os = get_current_platform()
+        try:
+            if current_os == "android":
+                apk_path = tmp_dir / "ragpoc_update.apk"
+                async with new_async_client(timeout=300) as client:
+                    async with client.stream("GET", download_url, follow_redirects=True) as response:
+                        response.raise_for_status()
+                        total = int(response.headers.get("content-length", 0))
+                        self.total_bytes = total
+                        with apk_path.open("wb") as f:
+                            async for chunk in response.aiter_bytes():
+                                f.write(chunk)
+                                self.bytes_downloaded += len(chunk)
+                                if total > 0:
+                                    self.progress_percent = (self.bytes_downloaded / total) * 100.0
+                self.state = UpdateState.READY_TO_INSTALL
+                self.progress_percent = 100.0
+                return
+
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir, ignore_errors=True)
+            staging_dir.mkdir(parents=True, exist_ok=True)
+
+            async with new_async_client(timeout=300) as client:
+                async with client.stream("GET", download_url, follow_redirects=True) as response:
+                    response.raise_for_status()
+                    total = int(response.headers.get("content-length", 0))
+                    self.total_bytes = total
+                    with zip_path.open("wb") as f:
+                        async for chunk in response.aiter_bytes():
+                            f.write(chunk)
+                            self.bytes_downloaded += len(chunk)
+                            if total > 0:
+                                self.progress_percent = (self.bytes_downloaded / total) * 100.0
+
+            self.state = UpdateState.EXTRACTING
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extractall(staging_dir)
+
+            self.state = UpdateState.READY_TO_INSTALL
+            self.progress_percent = 100.0
+        except asyncio.CancelledError:
+            self._cleanup_download_files()
+            self.state = UpdateState.UPDATE_AVAILABLE
+            raise
+        except Exception as e:
+            self._cleanup_download_files()
+            self.state = UpdateState.ERROR
+            self.error_message = str(e)
+
+    def _cleanup_download_files(self) -> None:
+        if self.staging_dir and self.staging_dir.exists():
+            shutil.rmtree(self.staging_dir, ignore_errors=True)
+        if self.zip_path and self.zip_path.exists():
+            try:
+                self.zip_path.unlink()
+            except OSError:
+                pass
+
+    async def cancel_download(self) -> dict:
+        async with self._get_lock():
+            if self._download_task and not self._download_task.done():
+                self._download_task.cancel()
+                try:
+                    await self._download_task
+                except asyncio.CancelledError:
+                    pass
+            self._cleanup_download_files()
+            self.state = UpdateState.UPDATE_AVAILABLE if self.target_version else UpdateState.IDLE
+            self.bytes_downloaded = 0
+            self.total_bytes = 0
+            self.progress_percent = 0.0
+            self.error_message = None
+        return self.get_status()
+
+    async def apply_staged_update(self) -> None:
+        current_os = get_current_platform()
+        if current_os == "android":
+            return
+
+        if not getattr(sys, "frozen", False):
+            raise UpdateError("El auto-actualizador solo funciona en la build compilada (.exe).")
+
+        if self.state != UpdateState.READY_TO_INSTALL or not self.staging_dir or not self.staging_dir.exists():
+            raise UpdateError("No hay ninguna actualización descargada lista para instalar.")
+
+        current_exe = Path(sys.executable).resolve()
+        current_dir = current_exe.parent
+        pid = os.getpid()
+
+        script_path = _write_updater_script(
+            pid=pid,
+            current_exe=current_exe,
+            staging_exe=self.staging_dir / current_exe.name,
+            current_internal=current_dir / "_internal",
+            staging_internal=self.staging_dir / "_internal",
+            staging_dir=self.staging_dir,
+            zip_path=self.zip_path or Path(tempfile.gettempdir()) / f"ragpoc_update_staged_{pid}.zip",
+        )
+
+        self.state = UpdateState.APPLYING
+
+        subprocess.Popen(
+            ["cmd", "/c", str(script_path)],
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
+        threading.Timer(1.5, lambda: os._exit(0)).start()
+
+
+updater_manager = UpdateManager()
+
+
 async def check_for_update(target_os: str | None = None) -> dict:
     """Queries GitHub Releases for the latest published version. Works whether or not the app
     is frozen (only apply_update() requires a frozen build), so it degrades gracefully when run
@@ -106,9 +332,13 @@ async def check_for_update(target_os: str | None = None) -> dict:
 
 async def apply_update(download_url: str) -> None:
     """Downloads the new build and initiates the platform-specific update process.
-    On Windows: downloads the onedir zip, extracts it to staging, and invokes the detached batch swap script.
-    On Android: downloads the APK to the downloads/cache folder.
+    If the update is already staged (READY_TO_INSTALL), it applies the staged update directly.
+    Otherwise downloads to staging and initiates the detached batch swap script.
     """
+    if updater_manager.state == UpdateState.READY_TO_INSTALL and updater_manager.staging_dir and updater_manager.staging_dir.exists():
+        await updater_manager.apply_staged_update()
+        return
+
     current_os = get_current_platform()
     if urlparse(download_url).hostname not in _ALLOWED_DOWNLOAD_HOSTS:
         raise UpdateError("download_url debe apuntar a un asset de GitHub Releases.")
@@ -334,12 +564,12 @@ def _write_updater_script(
 
 
 def cleanup_stale_update_files() -> None:
-    """Best-effort sweep for *.exe.old leftovers from an update whose final cleanup step lost a
-    lock race (see _write_updater_script) -- called on every startup of the frozen build, by
-    which point whatever process held the file locked has long since exited. Never raises: this
-    is opportunistic housekeeping, not something that should ever block startup. Safe to run
-    unconditionally: it only fires after the app is already up and running again, i.e. never
-    while an update is actually in flight."""
+    """Best-effort sweep for *.exe.old leftovers and stale temp staging files from an update whose
+    final cleanup step lost a lock race (see _write_updater_script) -- called on every startup of
+    the frozen build, by which point whatever process held the file locked has long since exited.
+    Never raises: this is opportunistic housekeeping, not something that should ever block startup.
+    Safe to run unconditionally: it only fires after the app is already up and running again, i.e.
+    never while an update is actually in flight."""
     if not getattr(sys, "frozen", False):
         return
     try:
@@ -349,6 +579,20 @@ def cleanup_stale_update_files() -> None:
                 stale.unlink()
             except OSError:
                 pass
+    except OSError:
+        pass
+
+    try:
+        tmp_dir = Path(tempfile.gettempdir())
+        for stale_staging in tmp_dir.glob("ragpoc_update_staging_*"):
+            if stale_staging.is_dir():
+                shutil.rmtree(stale_staging, ignore_errors=True)
+        for stale_zip in tmp_dir.glob("ragpoc_update_*.zip"):
+            if stale_zip.is_file():
+                try:
+                    stale_zip.unlink()
+                except OSError:
+                    pass
     except OSError:
         pass
 

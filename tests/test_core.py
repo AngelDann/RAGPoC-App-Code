@@ -228,3 +228,42 @@ def test_cleanup_stale_update_files_removes_leftover_old_exe(tmp_path, monkeypat
 
     assert not stale_old.exists()
     assert fake_exe.exists()  # only the leftover is swept, never the real exe
+
+
+def test_apply_update_uses_staged_update_if_ready(tmp_path, monkeypatch):
+    from ragpoc.updater import UpdateState, updater_manager
+
+    fake_exe = tmp_path / "RAGPoC.exe"
+    fake_exe.write_text("fake")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(fake_exe))
+
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    (staging_dir / "RAGPoC.exe").write_text("staged exe")
+    (staging_dir / "_internal").mkdir()
+
+    updater_manager.state = UpdateState.READY_TO_INSTALL
+    updater_manager.staging_dir = staging_dir
+
+    monkeypatch.setattr(updater.threading, "Timer", lambda *a, **kw: type("T", (), {"start": lambda self: None})())
+
+    captured = {}
+
+    def fake_popen(args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return None
+
+    monkeypatch.setattr(updater.subprocess, "Popen", fake_popen)
+
+    import asyncio
+    asyncio.run(updater.apply_update("https://github.com/AngelDann/RAGPoC-App-Code/releases/download/v9/RAGPoC-windows.zip"))
+
+    assert updater_manager.state == UpdateState.APPLYING
+    assert "args" in captured
+    flags = captured["kwargs"]["creationflags"]
+    assert flags & subprocess.CREATE_NO_WINDOW
+    Path(captured["args"][2]).unlink(missing_ok=True)
+    updater_manager.state = UpdateState.IDLE
+

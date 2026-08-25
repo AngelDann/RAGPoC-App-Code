@@ -830,14 +830,18 @@
 
     .sidebar.panel-collapsed > *:not(.panel-rail),
     .chat-pane.panel-collapsed > *:not(.panel-rail),
-    .editor-pane.panel-collapsed > *:not(.panel-rail) {
+    .editor-pane.panel-collapsed > *:not(.panel-rail),
+    .app-shell.chat-focus-mode #page-area.panel-collapsed > *:not(.panel-rail),
+    .app-shell.chat-focus-mode.chat-collapsed #page-area > *:not(.panel-rail) {
       display: none !important;
     }
 
     .sidebar.panel-collapsed .panel-rail,
     .chat-pane.panel-collapsed .panel-rail,
-    .editor-pane.panel-collapsed .panel-rail {
-      display: flex;
+    .editor-pane.panel-collapsed .panel-rail,
+    .app-shell.chat-focus-mode #page-area.panel-collapsed .panel-rail,
+    .app-shell.chat-focus-mode.chat-collapsed #page-area .panel-rail {
+      display: flex !important;
     }
 
     @media (max-width: 900px) {
@@ -3799,12 +3803,42 @@
           </div>
           <div id="update-status" class="text-muted mb-1" style="font-size:11px;">Comprobando versión…</div>
           <div id="update-asset-info" class="text-muted mb-2" style="font-size:11px; display:none;"></div>
-          <div class="d-flex justify-content-end gap-2">
+
+          <!-- Background Download Progress Box -->
+          <div id="update-progress-box" class="mb-2 p-2 rounded border bg-light" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center mb-1" style="font-size:11px;">
+              <span id="update-progress-label" class="fw-medium text-dark"><i class="bi bi-arrow-down-circle text-primary"></i> Descargando en segundo plano…</span>
+              <span id="update-progress-percent" class="fw-bold text-primary">0%</span>
+            </div>
+            <div class="progress" style="height: 6px;">
+              <div id="update-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%;"></div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-1 text-muted" style="font-size:10px;">
+              <span id="update-progress-bytes">0 MB / 0 MB</span>
+              <a href="javascript:void(0)" id="btn-cancel-update-link" class="text-danger text-decoration-none"><i class="bi bi-x-circle"></i> Cancelar</a>
+            </div>
+          </div>
+
+          <!-- Staged / Ready to Install Alert Box -->
+          <div id="update-ready-box" class="mb-2 p-2 rounded border border-success bg-success-subtle text-success-emphasis" style="display:none; font-size:11px;">
+            <div class="d-flex align-items-center gap-2 fw-medium">
+              <i class="bi bi-check-circle-fill text-success fs-6"></i>
+              <span>¡Actualización lista para instalar!</span>
+            </div>
+            <div class="small text-muted mt-1" style="font-size:10.5px;">
+              Los archivos ya están descargados. Puedes reiniciar ahora para aplicar los cambios en 2 segundos, o seguir trabajando y reiniciar cuando quieras.
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-end gap-2 flex-wrap mt-2">
             <button class="btn-craft" id="btn-check-update">
               <i class="bi bi-search"></i> Buscar actualizaciones
             </button>
+            <button class="btn-craft" id="btn-download-update" style="display:none;">
+              <i class="bi bi-cloud-arrow-down text-primary"></i> <span id="btn-download-update-text">Descargar en 2º plano</span>
+            </button>
             <button class="btn-craft btn-craft-primary" id="btn-apply-update" style="display:none;">
-              <i class="bi bi-cloud-download"></i> <span id="btn-apply-update-text">Actualizar y reiniciar</span>
+              <i class="bi bi-rocket-takeoff"></i> <span id="btn-apply-update-text">Reiniciar y actualizar</span>
             </button>
           </div>
         </div>
@@ -8644,11 +8678,133 @@
       return 'windows';
     }
 
-    async function checkForUpdate() {
+    let updatePollTimer = null;
+
+    function stopUpdatePolling() {
+      if (updatePollTimer) {
+        clearInterval(updatePollTimer);
+        updatePollTimer = null;
+      }
+    }
+
+    function updateUIForStatus(status) {
+      let clientPlat = detectClientPlatform();
+      let isDesktop = (clientPlat === 'windows' || clientPlat === 'macos' || clientPlat === 'linux');
+      let badge = $('#update-available-badge');
       let statusEl = $('#update-status');
       let applyBtn = $('#btn-apply-update');
       let applyBtnText = $('#btn-apply-update-text');
+      let downloadBtn = $('#btn-download-update');
+      let progressBox = $('#update-progress-box');
+      let progressBar = $('#update-progress-bar');
+      let progressPercent = $('#update-progress-percent');
+      let progressBytes = $('#update-progress-bytes');
+      let progressLabel = $('#update-progress-label');
+      let readyBox = $('#update-ready-box');
       let assetInfoEl = $('#update-asset-info');
+
+      if (status.ready_to_install || status.state === 'ready_to_install') {
+        stopUpdatePolling();
+        if (badge) {
+          badge.style.display = 'block';
+          badge.className = 'status-bulb online';
+          badge.title = 'Actualización descargada y lista para instalar';
+        }
+        if (progressBox) progressBox.style.display = 'none';
+        if (downloadBtn) downloadBtn.style.display = 'none';
+        if (readyBox) readyBox.style.display = 'block';
+        if (applyBtn) {
+          applyBtn.style.display = '';
+          applyBtn.disabled = false;
+          if (applyBtnText) applyBtnText.textContent = 'Reiniciar y actualizar';
+        }
+        if (statusEl) statusEl.innerHTML = `<i class="bi bi-check2-circle text-success"></i> Versión <strong>${esc(status.target_version || updateInfo?.latest_version)}</strong> lista para instalar.`;
+        return;
+      }
+
+      if (status.state === 'downloading' || status.state === 'extracting') {
+        if (badge) {
+          badge.style.display = 'block';
+          badge.className = 'status-bulb unsaved';
+        }
+        if (readyBox) readyBox.style.display = 'none';
+        if (downloadBtn) downloadBtn.style.display = 'none';
+        if (applyBtn) applyBtn.style.display = 'none';
+        if (progressBox) progressBox.style.display = 'block';
+
+        let pct = Math.min(100, Math.max(0, status.progress_percent || 0));
+        if (progressBar) progressBar.style.width = `${pct}%`;
+        if (progressPercent) progressPercent.textContent = `${Math.round(pct)}%`;
+
+        if (status.state === 'extracting') {
+          if (progressLabel) progressLabel.innerHTML = '<i class="bi bi-gear-wide-connected text-primary"></i> Preparando e instalando archivos…';
+          if (progressBytes) progressBytes.textContent = 'Extrayendo paquete…';
+        } else {
+          if (progressLabel) progressLabel.innerHTML = '<i class="bi bi-arrow-down-circle text-primary"></i> Descargando en segundo plano…';
+          let mbDown = ((status.bytes_downloaded || 0) / (1024 * 1024)).toFixed(1);
+          let mbTotal = status.total_bytes ? ((status.total_bytes) / (1024 * 1024)).toFixed(1) : '?';
+          if (progressBytes) progressBytes.textContent = `${mbDown} MB / ${mbTotal} MB`;
+        }
+        return;
+      }
+
+      // Normal / Update available / Idle
+      if (progressBox) progressBox.style.display = 'none';
+      if (readyBox) readyBox.style.display = 'none';
+
+      if (updateInfo?.update_available) {
+        if (badge) {
+          badge.style.display = 'block';
+          badge.className = 'status-bulb unsaved';
+          badge.title = 'Hay una actualización disponible';
+        }
+        if (statusEl) statusEl.innerHTML = `<i class="bi bi-stars text-warning"></i> Versión <strong>${esc(updateInfo.latest_version)}</strong> disponible (actual: ${esc(updateInfo.current_version)}).`;
+        if (assetInfoEl && updateInfo.asset_name) {
+          assetInfoEl.style.display = 'block';
+          assetInfoEl.innerHTML = `<i class="bi bi-file-earmark-arrow-down"></i> Paquete: <code>${esc(updateInfo.asset_name)}</code>`;
+        }
+
+        if (isDesktop) {
+          if (downloadBtn) {
+            downloadBtn.style.display = '';
+            downloadBtn.disabled = false;
+          }
+          if (applyBtn) {
+            applyBtn.style.display = '';
+            applyBtn.disabled = false;
+            if (applyBtnText) applyBtnText.textContent = 'Actualizar directamente';
+          }
+        } else {
+          if (downloadBtn) downloadBtn.style.display = 'none';
+          if (applyBtn) {
+            applyBtn.style.display = '';
+            applyBtn.disabled = false;
+            if (applyBtnText) applyBtnText.textContent = clientPlat === 'android' ? 'Descargar APK' : 'Ver Release';
+          }
+        }
+      } else {
+        if (badge) badge.style.display = 'none';
+        if (applyBtn) applyBtn.style.display = 'none';
+        if (downloadBtn) downloadBtn.style.display = 'none';
+        if (assetInfoEl) assetInfoEl.style.display = 'none';
+        if (statusEl) statusEl.innerHTML = `<i class="bi bi-check-circle-fill text-success"></i> Estás usando la última versión (${esc(updateInfo?.current_version || '')}).`;
+      }
+    }
+
+    function startUpdatePolling() {
+      stopUpdatePolling();
+      updatePollTimer = setInterval(async () => {
+        try {
+          let status = await api('/api/updates/status');
+          updateUIForStatus(status);
+        } catch (e) {
+          // ignore transient poll error
+        }
+      }, 800);
+    }
+
+    async function checkForUpdate() {
+      let statusEl = $('#update-status');
       let platformBadge = $('#platform-detected-badge');
       let clientPlat = detectClientPlatform();
 
@@ -8665,26 +8821,10 @@
 
       try {
         updateInfo = await api(`/api/updates/check?platform=${encodeURIComponent(clientPlat)}`);
-        let badge = $('#update-available-badge');
-        if (updateInfo.update_available) {
-          badge.style.display = 'block';
-          applyBtn.style.display = '';
-          if (clientPlat === 'android' || clientPlat === 'ios') {
-            if (applyBtnText) applyBtnText.textContent = clientPlat === 'android' ? 'Descargar APK' : 'Ver Release';
-          } else {
-            if (applyBtnText) applyBtnText.textContent = 'Actualizar y reiniciar';
-          }
-          if (statusEl) statusEl.innerHTML = `<i class="bi bi-stars text-warning"></i> Versión <strong>${esc(updateInfo.latest_version)}</strong> disponible (actual: ${esc(updateInfo.current_version)}).`;
-          if (assetInfoEl && updateInfo.asset_name) {
-            assetInfoEl.style.display = 'block';
-            assetInfoEl.innerHTML = `<i class="bi bi-file-earmark-arrow-down"></i> Paquete: <code>${esc(updateInfo.asset_name)}</code>`;
-          }
-        } else {
-          badge.style.display = 'none';
-          applyBtn.style.display = 'none';
-          if (assetInfoEl) assetInfoEl.style.display = 'none';
-          if (statusEl) statusEl.innerHTML = `<i class="bi bi-check-circle-fill text-success"></i> Estás usando la última versión (${esc(updateInfo.current_version)}).`;
+        if (updateInfo.state === 'downloading' || updateInfo.state === 'extracting') {
+          startUpdatePolling();
         }
+        updateUIForStatus(updateInfo);
       } catch (e) {
         if (statusEl) statusEl.textContent = 'No se pudo verificar actualizaciones: ' + e.message;
       }
@@ -8698,6 +8838,41 @@
       };
     }
 
+    if ($('#btn-download-update')) {
+      $('#btn-download-update').onclick = async () => {
+        if (!updateInfo?.download_url) return;
+        try {
+          let status = await api('/api/updates/download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              download_url: updateInfo.download_url,
+              target_version: updateInfo.latest_version
+            })
+          });
+          startUpdatePolling();
+          updateUIForStatus(status);
+        } catch (e) {
+          if ($('#update-status')) $('#update-status').textContent = 'Error al iniciar descarga: ' + e.message;
+        }
+      };
+    }
+
+    if ($('#btn-cancel-update-link')) {
+      $('#btn-cancel-update-link').onclick = async (e) => {
+        e.preventDefault();
+        try {
+          stopUpdatePolling();
+          let status = await api('/api/updates/cancel', {
+            method: 'POST'
+          });
+          updateUIForStatus(status);
+        } catch (err) {
+          console.error(err);
+        }
+      };
+    }
+
     if ($('#btn-apply-update')) {
       $('#btn-apply-update').onclick = async () => {
         if (!updateInfo?.download_url) return;
@@ -8707,19 +8882,20 @@
           return;
         }
         $('#btn-apply-update').disabled = true;
-        $('#update-status').textContent = 'Descargando actualización…';
+        if ($('#btn-download-update')) $('#btn-download-update').disabled = true;
+        $('#update-status').textContent = 'Reiniciando y aplicando actualización…';
         try {
           await api('/api/updates/apply', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ download_url: updateInfo.download_url }),
-            timeoutMs: 0, // downloads the new build's zip; observed taking 60s+ on a slow connection
+            timeoutMs: 0, // fast swap if staged, or downloads if direct
           });
-          $('#update-status').textContent = 'Actualizando y reiniciando…';
+          $('#update-status').textContent = 'Reiniciando aplicación…';
         } catch (e) {
           // A failed fetch here can also just mean the backend process already exited
           // mid-response once the update kicked off successfully — not necessarily an error.
-          $('#update-status').textContent = 'Actualizando y reiniciando… (si la ventana no se reabre sola en unos segundos, ábrela manualmente)';
+          $('#update-status').textContent = 'Reiniciando aplicación… (si la ventana no se reabre sola en unos segundos, ábrela manualmente)';
         }
       };
     }
@@ -9206,13 +9382,20 @@
           pageArea.appendChild(attachContainer);
         }
         
-        if (editorContainer) editorContainer.style.display = tab === 'notes' ? '' : 'none';
-        if (studioContainer) {
-          studioContainer.style.setProperty('display', tab === 'studio' ? 'flex' : 'none', 'important');
-          if (tab === 'studio') loadSideStudioGallery();
-        }
-        if (attachContainer) {
-          attachContainer.style.setProperty('display', tab === 'attachments' ? 'flex' : 'none', 'important');
+        let isCollapsed = pageArea.classList.contains('panel-collapsed') || appShell.classList.contains('chat-collapsed');
+        if (isCollapsed) {
+          if (editorContainer) editorContainer.style.display = 'none';
+          if (studioContainer) studioContainer.style.setProperty('display', 'none', 'important');
+          if (attachContainer) attachContainer.style.setProperty('display', 'none', 'important');
+        } else {
+          if (editorContainer) editorContainer.style.display = tab === 'notes' ? '' : 'none';
+          if (studioContainer) {
+            studioContainer.style.setProperty('display', tab === 'studio' ? 'flex' : 'none', 'important');
+            if (tab === 'studio') loadSideStudioGallery();
+          }
+          if (attachContainer) {
+            attachContainer.style.setProperty('display', tab === 'attachments' ? 'flex' : 'none', 'important');
+          }
         }
       }
     }
@@ -9237,7 +9420,13 @@
         chatDrawer.classList.remove('panel-collapsed');
         $('#chat-view-container')?.style.setProperty('display', 'flex', 'important');
         if (pageArea) pageArea.classList.toggle('panel-collapsed', isRightCollapsed);
-        setSideRightTab(currentSideRightTab || 'notes');
+        if (isRightCollapsed) {
+          if (editorContainer) editorContainer.style.display = 'none';
+          if (studioContainer) studioContainer.style.setProperty('display', 'none', 'important');
+          if (attachContainer) attachContainer.style.setProperty('display', 'none', 'important');
+        } else {
+          setSideRightTab(currentSideRightTab || 'notes');
+        }
       } else {
         // Center is Editor, Right is Chat Drawer
         if (pageArea) pageArea.classList.remove('panel-collapsed');
@@ -9558,11 +9747,22 @@
       localStorage.setItem('ragpocChatCollapsed', collapsed ? '1' : '0');
 
       let pageArea = $('#page-area');
+      let studioContainer = $('#studio-view-container');
+      let attachContainer = $('#attachments-view-container');
+      let editorContainer = document.querySelector('.editor-container') || document.querySelector('.empty-state');
+
       if (isChatMode) {
         // In Chat Mode: Center is #chat-drawer (never collapsed), Right is #page-area
         chatDrawer.classList.remove('panel-collapsed');
         if (pageArea) pageArea.classList.toggle('panel-collapsed', collapsed);
         $('#chat-view-container')?.style.setProperty('display', 'flex', 'important');
+        if (collapsed) {
+          if (editorContainer) editorContainer.style.display = 'none';
+          if (studioContainer) studioContainer.style.setProperty('display', 'none', 'important');
+          if (attachContainer) attachContainer.style.setProperty('display', 'none', 'important');
+        } else {
+          setSideRightTab(currentSideRightTab || 'notes');
+        }
       } else {
         // In Editor Mode: Center is #page-area, Right is #chat-drawer
         if (pageArea) pageArea.classList.remove('panel-collapsed');

@@ -39,7 +39,13 @@ from knowledge.settings_store import (
 )
 from knowledge.settings_store import get_effective_settings as get_settings
 from knowledge.usage import fetch_openrouter_key_status, record_usage, usage_summary
-from ragpoc.updater import UpdateError, apply_update, check_for_update
+from ragpoc.updater import (
+    UpdateError,
+    UpdateState,
+    apply_update,
+    check_for_update,
+    updater_manager,
+)
 
 
 def console_view(request: HttpRequest) -> HttpResponse:
@@ -123,10 +129,42 @@ def health_view(request: HttpRequest) -> JsonResponse:
 async def check_update_view(request: HttpRequest) -> JsonResponse:
     target_platform = request.GET.get("platform") or None
     try:
-        info = await check_for_update(target_os=target_platform)
+        info = await updater_manager.check(target_os=target_platform)
     except Exception as e:
         return JsonResponse({"detail": f"No se pudo verificar actualizaciones: {e}"}, status=502)
     return JsonResponse(info)
+
+
+def update_status_view(request: HttpRequest) -> JsonResponse:
+    return JsonResponse(updater_manager.get_status())
+
+
+@csrf_exempt
+async def start_download_update_view(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    try:
+        body = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except Exception:
+        body = {}
+
+    download_url = body.get("download_url")
+    target_version = body.get("target_version")
+    try:
+        status = await updater_manager.start_download(download_url=download_url, target_version=target_version)
+        return JsonResponse(status)
+    except UpdateError as e:
+        return JsonResponse({"detail": str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({"detail": f"Error al iniciar descarga: {e}"}, status=502)
+
+
+@csrf_exempt
+async def cancel_download_update_view(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    status = await updater_manager.cancel_download()
+    return JsonResponse(status)
 
 
 @csrf_exempt
@@ -134,11 +172,22 @@ async def apply_update_view(request: HttpRequest) -> JsonResponse:
     if request.method != "POST":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
     try:
-        body = json.loads(request.body.decode("utf-8"))
+        body = json.loads(request.body.decode("utf-8")) if request.body else {}
     except Exception:
-        return JsonResponse({"detail": "Invalid JSON"}, status=400)
+        body = {}
 
-    download_url = body.get("download_url")
+    download_url = body.get("download_url") or updater_manager.download_url
+
+    # If the update has already been downloaded in the background and is ready to install, apply staged directly
+    if updater_manager.state == UpdateState.READY_TO_INSTALL:
+        try:
+            await updater_manager.apply_staged_update()
+            return JsonResponse({"status": "restarting"})
+        except UpdateError as e:
+            return JsonResponse({"detail": str(e)}, status=400)
+        except Exception as e:
+            return JsonResponse({"detail": f"Error al aplicar la actualización: {e}"}, status=502)
+
     if not download_url:
         return JsonResponse({"detail": "download_url is required."}, status=422)
 

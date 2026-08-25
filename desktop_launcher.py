@@ -56,7 +56,7 @@ if str(ROOT_DIR / "src") not in sys.path:
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ragpoc_django.settings")
 
-HOST = "127.0.0.1"
+HOST = os.environ.get("RAGPOC_HOST", "127.0.0.1")
 # Deliberately not 8080 (nor 8000/3000/5000): those are the ports a machine that does any
 # development at all is most likely to already have something on, and this app has no reason to
 # compete for one. The port still wants to be *stable* between launches, though -- the UI
