@@ -10200,7 +10200,15 @@
           if (iconEl) iconEl.className = 'bi bi-file-earmark-pdf text-danger fs-5';
           bodyEl.innerHTML = `
             <div class="flex-1 d-flex flex-column" style="height:65vh;">
-              <iframe src="${fileUrl}#toolbar=1" style="width:100%; height:100%; border:1px solid var(--border-warm); border-radius:8px;" frameborder="0"></iframe>
+              <object data="${fileUrl}#toolbar=1" type="application/pdf" style="width:100%; height:100%; border:1px solid var(--border-warm); border-radius:8px;">
+                <iframe src="${fileUrl}#toolbar=1" style="width:100%; height:100%; border:none;" frameborder="0">
+                  <div class="d-flex flex-column align-items-center justify-content-center h-100 p-4 text-center">
+                    <i class="bi bi-file-earmark-pdf display-4 text-danger mb-3"></i>
+                    <p class="text-secondary mb-3">No se puede visualizar el visor de PDF integrado en este entorno.</p>
+                    <a href="${fileUrl}" download="${esc(filename)}" class="btn craft-btn-primary btn-sm"><i class="bi bi-download me-1"></i> Descargar PDF</a>
+                  </div>
+                </iframe>
+              </object>
             </div>
           `;
         } else {

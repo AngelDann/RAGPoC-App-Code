@@ -15,6 +15,7 @@ from asgiref.sync import sync_to_async
 from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import render
 from django.utils import timezone
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.csrf import csrf_exempt
 from django.views.static import serve as serve_static_file
 from pydantic_ai.messages import ModelMessagesTypeAdapter, ModelRequest
@@ -1418,6 +1419,7 @@ def delete_notebook_artifact_view(request: HttpRequest, artifact_id: str) -> Jso
     return JsonResponse({"detail": "Method not allowed"}, status=405)
 
 
+@xframe_options_sameorigin
 def download_artifact_pdf_view(request: HttpRequest, artifact_id: str) -> HttpResponse:
     try:
         artifact = NotebookArtifact.objects.get(id=artifact_id)
@@ -1444,6 +1446,7 @@ _ARTIFACT_MEDIA_CONTENT_TYPES = {
 }
 
 
+@xframe_options_sameorigin
 def serve_artifact_media_view(request: HttpRequest, artifact_id: str) -> HttpResponse:
     try:
         artifact = NotebookArtifact.objects.get(id=artifact_id)
@@ -1617,6 +1620,7 @@ def generate_artifact_stream_view(request: HttpRequest) -> HttpResponse:
 
 
 @csrf_exempt
+@xframe_options_sameorigin
 def download_page_pdf_view(request: HttpRequest, page_id: str) -> HttpResponse:
     if request.method != "POST":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
@@ -2448,6 +2452,7 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
     return response
 
 
+@xframe_options_sameorigin
 def serve_document_file(request: HttpRequest, document_id: str) -> HttpResponse:
     try:
         doc = Document.objects.get(id=document_id)
