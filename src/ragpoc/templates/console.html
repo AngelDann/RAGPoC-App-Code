@@ -2342,6 +2342,36 @@
       animation: bubbleIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
+    .chat-bubble-user,
+    .chat-bubble-user *,
+    .chat-bubble-asst,
+    .chat-bubble-asst *,
+    .chat-thread-log,
+    .chat-thread-log *,
+    .chat-log-scroll,
+    .chat-log-scroll *,
+    .chat-stream,
+    .chat-stream *,
+    .ans-text,
+    .ans-text *,
+    .user-msg-text,
+    .user-msg-text * {
+      user-select: text !important;
+      -webkit-user-select: text !important;
+      -ms-user-select: text !important;
+      -moz-user-select: text !important;
+    }
+
+    .ans-text,
+    .user-msg-text,
+    .ans-text p,
+    .ans-text li,
+    .ans-text span,
+    .ans-text code,
+    .ans-text pre {
+      cursor: text;
+    }
+
     .chat-bubble-user {
       align-self: flex-end;
       background: #ffffff;
@@ -2355,43 +2385,143 @@
       max-width: 90%;
     }
 
-    /* Agent Execution Indicator Badge */
+    /* Agent Execution Dynamic Morphing Pill */
     .agent-executing-pill {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 6px 12px;
-      background: #fdfaf3;
-      border: 1px solid #fde68a;
+      gap: 7px;
+      padding: 5px 12px;
+      background: #fdf8ee;
+      border: 1px solid #f2dec0;
       border-radius: var(--radius-pill);
       font-size: 11.5px;
-      font-weight: 600;
-      color: #92400e;
-      box-shadow: var(--craft-shadow-sm);
+      font-weight: 500;
+      color: #854d0e;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
       margin-bottom: 8px;
-      animation: pulseGlow 1.8s infinite ease-in-out;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      max-width: 100%;
+    }
+
+    .agent-exec-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #d97706;
+      font-size: 11.5px;
+      flex-shrink: 0;
+      transition: transform 0.2s ease;
     }
 
     .agent-pulse-dot {
-      width: 7px;
-      height: 7px;
+      width: 6.5px;
+      height: 6.5px;
       background: #f59e0b;
       border-radius: 50%;
-      box-shadow: 0 0 6px #f59e0b;
+      box-shadow: 0 0 5px #f59e0b;
+      animation: pulseDot 1.4s infinite ease-in-out;
+      flex-shrink: 0;
     }
 
-    @keyframes pulseGlow {
-
-      0%,
-      100% {
-        transform: scale(1);
-        opacity: 0.95;
+    @keyframes pulseDot {
+      0%, 100% {
+        transform: scale(0.85);
+        opacity: 0.7;
       }
-
       50% {
-        transform: scale(1.02);
+        transform: scale(1.15);
         opacity: 1;
       }
+    }
+
+    /* Completed Collapsible Steps Badge */
+    .agent-steps-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius-pill);
+      font-size: 11px;
+      font-weight: 500;
+      color: #64748b;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s ease;
+      margin-bottom: 8px;
+    }
+
+    .agent-steps-badge:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      color: #334155;
+    }
+
+    .agent-steps-badge .chevron {
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      font-size: 10px;
+    }
+
+    .agent-steps-badge.expanded .chevron {
+      transform: rotate(180deg);
+    }
+
+    /* Collapsible Steps Timeline Drawer */
+    .agent-steps-timeline {
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      background: #fafaf9;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-warm);
+      font-size: 11px;
+      color: var(--text-main);
+      display: none;
+    }
+
+    .agent-steps-timeline.show {
+      display: block;
+      animation: fadeIn 0.15s ease-out;
+    }
+
+    .agent-step-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 4px 0;
+      border-bottom: 1px dashed #eeebe3;
+    }
+
+    .agent-step-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .agent-step-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .agent-step-icon {
+      color: #8c827a;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    .agent-step-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .agent-step-meta {
+      font-size: 10px;
+      color: #a8a29e;
+      flex-shrink: 0;
     }
 
     .chat-bubble-asst {
@@ -6947,22 +7077,38 @@
 
     // Shared by every "copy this chat response" button — navigator.clipboard requires a
     // secure context, which the packaged desktop webview may not always count as, so fall
-    // back to the old execCommand('copy') trick via a throwaway textarea when it's missing.
-    async function copyTextToClipboard(text) {
+    // back to the old execCommand('copy') trick via a throwaway textarea when it fails or is missing.
+    async function copyTextToClipboard(text, customSuccessMsg) {
+      if (text == null || text === '') return;
+      let ok = false;
       try {
         if (navigator.clipboard && window.isSecureContext) {
-          await navigator.clipboard.writeText(text);
-        } else {
+          try {
+            await navigator.clipboard.writeText(text);
+            ok = true;
+          } catch (clipErr) {
+            // Permission, focus or platform error in webview -- proceed to fallback
+          }
+        }
+        if (!ok) {
           let ta = document.createElement('textarea');
           ta.value = text;
+          ta.setAttribute('readonly', '');
           ta.style.position = 'fixed';
+          ta.style.top = '-9999px';
+          ta.style.left = '-9999px';
           ta.style.opacity = '0';
           document.body.appendChild(ta);
+          ta.focus();
           ta.select();
-          document.execCommand('copy');
+          ok = document.execCommand('copy');
           ta.remove();
         }
-        showToast('Respuesta copiada al portapapeles.', 'success');
+        if (ok) {
+          showToast(customSuccessMsg || 'Copiado al portapapeles.', 'success');
+        } else {
+          showToast('No se pudo copiar automáticamente al portapapeles.', 'warning');
+        }
       } catch (e) {
         showToast('No se pudo copiar: ' + e.message, 'error');
       }
@@ -6971,6 +7117,97 @@
     // Shimmering placeholder rows shown while a list-style panel is loading.
     function skeletonRows(count = 3) {
       return `<div class="d-flex flex-column">${'<div class="skeleton-row"></div>'.repeat(count)}</div>`;
+    }
+
+    // Resolves a Bootstrap icon for agent tools/steps
+    function getAgentToolIcon(iconOrName) {
+      const iconMap = {
+        'search': 'bi-search',
+        'search_knowledge_base': 'bi-search',
+        'globe': 'bi-globe2',
+        'search_web': 'bi-globe2',
+        'link-45deg': 'bi-link-45deg',
+        'fetch_web_page': 'bi-link-45deg',
+        'journal-plus': 'bi-journal-plus',
+        'add_source_to_knowledge_base': 'bi-journal-plus',
+        'brain': 'bi-lightbulb',
+        'manage_memory': 'bi-lightbulb',
+        'lightning': 'bi-lightning-charge',
+        'manage_skill': 'bi-lightning-charge',
+        'file-earmark-plus': 'bi-file-earmark-plus',
+        'create_workspace_page': 'bi-file-earmark-plus',
+        'pencil-square': 'bi-pencil-square',
+        'update_page_notes': 'bi-pencil-square',
+        'folder2-open': 'bi-folder2-open',
+        'get_workspace_structure': 'bi-folder2-open',
+        'chat-square-text': 'bi-chat-square-quote',
+        'search_past_conversations': 'bi-chat-square-quote',
+        'chat-left-dots': 'bi-chat-left-text',
+        'get_conversation_messages': 'bi-chat-left-text',
+        'stars': 'bi-stars',
+        'generate_notebook_artifact': 'bi-stars',
+      };
+      return iconMap[iconOrName] || 'bi-gear';
+    }
+
+    // Renders the progressive disclosure tool-steps badge + collapsible timeline
+    function renderToolStepsComponent(containerEl, toolsTrace = [], sources = []) {
+      if (!containerEl) return;
+      containerEl.innerHTML = '';
+      if ((!toolsTrace || toolsTrace.length === 0) && (!sources || sources.length === 0)) {
+        return;
+      }
+
+      let tCount = toolsTrace ? toolsTrace.length : 0;
+      let sCount = sources ? sources.length : 0;
+      let summaryText = '';
+      if (tCount > 0 && sCount > 0) {
+        summaryText = `${tCount} ${tCount === 1 ? 'proceso completado' : 'procesos completados'} · ${sCount} ${sCount === 1 ? 'fuente' : 'fuentes'}`;
+      } else if (tCount > 0) {
+        summaryText = `${tCount} ${tCount === 1 ? 'proceso completado' : 'procesos completados'}`;
+      } else {
+        summaryText = `${sCount} ${sCount === 1 ? 'fuente consultada' : 'fuentes consultadas'}`;
+      }
+
+      let wrapper = document.createElement('div');
+      wrapper.className = 'agent-steps-wrapper mb-2';
+      wrapper.innerHTML = `
+        <div class="agent-steps-badge" title="Ver detalles del proceso y fuentes consultadas">
+          <i class="bi bi-check-circle-fill text-success" style="font-size:10px;"></i>
+          <span>${esc(summaryText)}</span>
+          <i class="bi bi-chevron-down chevron"></i>
+        </div>
+        <div class="agent-steps-timeline">
+          ${tCount > 0 ? toolsTrace.map(step => `
+            <div class="agent-step-item">
+              <div class="agent-step-left">
+                <i class="bi ${esc(getAgentToolIcon(step.icon || step.tool))} agent-step-icon"></i>
+                <span class="agent-step-text" title="${esc(step.summary || step.label)}">${esc(step.summary || step.label)}</span>
+              </div>
+              ${step.duration_ms != null && step.duration_ms > 0 ? `<span class="agent-step-meta">${step.duration_ms}ms</span>` : ''}
+            </div>
+          `).join('') : ''}
+          ${sCount > 0 ? `
+            <div class="mt-2 pt-2 ${tCount > 0 ? 'border-top' : ''}" style="border-color: #eeebe3 !important;">
+              <div class="fw-semibold text-uppercase text-secondary mb-1" style="font-size: 9.5px; letter-spacing: 0.5px;">Fuentes RAG</div>
+              <div class="d-flex flex-wrap gap-1">
+                ${sources.map(s => `<span class="badge bg-white text-dark border" style="font-size: 10px; font-weight: normal;"><strong class="text-primary">${esc(s.citation || '')}</strong> ${esc(s.label || s.filename || '')}</span>`).join('')}
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      let badge = wrapper.querySelector('.agent-steps-badge');
+      let timeline = wrapper.querySelector('.agent-steps-timeline');
+      if (badge && timeline) {
+        badge.onclick = (e) => {
+          e.stopPropagation();
+          badge.classList.toggle('expanded');
+          timeline.classList.toggle('show');
+        };
+      }
+      containerEl.appendChild(wrapper);
     }
 
     // --- Shared artifact-type metadata (single source of truth for icon/label/media-ness,
@@ -11336,12 +11573,34 @@
           if (m.role === 'user') {
             let uDiv = document.createElement('div');
             uDiv.className = 'chat-bubble-user';
-            uDiv.innerHTML = `<div class="small fw-bold text-secondary mb-1 text-end">Tú</div><div>${esc(m.content)}</div>`;
+            uDiv.innerHTML = `
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <div class="small fw-bold text-secondary">Tú</div>
+                <button type="button" class="action-mini-btn" data-copy-user-msg title="Copiar mensaje">
+                  <i class="bi bi-clipboard text-secondary" style="font-size:11px;"></i>
+                </button>
+              </div>
+              <div class="user-msg-text">${esc(m.content)}</div>
+            `;
             if (m.attachments_json && m.attachments_json.length) {
               uDiv.innerHTML += `<div class="small text-muted mt-1 border-top pt-1"><i class="bi bi-paperclip"></i> ${m.attachments_json.map(a => a.name).join(', ')}</div>`;
             }
+            let userContent = m.content;
+            let copyBtn = uDiv.querySelector('[data-copy-user-msg]');
+            if (copyBtn) copyBtn.onclick = () => copyTextToClipboard(userContent, 'Mensaje copiado al portapapeles.');
             log.appendChild(uDiv);
           } else if (m.role === 'assistant') {
+            let sources = [];
+            let toolsTrace = [];
+            if (m.sources_json) {
+              if (Array.isArray(m.sources_json)) {
+                sources = m.sources_json;
+              } else if (typeof m.sources_json === 'object') {
+                sources = m.sources_json.sources || [];
+                toolsTrace = m.sources_json.tools_trace || [];
+              }
+            }
+
             let aDiv = document.createElement('div');
             aDiv.className = 'chat-bubble-asst';
             aDiv.innerHTML = `
@@ -11359,8 +11618,12 @@
                   </button>
                 </div>
               </div>
+              <div class="agent-steps-history-slot"></div>
               <div class="ans-text">${DOMPurify.sanitize(marked.parse(m.content))}</div>
             `;
+
+            let historySlot = aDiv.querySelector('.agent-steps-history-slot');
+            if (historySlot) renderToolStepsComponent(historySlot, toolsTrace, sources);
 
             let rawText = m.content;
             aDiv.querySelector('[data-copy-chat-note]').onclick = () => copyTextToClipboard(rawText);
@@ -11402,14 +11665,7 @@
                 showToast('Error al crear la página: ' + err.message, 'error');
               }
             };
-            if (m.sources_json && m.sources_json.length) {
-              aDiv.innerHTML += `
-                <div class="mt-2 pt-2 border-top small text-muted">
-                  <div class="fw-bold text-uppercase" style="font-size:10px;">Fuentes</div>
-                  ${m.sources_json.map(s => `<div><span class="badge bg-light text-dark border">${esc(s.citation)}</span> ${esc(s.label)}</div>`).join('')}
-                </div>
-              `;
-            }
+
             log.appendChild(aDiv);
             let ansEl = aDiv.querySelector('.ans-text');
             if (ansEl) renderChatPlugins(ansEl);
@@ -12745,20 +13001,32 @@
 
       let userMsg = document.createElement('div');
       userMsg.className = 'chat-bubble-user';
-      userMsg.innerHTML = `<div class="small fw-bold text-secondary mb-1 text-end">Tú</div><div>${esc(q)}</div>`;
+      userMsg.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <div class="small fw-bold text-secondary">Tú</div>
+          <button type="button" class="action-mini-btn" data-copy-user-msg title="Copiar mensaje">
+            <i class="bi bi-clipboard text-secondary" style="font-size:11px;"></i>
+          </button>
+        </div>
+        <div class="user-msg-text">${esc(q)}</div>
+      `;
       if (attsToSend.length) {
         userMsg.innerHTML += `<div class="small text-muted mt-1 border-top pt-1"><i class="bi bi-paperclip"></i> ${attsToSend.map(a => a.name).join(', ')}</div>`;
       }
+      let liveUserText = q;
+      let liveCopyBtn = userMsg.querySelector('[data-copy-user-msg]');
+      if (liveCopyBtn) liveCopyBtn.onclick = () => copyTextToClipboard(liveUserText, 'Mensaje copiado al portapapeles.');
       log.appendChild(userMsg);
 
       let asstMsg = document.createElement('div');
       asstMsg.className = 'chat-bubble-asst';
       asstMsg.innerHTML = `
         <div class="agent-executing-pill" id="agent-exec-indicator">
+          <span class="agent-exec-icon" id="agent-exec-icon"><i class="bi bi-stars"></i></span>
+          <span id="agent-exec-label">Procesando y analizando consulta…</span>
           <div class="agent-pulse-dot"></div>
-          <span id="agent-exec-label">Procesando y ejecutando herramientas de conocimiento…</span>
-          <span class="spinner-border spinner-border-sm text-warning ms-1" style="width:10px; height:10px;"></span>
         </div>
+        <div class="agent-steps-live-slot mb-2" id="agent-steps-container"></div>
         <div class="d-flex justify-content-between align-items-center mb-1" id="asst-header-row" style="display:none !important;">
           <div class="small fw-bold text-dark"><i class="bi bi-robot"></i> Asistente</div>
           <div class="d-flex gap-1" id="asst-actions-bar" style="display:none !important;">
@@ -12784,6 +13052,8 @@
 
       let execIndicator = asstMsg.querySelector('#agent-exec-indicator');
       let asstHeader = asstMsg.querySelector('#asst-header-row');
+      let liveToolsTrace = [];
+      let liveSources = [];
 
       ctx.streamActive = true;
       try {
@@ -12915,19 +13185,56 @@
               setContextThread(ctx, sendKey, ev.thread_id);
               if (sendKey === activeChatContextKey) loadThreadsForScope();
             }
-            if (ev.type === 'sources') {
+            if (ev.type === 'tool_start') {
+              liveToolsTrace.push({
+                tool: ev.tool,
+                label: ev.label,
+                icon: ev.icon,
+                status: 'running',
+              });
+              if (execIndicator) {
+                execIndicator.style.display = 'inline-flex';
+                let iconEl = execIndicator.querySelector('#agent-exec-icon');
+                if (iconEl) iconEl.innerHTML = `<i class="bi ${esc(getAgentToolIcon(ev.icon || ev.tool))}"></i>`;
+                let lbl = execIndicator.querySelector('#agent-exec-label');
+                if (lbl && ev.label) lbl.textContent = ev.label;
+              }
+            }
+            if (ev.type === 'tool_end') {
+              let step = liveToolsTrace.slice().reverse().find(s => s.tool === ev.tool && s.status === 'running');
+              if (step) {
+                step.status = ev.status || 'done';
+                step.duration_ms = ev.duration_ms;
+                step.summary = ev.summary || ev.label;
+              }
               if (execIndicator) {
                 let lbl = execIndicator.querySelector('#agent-exec-label');
-                if (lbl) lbl.textContent = 'Evidencia RAG recuperada, sintetizando respuesta…';
+                if (lbl && ev.summary) lbl.textContent = ev.summary;
               }
-              let citCard = document.createElement('div');
-              citCard.className = 'mt-2 pt-2 border-top small text-muted';
-              citCard.innerHTML = `
-                <div class="fw-bold text-uppercase" style="font-size:10px;">Fuentes</div>
-                ${ev.sources.map(s => `<div><span class="badge bg-light text-dark border">${esc(s.citation)}</span> ${esc(s.label)}</div>`).join('')}
-              `;
-              asstMsg.appendChild(citCard);
-              scrollChatLogIfActive(sendKey);
+            }
+            if (ev.type === 'status') {
+              if (execIndicator) {
+                let lbl = execIndicator.querySelector('#agent-exec-label');
+                if (lbl && ev.message) lbl.textContent = ev.message;
+              }
+            }
+            if (ev.type === 'source_added') {
+              if (execIndicator) {
+                let lbl = execIndicator.querySelector('#agent-exec-label');
+                if (lbl) lbl.textContent = `Fuente indexada: ${ev.title || ev.filename}…`;
+              }
+              if (typeof loadAttachmentsPanel === 'function') loadAttachmentsPanel();
+              if (typeof loadModalSourcesList === 'function' && $('#sources-modal')?.classList.contains('active')) {
+                loadModalSourcesList();
+              }
+              showToast(`Fuente "${ev.title || ev.filename}" indexada en el cuaderno.`, 'success');
+            }
+            if (ev.type === 'sources') {
+              liveSources = ev.sources || [];
+              if (execIndicator) {
+                let lbl = execIndicator.querySelector('#agent-exec-label');
+                if (lbl) lbl.textContent = 'Evidencia RAG recuperada, redactando…';
+              }
             }
             if (ev.type === 'token') {
               if (execIndicator) execIndicator.style.display = 'none';
@@ -12980,6 +13287,14 @@
               pageWriteDrip.flush();
               ansText.classList.remove('streaming');
               flushRender();
+
+              if (ev.tools_trace && ev.tools_trace.length) liveToolsTrace = ev.tools_trace;
+              if (ev.sources && ev.sources.length) liveSources = ev.sources;
+
+              let stepsContainer = asstMsg.querySelector('#agent-steps-container');
+              if (stepsContainer) {
+                renderToolStepsComponent(stepsContainer, liveToolsTrace, liveSources);
+              }
               let actionsBar = asstMsg.querySelector('#asst-actions-bar');
               if (actionsBar) {
                 actionsBar.style.setProperty('display', 'flex', 'important');

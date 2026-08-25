@@ -2183,13 +2183,32 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                     final_text = "".join(assistant_tokens)
                     new_history_json = result.all_messages_json().decode("utf-8")
 
+                    sources_payload = (
+                        {
+                            "sources": deps.collected_sources,
+                            "tools_trace": [
+                                {
+                                    "tool": t.get("tool"),
+                                    "label": t.get("label"),
+                                    "icon": t.get("icon", "wrench"),
+                                    "summary": t.get("summary", t.get("label")),
+                                    "duration_ms": t.get("duration_ms", 0),
+                                    "status": t.get("status", "done"),
+                                }
+                                for t in deps.executed_tools
+                            ],
+                        }
+                        if (deps.executed_tools or deps.collected_sources)
+                        else []
+                    )
+
                     @sync_to_async
                     def save_assistant_msg():
                         ChatMessage.objects.create(
                             thread=thread,
                             role="assistant",
                             content=final_text,
-                            sources_json=deps.collected_sources,
+                            sources_json=sources_payload,
                         )
                         thread.history_json = new_history_json
                         thread.save()
@@ -2241,7 +2260,21 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                                 "title": title,
                             })
 
-                    q.put({"type": "done"})
+                    q.put({
+                        "type": "done",
+                        "tools_trace": [
+                            {
+                                "tool": t.get("tool"),
+                                "label": t.get("label"),
+                                "icon": t.get("icon", "wrench"),
+                                "summary": t.get("summary", t.get("label")),
+                                "duration_ms": t.get("duration_ms", 0),
+                                "status": t.get("status", "done"),
+                            }
+                            for t in deps.executed_tools
+                        ],
+                        "sources": deps.collected_sources,
+                    })
 
                 loop.run_until_complete(stream_all())
             except Exception as exc:

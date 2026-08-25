@@ -189,3 +189,157 @@ async def test_generate_notebook_artifact_tool_direct_and_events():
     art_event = next(e for e in emitted_events if e.get("type") == "artifact_created")
     assert art_event["artifact_id"] == str(artifact.id)
     assert art_event["artifact_type"] == "diagram"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_extract_clean_text_from_html_helper():
+    """Verify that extract_clean_text_from_html strips scripts, styles, and tags while preserving readable text."""
+    from knowledge.pydantic_agent import extract_clean_text_from_html
+
+    sample_html = """
+    <!DOCTYPE html>
+    <html>
+    <head><title>Test Page</title><style>body { color: red; }</style></head>
+    <body>
+      <nav><a href="#home">Home</a></nav>
+      <script>console.log("secret tracker");</script>
+      <h1>Documentación de Python 3.13</h1>
+      <p>Python 3.13 incluye un <strong>GIL opcional</strong> y mejoras en el compilador JIT.</p>
+      <footer>Pie de página</footer>
+    </body>
+    </html>
+    """
+    cleaned = extract_clean_text_from_html(sample_html)
+    assert "Documentación de Python 3.13" in cleaned
+    assert "GIL opcional" in cleaned
+    assert "secret tracker" not in cleaned
+    assert "color: red" not in cleaned
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_add_source_to_knowledge_base_text_and_event():
+    """Verify that add_source_to_knowledge_base indexes text and emits source_added SSE event."""
+    from knowledge.models import Document, Notebook, NotebookDocument, Workspace
+
+    ws = await sync_to_async(Workspace.objects.create)(name="Workspace Test Sources")
+    nb = await sync_to_async(Notebook.objects.create)(workspace=ws, name="Cuaderno RAG")
+
+    mock_retriever = MagicMock(spec=Retriever)
+    emitted_events = []
+    deps = AgentDeps(
+        retriever=mock_retriever,
+        settings=Settings(openrouter_api_key="test-key"),
+        notebook_id=str(nb.id),
+        on_tool_event=lambda evt: emitted_events.append(evt),
+    )
+
+    agent = create_pydantic_rag_agent(deps.settings)
+    tool_def = agent._function_toolset.tools["add_source_to_knowledge_base"]
+
+    ctx = RunContext(
+        deps=deps,
+        model=TestModel(),
+        usage=MagicMock(),
+        prompt="Indexa esta nota",
+    )
+
+    res = await tool_def.function(
+        ctx,
+        source_type="text",
+        title_or_url="Nota sobre Arquitectura",
+        content="La arquitectura se basa en microservicios desacoplados con FastAPI y SQLite.",
+    )
+
+    assert res["status"] == "success"
+    assert "Nota sobre Arquitectura.txt" in res["filename"]
+    assert res["notebook"] == "Cuaderno RAG"
+
+    # Check Document in DB
+    doc = await sync_to_async(lambda: Document.objects.filter(id=res["document_id"]).first())()
+    assert doc is not None
+    assert doc.original_filename == "Nota sobre Arquitectura.txt"
+
+    # Check NotebookDocument link
+    nb_doc = await sync_to_async(lambda: NotebookDocument.objects.filter(notebook=nb, document=doc).first())()
+    assert nb_doc is not None
+
+    # Check SSE event emitted
+    assert any(e.get("type") == "source_added" and e.get("filename") == "Nota sobre Arquitectura.txt" for e in emitted_events)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_fetch_web_page_tool():
+    """Verify that fetch_web_page tool fetches and cleans web page text."""
+    emitted_events = []
+    deps = AgentDeps(
+        retriever=MagicMock(spec=Retriever),
+        settings=Settings(openrouter_api_key="test-key"),
+        on_tool_event=lambda evt: emitted_events.append(evt),
+    )
+
+    agent = create_pydantic_rag_agent(deps.settings)
+    tool_def = agent._function_toolset.tools["fetch_web_page"]
+
+    ctx = RunContext(
+        deps=deps,
+        model=TestModel(),
+        usage=MagicMock(),
+        prompt="Lee la página",
+    )
+
+    fake_html = b"<html><body><h1>FastAPI Framework</h1><p>FastAPI es un framework moderno y rapido.</p></body></html>"
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def read(self):
+            return fake_html
+
+    with patch("urllib.request.urlopen", return_value=FakeResponse()):
+        res = await tool_def.function(ctx, url="https://fastapi.tiangolo.com")
+
+    assert res["status"] == "success"
+    assert "FastAPI Framework" in res["content_preview"]
+    assert "FastAPI es un framework moderno" in res["content_preview"]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_agent_deps_tool_tracing_and_events():
+    """Verify that tool invocations emit structured tool_start and tool_end events and record executed_tools."""
+    emitted_events = []
+    deps = AgentDeps(
+        retriever=MagicMock(spec=Retriever),
+        settings=Settings(openrouter_api_key="test-key"),
+        on_tool_event=lambda evt: emitted_events.append(evt),
+    )
+
+    agent = create_pydantic_rag_agent(deps.settings)
+    tool_def = agent._function_toolset.tools["manage_memory"]
+
+    ctx = RunContext(
+        deps=deps,
+        model=TestModel(),
+        usage=MagicMock(),
+        prompt="Guarda en memoria",
+    )
+
+    res = await tool_def.function(ctx, action="add", content="El usuario prefiere respuestas concisas.", category="preference")
+    assert res["status"] == "success"
+
+    # Check that tool_start and tool_end events were emitted
+    assert any(e.get("type") == "tool_start" and e.get("tool") == "manage_memory" for e in emitted_events)
+    assert any(e.get("type") == "tool_end" and e.get("tool") == "manage_memory" and e.get("status") == "done" for e in emitted_events)
+
+    # Check that deps.executed_tools contains the step
+    assert len(deps.executed_tools) == 1
+    assert deps.executed_tools[0]["tool"] == "manage_memory"
+    assert deps.executed_tools[0]["status"] == "done"
+    assert "duration_ms" in deps.executed_tools[0]
+
+

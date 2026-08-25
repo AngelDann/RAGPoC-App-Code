@@ -562,7 +562,12 @@ def main():
         # migrations and the URL-resolver warm-up below routinely take several seconds with
         # nothing on screen). boot() replaces this with the real app via load_url() once ready.
         window = webview.create_window(
-            "RAGPoC — Knowledge Studio", html=_SPLASH_HTML, width=1400, height=900, min_size=(960, 640)
+            "RAGPoC — Knowledge Studio",
+            html=_SPLASH_HTML,
+            width=1400,
+            height=900,
+            min_size=(960, 640),
+            text_select=True,
         )
         # Blocks until every window is closed. The backend actually initializes here (not at
         # create_window() above) — a broken WebView2/pythonnet CLR raises from this call, before
