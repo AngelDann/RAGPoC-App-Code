@@ -121,8 +121,9 @@ def health_view(request: HttpRequest) -> JsonResponse:
 
 
 async def check_update_view(request: HttpRequest) -> JsonResponse:
+    target_platform = request.GET.get("platform") or None
     try:
-        info = await check_for_update()
+        info = await check_for_update(target_os=target_platform)
     except Exception as e:
         return JsonResponse({"detail": f"No se pudo verificar actualizaciones: {e}"}, status=502)
     return JsonResponse(info)

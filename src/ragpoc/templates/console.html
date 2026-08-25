@@ -3795,14 +3795,16 @@
         <div class="craft-card p-3">
           <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
             <i class="bi bi-arrow-repeat text-dark"></i> Actualizaciones
+            <span id="platform-detected-badge" class="badge bg-light text-secondary border ms-auto" style="font-size:10px; font-weight:normal;"></span>
           </div>
-          <div id="update-status" class="text-muted mb-2" style="font-size:11px;">Comprobando versión…</div>
+          <div id="update-status" class="text-muted mb-1" style="font-size:11px;">Comprobando versión…</div>
+          <div id="update-asset-info" class="text-muted mb-2" style="font-size:11px; display:none;"></div>
           <div class="d-flex justify-content-end gap-2">
             <button class="btn-craft" id="btn-check-update">
               <i class="bi bi-search"></i> Buscar actualizaciones
             </button>
             <button class="btn-craft btn-craft-primary" id="btn-apply-update" style="display:none;">
-              <i class="bi bi-cloud-download"></i> Actualizar y reiniciar
+              <i class="bi bi-cloud-download"></i> <span id="btn-apply-update-text">Actualizar y reiniciar</span>
             </button>
           </div>
         </div>
@@ -8629,24 +8631,58 @@
     };
 
     // --- Auto-update: checks GitHub Releases for a newer build ---
-    // Only meaningful for the compiled .exe (apply_update() on the backend rejects it
-    // otherwise), but the check itself is harmless to run from source too.
     let updateInfo = null;
     const UPDATE_CHECK_HOUR = 9; // wall-clock hour (local time) for the once-a-day check
+
+    function detectClientPlatform() {
+      const ua = (navigator.userAgent || '').toLowerCase();
+      if (/android/i.test(ua)) return 'android';
+      if (/iphone|ipad|ipod/i.test(ua)) return 'ios';
+      if (/win/i.test(ua)) return 'windows';
+      if (/mac/i.test(ua)) return 'macos';
+      if (/linux/i.test(ua)) return 'linux';
+      return 'windows';
+    }
 
     async function checkForUpdate() {
       let statusEl = $('#update-status');
       let applyBtn = $('#btn-apply-update');
+      let applyBtnText = $('#btn-apply-update-text');
+      let assetInfoEl = $('#update-asset-info');
+      let platformBadge = $('#platform-detected-badge');
+      let clientPlat = detectClientPlatform();
+
+      const platLabels = {
+        'windows': 'Windows (x64)',
+        'android': 'Android (APK)',
+        'ios': 'iOS (PWA)',
+        'macos': 'macOS',
+        'linux': 'Linux'
+      };
+      if (platformBadge) {
+        platformBadge.textContent = platLabels[clientPlat] || clientPlat;
+      }
+
       try {
-        updateInfo = await api('/api/updates/check');
+        updateInfo = await api(`/api/updates/check?platform=${encodeURIComponent(clientPlat)}`);
         let badge = $('#update-available-badge');
         if (updateInfo.update_available) {
           badge.style.display = 'block';
           applyBtn.style.display = '';
-          if (statusEl) statusEl.innerHTML = `<i class="bi bi-stars text-warning"></i> Versión ${esc(updateInfo.latest_version)} disponible (tienes ${esc(updateInfo.current_version)}).`;
+          if (clientPlat === 'android' || clientPlat === 'ios') {
+            if (applyBtnText) applyBtnText.textContent = clientPlat === 'android' ? 'Descargar APK' : 'Ver Release';
+          } else {
+            if (applyBtnText) applyBtnText.textContent = 'Actualizar y reiniciar';
+          }
+          if (statusEl) statusEl.innerHTML = `<i class="bi bi-stars text-warning"></i> Versión <strong>${esc(updateInfo.latest_version)}</strong> disponible (actual: ${esc(updateInfo.current_version)}).`;
+          if (assetInfoEl && updateInfo.asset_name) {
+            assetInfoEl.style.display = 'block';
+            assetInfoEl.innerHTML = `<i class="bi bi-file-earmark-arrow-down"></i> Paquete: <code>${esc(updateInfo.asset_name)}</code>`;
+          }
         } else {
           badge.style.display = 'none';
           applyBtn.style.display = 'none';
+          if (assetInfoEl) assetInfoEl.style.display = 'none';
           if (statusEl) statusEl.innerHTML = `<i class="bi bi-check-circle-fill text-success"></i> Estás usando la última versión (${esc(updateInfo.current_version)}).`;
         }
       } catch (e) {
@@ -8665,6 +8701,11 @@
     if ($('#btn-apply-update')) {
       $('#btn-apply-update').onclick = async () => {
         if (!updateInfo?.download_url) return;
+        const clientPlat = detectClientPlatform();
+        if (clientPlat === 'android' || clientPlat === 'ios') {
+          window.open(updateInfo.download_url, '_blank');
+          return;
+        }
         $('#btn-apply-update').disabled = true;
         $('#update-status').textContent = 'Descargando actualización…';
         try {

@@ -26,7 +26,52 @@ class UpdateError(RuntimeError):
     pass
 
 
-async def check_for_update() -> dict:
+def get_current_platform() -> str:
+    """Detects the current operating system / runtime environment:
+    - 'android': Android OS (Chaquopy, BeeWare, Termux, or Android runtime markers)
+    - 'windows': Windows desktop (win32)
+    - 'macos': macOS (darwin)
+    - 'linux': Generic Linux desktop / server
+    """
+    if (
+        hasattr(sys, "getandroidapilevel")
+        or "ANDROID_ROOT" in os.environ
+        or "ANDROID_BOOTLOGO" in os.environ
+        or "TERMUX_VERSION" in os.environ
+    ):
+        return "android"
+    if sys.platform == "win32":
+        return "windows"
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform.startswith("linux"):
+        return "linux"
+    return "unknown"
+
+
+def select_release_asset(assets: list[dict], target_os: str) -> dict | None:
+    """Finds the most appropriate downloadable release asset for the target OS."""
+    patterns = {
+        "windows": ["-windows.zip", ".zip"],
+        "android": ["-android.apk", ".apk"],
+        "linux": ["-linux.tar.gz", ".tar.gz", ".appimage", ".deb"],
+        "macos": ["-macos.dmg", ".dmg", "-darwin.zip"],
+    }
+    candidates = patterns.get(target_os, [f"-{target_os}"])
+    for ext in candidates:
+        for a in assets:
+            name = (a.get("name") or "").lower()
+            if name.endswith(ext):
+                return a
+    # Fallback: if windows requested, also check for loose .exe if no zip
+    if target_os == "windows":
+        for a in assets:
+            if (a.get("name") or "").lower().endswith(".exe") and not a.get("name", "").lower().startswith("ragpoc-setup"):
+                return a
+    return None
+
+
+async def check_for_update(target_os: str | None = None) -> dict:
     """Queries GitHub Releases for the latest published version. Works whether or not the app
     is frozen (only apply_update() requires a frozen build), so it degrades gracefully when run
     from source -- update_available will just never fire since __version__ tracks HEAD there.
@@ -37,23 +82,22 @@ async def check_for_update() -> dict:
     for the whole GitHub round-trip (up to the 10s timeout on a slow/blocked connection) --
     since ASGI serializes *every* sync view onto that one thread, the workspace tree/page fetch
     would queue up behind it, and the window would sit unresponsive until it finished."""
+    current_os = target_os or get_current_platform()
     async with new_async_client() as client:
         response = await client.get(_RELEASES_API, timeout=10, headers={"Accept": "application/vnd.github+json"})
     response.raise_for_status()
     data = response.json()
     latest_tag = (data.get("tag_name") or "").lstrip("v")
-    # A zip of the onedir build's contents (RAGPoC.exe + _internal\), not a standalone .exe --
-    # see ragpoc.spec and release.yml. A build from before this switch only ever published a
-    # bare .exe and won't find a matching asset here; its update button will report "no download
-    # available" rather than corrupt anything, and needs installing by hand once to bootstrap
-    # onto the onedir layout, exactly like any other update-mechanism-changing release.
-    asset = next((a for a in data.get("assets", []) if a["name"].lower().endswith(".zip")), None)
+    
+    asset = select_release_asset(data.get("assets", []), current_os)
 
     available = bool(latest_tag) and Version(latest_tag) > Version(__version__)
     return {
         "current_version": __version__,
         "latest_version": latest_tag or __version__,
         "update_available": available,
+        "platform": current_os,
+        "asset_name": asset["name"] if asset else None,
         "download_url": asset["browser_download_url"] if asset else None,
         "release_notes": data.get("body") or "",
         "release_url": data.get("html_url"),
@@ -61,21 +105,27 @@ async def check_for_update() -> dict:
 
 
 async def apply_update(download_url: str) -> None:
-    """Downloads the new build's zip (RAGPoC.exe + _internal\\, see ragpoc.spec) to a staging
-    directory, extracts it, then hands off to a detached batch script that waits for this process
-    to exit, replaces the install in place, and relaunches it. Windows won't let a running process
-    overwrite its own .exe file, hence the external helper. Only touches the exe and _internal\\ --
-    data/ and .env live alongside them, untouched.
-
-    Async, not sync httpx, for the same reason check_for_update() is: apply_update_view is called
-    directly from the console's "Actualizar" button with no way to know the download will be quick,
-    and a slow/throttled GitHub Releases download (seen taking 60s+ in testing on a slow connection)
-    would otherwise tie up Django's single thread-sensitive worker for that whole time -- freezing
-    every other view (chat, workspace tree, everything) since ASGI serializes all sync views onto it."""
-    if not getattr(sys, "frozen", False):
-        raise UpdateError("El auto-actualizador solo funciona en la build compilada (.exe).")
+    """Downloads the new build and initiates the platform-specific update process.
+    On Windows: downloads the onedir zip, extracts it to staging, and invokes the detached batch swap script.
+    On Android: downloads the APK to the downloads/cache folder.
+    """
+    current_os = get_current_platform()
     if urlparse(download_url).hostname not in _ALLOWED_DOWNLOAD_HOSTS:
         raise UpdateError("download_url debe apuntar a un asset de GitHub Releases.")
+
+    if current_os == "android":
+        tmp_dir = Path(tempfile.gettempdir())
+        apk_path = tmp_dir / "ragpoc_update.apk"
+        async with new_async_client(timeout=180) as client:
+            async with client.stream("GET", download_url, follow_redirects=True) as response:
+                response.raise_for_status()
+                with apk_path.open("wb") as f:
+                    async for chunk in response.aiter_bytes():
+                        f.write(chunk)
+        return
+
+    if not getattr(sys, "frozen", False):
+        raise UpdateError("El auto-actualizador solo funciona en la build compilada (.exe).")
 
     current_exe = Path(sys.executable).resolve()
     current_dir = current_exe.parent
