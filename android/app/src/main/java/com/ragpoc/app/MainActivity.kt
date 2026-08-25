@@ -1,33 +1,34 @@
 package com.ragpoc.app
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.*
-import android.widget.FrameLayout
-import android.widget.ProgressBar
-import android.widget.TextView
+import android.widget.*
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
-import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.ServerSocket
-import java.net.URL
-import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var webView: WebView
-    private lateinit var progressBar: ProgressBar
     private lateinit var loadingContainer: FrameLayout
-    private lateinit var loadingText: TextView
+    private lateinit var errorContainer: LinearLayout
+    private lateinit var urlEditText: EditText
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
+
+    private val PREFS_NAME = "ragpoc_prefs"
+    private val KEY_SERVER_URL = "server_url"
+    private val DEFAULT_URL = "http://127.0.0.1:47823"
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -38,59 +39,157 @@ class MainActivity : AppCompatActivity() {
         fileChooserCallback = null
     }
 
-    private var serverPort: Int = 47823
-
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val rootLayout = FrameLayout(this)
-        setContentView(rootLayout)
+        val rootLayout = FrameLayout(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
 
-        webView = WebView(this).apply {
+        // Swipe to Refresh wrapping WebView
+        swipeRefresh = SwipeRefreshLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
+        }
+
+        webView = WebView(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
             visibility = View.GONE
         }
-        rootLayout.addView(webView)
+        swipeRefresh.addView(webView)
+        rootLayout.addView(swipeRefresh)
 
+        // Loading Spinner Container
         loadingContainer = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
+            setBackgroundColor(0xFFF8F9FA.toInt())
         }
-        progressBar = ProgressBar(this).apply {
-            isIndeterminate = true
-        }
+        val progressBar = ProgressBar(this).apply { isIndeterminate = true }
         val pParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = android.view.Gravity.CENTER
-        }
+        ).apply { gravity = Gravity.CENTER }
         loadingContainer.addView(progressBar, pParams)
 
-        loadingText = TextView(this).apply {
-            text = "Iniciando RAGPoC Studio…"
+        val loadingText = TextView(this).apply {
+            text = "Conectando a RAGPoC Studio…"
             textSize = 14f
-            setTextColor(0xFF555555.toInt())
+            setTextColor(0xFF6C757D.toInt())
         }
         val tParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            gravity = android.view.Gravity.CENTER
-            topMargin = 160
+            gravity = Gravity.CENTER
+            topMargin = 140
         }
         loadingContainer.addView(loadingText, tParams)
         rootLayout.addView(loadingContainer)
 
+        // Error & Server Config Container
+        errorContainer = LinearLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(48, 48, 48, 48)
+            setBackgroundColor(0xFFFFFFFF.toInt())
+            visibility = View.GONE
+        }
+
+        val titleView = TextView(this).apply {
+            text = "RAGPoC · Knowledge Studio"
+            textSize = 18f
+            setTextColor(0xFF212529.toInt())
+            gravity = Gravity.CENTER
+        }
+        val descView = TextView(this).apply {
+            text = "Ingresa la dirección de tu servidor RAGPoC (o IP local / Tailscale):"
+            textSize = 13f
+            setTextColor(0xFF6C757D.toInt())
+            setPadding(0, 16, 0, 24)
+            gravity = Gravity.CENTER
+        }
+        urlEditText = EditText(this).apply {
+            setText(getServerUrl())
+            hint = "http://192.168.1.50:47823"
+            textSize = 14f
+            setPadding(24, 24, 24, 24)
+            setBackgroundColor(0xFFF1F3F5.toInt())
+        }
+        val connectBtn = Button(this).apply {
+            text = "Conectar"
+            setOnClickListener {
+                val inputUrl = urlEditText.text.toString().trim()
+                if (inputUrl.isNotEmpty()) {
+                    setServerUrl(inputUrl)
+                    loadAppUrl(inputUrl)
+                }
+            }
+        }
+        val defBtn = Button(this).apply {
+            text = "Usar Localhost (127.0.0.1:47823)"
+            setOnClickListener {
+                setServerUrl(DEFAULT_URL)
+                urlEditText.setText(DEFAULT_URL)
+                loadAppUrl(DEFAULT_URL)
+            }
+        }
+
+        errorContainer.addView(titleView)
+        errorContainer.addView(descView)
+        errorContainer.addView(urlEditText)
+        errorContainer.addView(connectBtn)
+        errorContainer.addView(defBtn)
+        rootLayout.addView(errorContainer)
+
+        setContentView(rootLayout)
+
         setupWebView()
         setupBackNavigation()
-        startPythonBackend()
+
+        swipeRefresh.setOnRefreshListener {
+            webView.reload()
+        }
+
+        loadAppUrl(getServerUrl())
+    }
+
+    private fun getServerUrl(): String {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_SERVER_URL, DEFAULT_URL) ?: DEFAULT_URL
+    }
+
+    private fun setServerUrl(url: String) {
+        val cleanUrl = if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            "http://$url"
+        } else {
+            url
+        }
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_SERVER_URL, cleanUrl).apply()
+    }
+
+    private fun loadAppUrl(url: String) {
+        loadingContainer.visibility = View.VISIBLE
+        errorContainer.visibility = View.GONE
+        webView.visibility = View.GONE
+        val targetUrl = if (!url.startsWith("http://") && !url.startsWith("https://")) "http://$url" else url
+        webView.loadUrl(targetUrl)
     }
 
     private fun setupWebView() {
@@ -108,8 +207,23 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                swipeRefresh.isRefreshing = false
                 loadingContainer.visibility = View.GONE
+                errorContainer.visibility = View.GONE
                 webView.visibility = View.VISIBLE
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                if (request?.isForMainFrame == true) {
+                    swipeRefresh.isRefreshing = false
+                    loadingContainer.visibility = View.GONE
+                    webView.visibility = View.GONE
+                    errorContainer.visibility = View.VISIBLE
+                }
             }
 
             override fun shouldOverrideUrlLoading(
@@ -117,10 +231,11 @@ class MainActivity : AppCompatActivity() {
                 request: WebResourceRequest?
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
-                if (url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost")) {
+                val serverBase = getServerUrl()
+                if (url.startsWith(serverBase) || url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost")) {
                     return false
                 }
-                // Open external links in device browser
+                // External link -> open in device browser
                 try {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     startActivity(intent)
@@ -165,76 +280,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         })
-    }
-
-    private fun findFreePort(): Int {
-        return try {
-            ServerSocket(0).use { it.localPort }
-        } catch (_: Exception) {
-            47823
-        }
-    }
-
-    private fun startPythonBackend() {
-        thread(start = true, name = "RAGPoC-PythonServer") {
-            try {
-                if (!Python.isStarted()) {
-                    Python.start(AndroidPlatform(this@MainActivity))
-                }
-                serverPort = findFreePort()
-
-                val py = Python.getInstance()
-                val osModule = py.getModule("os")
-                val sysModule = py.getModule("sys")
-
-                // Setup environment and paths
-                val filesDir = filesDir.absolutePath
-                osModule.get("environ")?.callAttr("__setitem__", "DJANGO_SETTINGS_MODULE", "ragpoc_django.settings")
-                osModule.get("environ")?.callAttr("__setitem__", "RAGPOC_DATA_DIR", "$filesDir/data")
-
-                // Launch ASGI server
-                val uvicorn = py.getModule("uvicorn")
-                thread(isDaemon = true, name = "uvicorn-worker") {
-                    uvicorn.callAttr(
-                        "run",
-                        "ragpoc_django.asgi:application",
-                        "127.0.0.1",
-                        serverPort,
-                        "info"
-                    )
-                }
-
-                // Poll /health until server responds
-                var serverReady = false
-                val healthUrl = "http://127.0.0.1:$serverPort/health"
-                for (i in 1..40) {
-                    try {
-                        val conn = URL(healthUrl).openConnection() as HttpURLConnection
-                        conn.connectTimeout = 1000
-                        conn.readTimeout = 1000
-                        if (conn.responseCode == 200) {
-                            serverReady = true
-                            conn.disconnect()
-                            break
-                        }
-                    } catch (_: Exception) {
-                        Thread.sleep(300)
-                    }
-                }
-
-                runOnUiThread {
-                    if (serverReady) {
-                        webView.loadUrl("http://127.0.0.1:$serverPort/")
-                    } else {
-                        loadingText.text = "Error al iniciar el servidor local."
-                    }
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    loadingText.text = "Error: ${e.localizedMessage}"
-                }
-            }
-        }
     }
 
     fun installApkUpdate(apkFile: File) {
