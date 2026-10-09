@@ -20,7 +20,9 @@ _SPEECH_ENDPOINT = "https://openrouter.ai/api/v1/audio/speech"
 
 def _auth_headers(settings: Settings) -> dict[str, str]:
     if not settings.openrouter_api_key:
-        raise MediaGenerationError("Configura tu OpenRouter API key en Ajustes o en OPENROUTER_API_KEY.")
+        raise MediaGenerationError(
+            "La generación de imágenes y TTS usa OpenRouter: configura tu OpenRouter API key en Ajustes o en OPENROUTER_API_KEY."
+        )
     return {"Authorization": f"Bearer {settings.openrouter_api_key}"}
 
 

@@ -3951,25 +3951,63 @@
 
         <div class="craft-card p-3">
           <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
-            <i class="bi bi-key-fill text-dark"></i> <span data-i18n="settings.api_key_title">OpenRouter API Key</span>
+            <i class="bi bi-robot text-dark"></i> <span data-i18n="settings.llm_provider_title">Proveedor de IA</span>
           </div>
-          <div id="settings-key-status" class="text-muted mb-2" style="font-size:11px;" data-i18n="settings.loading_status">Cargando estado…</div>
-          <div class="input-group">
-            <input type="password" id="settings-api-key-input" class="form-control form-control-craft"
-              placeholder="sk-or-v1-…" autocomplete="off">
-            <button class="btn-craft btn-craft-icon" id="toggle-settings-key-visibility" type="button"
-              title="Mostrar/ocultar">
-              <i class="bi bi-eye"></i>
-            </button>
+          <div class="mb-2">
+            <label class="form-label text-muted mb-1" style="font-size:11px;" data-i18n="settings.llm_provider_label">Proveedor</label>
+            <select id="settings-llm-provider-select" class="form-select form-select-sm border" style="border-radius: var(--radius-sm); background: #ffffff;">
+              <option value="openrouter">☁️ OpenRouter</option>
+              <option value="google">☁️ Google AI Studio</option>
+            </select>
+            <div class="text-muted mt-1" style="font-size:10.5px;" data-i18n="settings.llm_provider_hint">
+              Aplica al agente de chat, artefactos y acciones de IA. Las dos API keys se guardan por separado para que puedas cambiar de proveedor sin reescribirlas.
+            </div>
           </div>
-          <div class="text-muted mt-1" style="font-size:11px;">
-            Se guarda en tu base de datos local y tiene prioridad sobre la variable de entorno
-            <code>OPENROUTER_API_KEY</code>. Consíguela en
-            <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>.
+          <div class="mb-2">
+            <label class="form-label text-muted mb-1" style="font-size:11px;" data-i18n="settings.api_key_title">OpenRouter API Key</label>
+            <div id="settings-key-status" class="text-muted mb-1" style="font-size:11px;" data-i18n="settings.loading_status">Cargando estado…</div>
+            <div class="input-group">
+              <input type="password" id="settings-api-key-input" class="form-control form-control-craft"
+                placeholder="sk-or-v1-…" autocomplete="off">
+              <button class="btn-craft btn-craft-icon" id="toggle-settings-key-visibility" type="button"
+                title="Mostrar/ocultar">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+            <div class="text-muted mt-1" style="font-size:11px;">
+              <span data-i18n="settings.key_hint">Se guarda en tu base de datos local y tiene prioridad sobre la variable de entorno</span>
+              <code>OPENROUTER_API_KEY</code>.
+              <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>.
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label text-muted mb-1" style="font-size:11px;" data-i18n="settings.google_key_title">Google AI Studio API Key</label>
+            <div id="settings-google-key-status" class="text-muted mb-1" style="font-size:11px;" data-i18n="settings.loading_status">Cargando estado…</div>
+            <div class="input-group">
+              <input type="password" id="settings-google-api-key-input" class="form-control form-control-craft"
+                placeholder="AIza…" autocomplete="off">
+              <button class="btn-craft btn-craft-icon" id="toggle-settings-google-key-visibility" type="button"
+                title="Mostrar/ocultar">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+            <div class="text-muted mt-1" style="font-size:11px;">
+              <span data-i18n="settings.google_key_hint">Se guarda en tu base de datos local y tiene prioridad sobre la variable de entorno</span>
+              <code>GOOGLE_API_KEY</code>.
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label text-muted mb-1" style="font-size:11px;" data-i18n="settings.chat_model_label">Modelo de chat</label>
+            <input type="text" id="settings-chat-model-input" class="form-control form-control-sm form-control-craft"
+              placeholder="gemini-3.7-flash" autocomplete="off">
+            <div class="text-muted mt-1" style="font-size:10.5px;" data-i18n="settings.chat_model_hint">
+              Nombre del modelo según el proveedor elegido (editable).
+            </div>
           </div>
           <div class="d-flex justify-content-end gap-2 mt-3">
             <button class="btn-craft" id="btn-clear-settings-key">
-              <i class="bi bi-trash3"></i> Quitar y usar .env
+              <i class="bi bi-trash3"></i> <span data-i18n="settings.clear_key_btn">Quitar y usar .env</span>
             </button>
           </div>
         </div>
@@ -4013,9 +4051,20 @@
           <div class="mb-2">
             <label class="form-label text-muted mb-1" style="font-size:11px;" data-i18n="settings.embedding_provider_label">Motor de embeddings</label>
             <select id="settings-embedding-provider-select" class="form-select form-select-sm border" style="border-radius: var(--radius-sm); background: #ffffff;">
-              <option value="openrouter">☁️ OpenRouter API (Gemini Embedding 2)</option>
+              <option value="cloud">☁️ En la nube (proveedor elegido arriba)</option>
               <option value="local">💻 Local — EmbeddingGemma 2 (ONNX)</option>
             </select>
+            <div class="text-muted mt-1" style="font-size:10.5px;" data-i18n="settings.embedding_reindex_hint">
+              Cambiar el motor o el modelo de embeddings requiere reindexar la base de conocimiento.
+            </div>
+          </div>
+          <div class="mb-2" id="settings-embedding-model-wrap">
+            <label class="form-label text-muted mb-1" style="font-size:11px;" data-i18n="settings.embedding_model_label">Modelo de embeddings</label>
+            <input type="text" id="settings-embedding-model-input" class="form-control form-control-sm form-control-craft"
+              placeholder="gemini-embedding-2-preview" autocomplete="off">
+            <div class="text-muted mt-1" style="font-size:10.5px;" data-i18n="settings.embedding_model_hint">
+              Nombre del modelo según el proveedor elegido (editable).
+            </div>
           </div>
           <div id="settings-local-embedding-options" style="display:none;">
             <div class="row g-2 mb-2">
@@ -5149,10 +5198,20 @@
         },
         settings: {
           title: 'Ajustes',
-          subtitle: 'Trae tu propia API key (BYOK) de OpenRouter e idioma',
+          subtitle: 'Trae tu propia API key (BYOK) de OpenRouter, Google AI Studio e idioma',
           language_label: 'Idioma de la aplicación',
           language_hint: 'Aplica a la interfaz de usuario, el asistente de chat y la generación de artefactos.',
+          llm_provider_title: 'Proveedor de IA',
+          llm_provider_label: 'Proveedor',
+          llm_provider_hint: 'Aplica al agente de chat, artefactos y acciones de IA. Las dos API keys se guardan por separado para que puedas cambiar de proveedor sin reescribirlas.',
           api_key_title: 'OpenRouter API Key',
+          google_key_title: 'Google AI Studio API Key',
+          google_key_hint: 'Se guarda en tu base de datos local y tiene prioridad sobre la variable de entorno GOOGLE_API_KEY. Consíguela en aistudio.google.com/apikey.',
+          chat_model_label: 'Modelo de chat',
+          chat_model_hint: 'Nombre del modelo según el proveedor elegido (editable).',
+          embedding_model_label: 'Modelo de embeddings',
+          embedding_model_hint: 'Nombre del modelo según el proveedor elegido (editable).',
+          embedding_reindex_hint: 'Cambiar el motor o el modelo de embeddings requiere reindexar la base de conocimiento.',
           loading_status: 'Cargando estado…',
           key_hint: 'Se guarda en tu base de datos local y tiene prioridad sobre la variable de entorno OPENROUTER_API_KEY. Consíguela en openrouter.ai/keys.',
           clear_key_btn: 'Quitar y usar .env',
@@ -5463,10 +5522,20 @@
         },
         settings: {
           title: 'Settings',
-          subtitle: 'Bring your own API key (BYOK) from OpenRouter & language',
+          subtitle: 'Bring your own API key (BYOK) from OpenRouter, Google AI Studio & language',
           language_label: 'Application Language',
           language_hint: 'Applies to the UI, chat assistant, and artifact generation.',
+          llm_provider_title: 'AI Provider',
+          llm_provider_label: 'Provider',
+          llm_provider_hint: 'Applies to the chat agent, artifacts and AI actions. Both API keys are stored separately so you can switch provider without retyping them.',
           api_key_title: 'OpenRouter API Key',
+          google_key_title: 'Google AI Studio API Key',
+          google_key_hint: 'Stored in your local database and takes priority over the GOOGLE_API_KEY environment variable. Get it at aistudio.google.com/apikey.',
+          chat_model_label: 'Chat model',
+          chat_model_hint: 'Model name for the chosen provider (editable).',
+          embedding_model_label: 'Embedding model',
+          embedding_model_hint: 'Model name for the chosen provider (editable).',
+          embedding_reindex_hint: 'Changing the embedding engine or model requires reindexing the knowledge base.',
           loading_status: 'Loading status…',
           key_hint: 'Stored in your local database and takes priority over the OPENROUTER_API_KEY environment variable. Get it at openrouter.ai/keys.',
           clear_key_btn: 'Remove & use .env',
@@ -9795,6 +9864,46 @@
       icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
     };
 
+    if ($('#toggle-settings-google-key-visibility')) {
+      $('#toggle-settings-google-key-visibility').onclick = () => {
+        let input = $('#settings-google-api-key-input');
+        let icon = $('#toggle-settings-google-key-visibility').querySelector('i');
+        let show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+      };
+    }
+
+    const LLM_MODEL_PRESETS = {
+      openrouter: {
+        chat_model: 'google/gemini-3.7-flash',
+        embedding_model: 'google/gemini-embedding-2-preview',
+      },
+      google: {
+        chat_model: 'gemini-3.7-flash',
+        embedding_model: 'gemini-embedding-2-preview',
+      },
+    };
+
+    function applyLlmProviderPreset(provider) {
+      let preset = LLM_MODEL_PRESETS[provider] || LLM_MODEL_PRESETS.openrouter;
+      let chatInput = $('#settings-chat-model-input');
+      let embInput = $('#settings-embedding-model-input');
+      if (chatInput) chatInput.value = preset.chat_model;
+      if (embInput) embInput.value = preset.embedding_model;
+    }
+
+    function renderKeyStatus(el, keyStatus) {
+      if (!el) return;
+      if (!keyStatus || keyStatus.source === 'none') {
+        el.innerHTML = `<i class="bi bi-exclamation-triangle-fill text-warning"></i> ${t('settings.key_not_configured')}`;
+      } else if (keyStatus.source === 'byok') {
+        el.innerHTML = `<i class="bi bi-check-circle-fill text-success"></i> ${t('settings.key_using_custom', { masked: esc(keyStatus.masked_key || '') })}`;
+      } else {
+        el.innerHTML = `<i class="bi bi-info-circle-fill text-primary"></i> ${t('settings.key_using_env', { masked: esc(keyStatus.masked_key || '') })}`;
+      }
+    }
+
     async function loadSettingsStatus() {
       let statusEl = $('#settings-key-status');
       statusEl.textContent = t('common.loading');
@@ -9809,12 +9918,20 @@
             langSelect.value = status.language;
           }
         }
-        if (status.source === 'byok') {
-          statusEl.innerHTML = `<i class="bi bi-check-circle-fill text-success"></i> ${t('settings.status_byok', { masked_key: esc(status.masked_key) })}`;
-        } else if (status.source === 'env') {
-          statusEl.innerHTML = `<i class="bi bi-info-circle-fill text-primary"></i> ${t('settings.status_env', { masked_key: esc(status.masked_key) })}`;
-        } else {
-          statusEl.innerHTML = `<i class="bi bi-exclamation-triangle-fill text-warning"></i> ${t('settings.status_none')}`;
+
+        let llmProviderSelect = $('#settings-llm-provider-select');
+        if (llmProviderSelect) {
+          llmProviderSelect.value = status.llm_provider || 'openrouter';
+        }
+        renderKeyStatus(statusEl, status.openrouter_key);
+        renderKeyStatus($('#settings-google-key-status'), status.google_key);
+        let chatInput = $('#settings-chat-model-input');
+        if (chatInput && status.chat_model) {
+          chatInput.value = status.chat_model;
+        }
+        let embModelInput = $('#settings-embedding-model-input');
+        if (embModelInput && status.embedding_model) {
+          embModelInput.value = status.embedding_model;
         }
 
         let engineSelect = $('#settings-web-search-engine-select');
@@ -9837,12 +9954,16 @@
         // Embedding provider settings
         let embProviderSelect = $('#settings-embedding-provider-select');
         let localOptions = $('#settings-local-embedding-options');
+        let embModelWrap = $('#settings-embedding-model-wrap');
         let localDtypeSelect = $('#settings-local-dtype-select');
         let localDeviceSelect = $('#settings-local-device-select');
         if (embProviderSelect) {
-          embProviderSelect.value = status.embedding_provider || 'openrouter';
+          embProviderSelect.value = status.embedding_provider === 'local' ? 'local' : 'cloud';
           if (localOptions) {
             localOptions.style.display = embProviderSelect.value === 'local' ? 'block' : 'none';
+          }
+          if (embModelWrap) {
+            embModelWrap.style.display = embProviderSelect.value === 'local' ? 'none' : 'block';
           }
           if (embProviderSelect.value === 'local') {
             loadModelDownloadStatus();
@@ -9875,12 +9996,22 @@
       };
     }
 
+    if ($('#settings-llm-provider-select')) {
+      $('#settings-llm-provider-select').onchange = (e) => {
+        applyLlmProviderPreset(e.target.value);
+      };
+    }
+
     if ($('#settings-embedding-provider-select')) {
       $('#settings-embedding-provider-select').onchange = (e) => {
         let localOptions = $('#settings-local-embedding-options');
+        let embModelWrap = $('#settings-embedding-model-wrap');
         if (localOptions) {
           localOptions.style.display = e.target.value === 'local' ? 'block' : 'none';
           if (e.target.value === 'local') loadModelDownloadStatus();
+        }
+        if (embModelWrap) {
+          embModelWrap.style.display = e.target.value === 'local' ? 'none' : 'block';
         }
       };
     }
@@ -10003,6 +10134,11 @@
     $('#btn-save-settings-key').onclick = async () => {
       let input = $('#settings-api-key-input');
       let key = input.value.trim();
+      let googleInput = $('#settings-google-api-key-input');
+      let googleKey = googleInput ? googleInput.value.trim() : '';
+      let llmProviderSelect = $('#settings-llm-provider-select');
+      let chatModelInput = $('#settings-chat-model-input');
+      let embModelInput = $('#settings-embedding-model-input');
       let langSelect = $('#settings-language-select');
       let lang = langSelect ? langSelect.value : null;
       let engineSelect = $('#settings-web-search-engine-select');
@@ -10012,6 +10148,18 @@
       let payload = {};
       if (key) {
         payload.openrouter_api_key = key;
+      }
+      if (googleKey) {
+        payload.google_api_key = googleKey;
+      }
+      if (llmProviderSelect) {
+        payload.llm_provider = llmProviderSelect.value;
+      }
+      if (chatModelInput && chatModelInput.value.trim()) {
+        payload.chat_model = chatModelInput.value.trim();
+      }
+      if (embModelInput && embModelInput.value.trim()) {
+        payload.embedding_model = embModelInput.value.trim();
       }
       if (lang) {
         payload.language = lang === 'auto' ? '' : lang;
@@ -10031,7 +10179,10 @@
       let localDtypeSelect = $('#settings-local-dtype-select');
       let localDeviceSelect = $('#settings-local-device-select');
       if (embProviderSelect) {
-        payload.embedding_provider = embProviderSelect.value;
+        // UI: "cloud" (provider chosen above) | "local"; backend stores openrouter/google/local.
+        payload.embedding_provider = embProviderSelect.value === 'local'
+          ? 'local'
+          : (llmProviderSelect ? llmProviderSelect.value : 'openrouter');
       }
       if (localDtypeSelect && embProviderSelect && embProviderSelect.value === 'local') {
         payload.local_embedding_dtype = localDtypeSelect.value;
@@ -10325,11 +10476,13 @@
         await api('/api/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ openrouter_api_key: '' })
+          body: JSON.stringify({ openrouter_api_key: '', google_api_key: '' })
         });
         $('#settings-api-key-input').value = '';
+        let googleInput = $('#settings-google-api-key-input');
+        if (googleInput) googleInput.value = '';
         await loadSettingsStatus();
-        showToast('Se quitó la key personalizada. Se usará OPENROUTER_API_KEY del .env si existe.', 'info');
+        showToast('Se quitaron las keys personalizadas. Se usarán las del .env si existen.', 'info');
       } catch (e) {
         showToast('Error: ' + e.message, 'error');
       }

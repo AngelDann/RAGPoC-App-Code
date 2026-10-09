@@ -342,16 +342,13 @@ ArtifactType = Literal[
 
 from asgiref.sync import sync_to_async
 from ddgs import DDGS
-from openai import AsyncOpenAI
 from pydantic_ai import Agent, BinaryContent, RunContext
 from pydantic_ai.messages import ToolReturn
-from pydantic_ai.models.openrouter import OpenRouterModel
-from pydantic_ai.providers.openrouter import OpenRouterProvider
 
+from knowledge.llm import build_chat_model, build_openai_client
 from knowledge.settings_store import get_effective_settings as get_settings
 from ragpoc.config import Settings
 from ragpoc.embeddings import AUDIO_MIME_TYPES
-from ragpoc.http import new_async_client
 from ragpoc.retrieval import Retriever
 
 
@@ -564,15 +561,8 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
     settings = settings or get_settings()
     active_lang = language or get_current_language()
 
-    client = AsyncOpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=settings.openrouter_api_key or "sk-dummy",
-        http_client=new_async_client(),
-    )
-    model = OpenRouterModel(
-        settings.chat_model,
-        provider=OpenRouterProvider(openai_client=client),
-    )
+    client = build_openai_client(settings)
+    model = build_chat_model(settings, client=client)
 
     agent: Agent[AgentDeps, str] = Agent(
         model=model,
@@ -1363,11 +1353,7 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
                     if settings_directive:
                         user_prompt += f"\n\nPreferencias de formato: {settings_directive}"
 
-                client = AsyncOpenAI(
-                    base_url="https://openrouter.ai/api/v1",
-                    api_key=ctx.deps.settings.openrouter_api_key or "sk-dummy",
-                    http_client=new_async_client(),
-                )
+                client = build_openai_client(ctx.deps.settings)
                 completion = await client.chat.completions.create(
                     model=ctx.deps.settings.chat_model,
                     messages=[

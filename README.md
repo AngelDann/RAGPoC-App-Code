@@ -37,8 +37,9 @@ abajo), y el aviso desaparece a medida que la reputación se acumula.
 - Windows 10 o superior (x64).
 - WebView2, que viene preinstalado en Windows 11 y en Windows 10 actualizado. Si falta, la
   aplicación abre igualmente en una ventana de Edge/Chrome.
-- Una clave de API de [OpenRouter](https://openrouter.ai/) para las funciones de IA. Se configura
-  desde Ajustes dentro de la app, y se guarda solo en tu equipo.
+- Una clave de API de [OpenRouter](https://openrouter.ai/) o de
+  [Google AI Studio](https://aistudio.google.com/apikey) para las funciones de IA. Eliges el
+  proveedor y guardas las keys desde Ajustes dentro de la app; todo se guarda solo en tu equipo.
 
 ## Dónde se guardan tus datos
 

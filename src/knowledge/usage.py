@@ -15,7 +15,7 @@ def record_usage(
     *,
     category: str,
     action: str = "",
-    provider: str = "openrouter",
+    provider: str | None = None,
     model: str = "",
     input_tokens: int = 0,
     output_tokens: int = 0,
@@ -28,6 +28,14 @@ def record_usage(
     metadata: dict | None = None,
 ) -> None:
     """Persist one usage/log entry. Never raises — logging must not break the caller."""
+    if not provider:
+        try:
+            from knowledge.llm import active_llm_provider
+            from knowledge.settings_store import get_effective_settings
+
+            provider = active_llm_provider(get_effective_settings())
+        except Exception:
+            provider = "openrouter"
     try:
         ApiUsageLog.objects.create(
             category=category,
@@ -102,7 +110,17 @@ _key_status_cache: dict = {"data": None, "ts": 0.0, "key": None}
 
 
 def fetch_openrouter_key_status(settings: Settings, force: bool = False) -> dict | None:
-    """Live usage/limit info for the active OpenRouter API key (cached ~30s)."""
+    """Live usage/limit info for the active OpenRouter API key (cached ~30s).
+
+    OpenRouter-specific: Google AI Studio exposes no credits endpoint, so the panel
+    reports key presence only for that provider."""
+    try:
+        from knowledge.llm import PROVIDER_GOOGLE, active_llm_provider
+
+        if active_llm_provider(settings) == PROVIDER_GOOGLE:
+            return None
+    except Exception:
+        pass
     api_key = settings.openrouter_api_key
     if not api_key:
         return None

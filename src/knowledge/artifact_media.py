@@ -14,9 +14,9 @@ OnProgress = Callable[[str], None]
 
 
 def _chat_text(settings: Settings, system_prompt: str, user_prompt: str) -> str:
-    from openai import OpenAI
+    from knowledge.llm import build_openai_client
 
-    client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=settings.openrouter_api_key)
+    client = build_openai_client(settings, async_=False)
     completion = client.chat.completions.create(
         model=settings.chat_model,
         messages=[

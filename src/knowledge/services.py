@@ -13,11 +13,14 @@ from ragpoc.retrieval import Retriever
 
 
 async def _embedding_usage_hook(payload: dict) -> None:
+    from knowledge.settings_store import get_effective_settings
     from knowledge.usage import record_usage
 
+    provider = get_effective_settings().embedding_provider or "openrouter"
     await sync_to_async(record_usage)(
         category="embedding",
         action=f"embed_{payload.get('kind', 'text')}",
+        provider=provider,
         model=payload.get("model", ""),
         input_tokens=payload.get("input_tokens", 0),
         total_tokens=payload.get("total_tokens", 0),

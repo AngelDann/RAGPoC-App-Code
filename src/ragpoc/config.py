@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if getattr(sys, "frozen", False):
@@ -26,10 +26,12 @@ class Settings(BaseSettings):
     )
 
     openrouter_api_key: str | None = Field(default=None, validation_alias="OPENROUTER_API_KEY")
+    google_api_key: str | None = Field(default=None, validation_alias=AliasChoices("GOOGLE_API_KEY", "GEMINI_API_KEY"))
+    llm_provider: str = "openrouter"  # "openrouter" | "google"
     ui_username: str = "operator"
     ui_password: str | None = None
     desktop_mode: bool = False
-    embedding_provider: str = "openrouter"  # "openrouter" | "local"
+    embedding_provider: str = "openrouter"  # "openrouter" | "google" | "local"
     embedding_model: str = "google/gemini-embedding-2-preview"
     local_embedding_model: str = "onnx-community/embeddinggemma-2-ONNX"
     local_embedding_dtype: str = "q8"  # "q4" | "q8" | "fp16" | "fp32"

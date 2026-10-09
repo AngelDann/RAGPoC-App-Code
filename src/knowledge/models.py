@@ -187,6 +187,10 @@ class AppConfig(models.Model):
     """Singleton row holding BYOK overrides and agent settings set from the Ajustes UI."""
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
     openrouter_api_key = models.CharField(max_length=200, blank=True, default="")
+    google_api_key = models.CharField(max_length=200, blank=True, default="")
+    llm_provider = models.CharField(max_length=20, blank=True, default="")
+    chat_model = models.CharField(max_length=100, blank=True, default="")
+    embedding_model = models.CharField(max_length=100, blank=True, default="")
     language = models.CharField(max_length=10, default="es")
     web_search_engine = models.CharField(max_length=30, default="duckduckgo")
     searxng_url = models.CharField(max_length=500, blank=True, default="")

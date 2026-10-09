@@ -33,6 +33,7 @@ from knowledge.models import (
     Workspace,
     calculate_content_hash,
 )
+from knowledge.llm import llm_api_key, llm_provider_label
 from knowledge.services import get_rag_service, reset_rag_service
 from knowledge.settings_store import (
     get_api_key_status,
@@ -219,6 +220,10 @@ def app_settings_view(request: HttpRequest) -> JsonResponse:
             return JsonResponse({"detail": "Invalid JSON"}, status=400)
 
         api_key = body.get("openrouter_api_key")
+        google_api_key = body.get("google_api_key")
+        llm_provider = body.get("llm_provider")
+        chat_model = body.get("chat_model")
+        embedding_model = body.get("embedding_model")
         language = body.get("language")
         web_search_engine = body.get("web_search_engine")
         searxng_url = body.get("searxng_url")
@@ -228,6 +233,10 @@ def app_settings_view(request: HttpRequest) -> JsonResponse:
         local_embedding_device = body.get("local_embedding_device")
         set_app_settings(
             api_key=api_key.strip() if isinstance(api_key, str) else None,
+            google_api_key=google_api_key.strip() if isinstance(google_api_key, str) else None,
+            llm_provider=llm_provider.strip() if isinstance(llm_provider, str) else None,
+            chat_model=chat_model.strip() if isinstance(chat_model, str) else None,
+            embedding_model=embedding_model.strip() if isinstance(embedding_model, str) else None,
             language=language.strip() if isinstance(language, str) else None,
             web_search_engine=web_search_engine.strip() if isinstance(web_search_engine, str) else None,
             searxng_url=searxng_url.strip() if isinstance(searxng_url, str) else None,
@@ -1155,11 +1164,9 @@ def document_source_guide_view(request: HttpRequest, document_id: str) -> JsonRe
 
     # Generate guide using LLM
     try:
-        from openai import OpenAI
-        client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=settings.openrouter_api_key,
-        )
+        from knowledge.llm import build_openai_client
+
+        client = build_openai_client(settings, async_=False)
         sys_prompt = (
             "Eres un analista de conocimiento especializado estilo Google NotebookLM. "
             "Genera una ficha 'Source Guide' completa, profesional y estructurada para el documento suministrado. "
@@ -1400,11 +1407,9 @@ def generate_artifact_view(request: HttpRequest) -> JsonResponse:
 
     started = time.perf_counter()
     try:
-        from openai import OpenAI
-        client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=settings.openrouter_api_key,
-        )
+        from knowledge.llm import build_openai_client
+
+        client = build_openai_client(settings, async_=False)
         completion = client.chat.completions.create(
             model=settings.chat_model,
             messages=[
@@ -1802,18 +1807,16 @@ def inline_ai_action_view(request: HttpRequest) -> JsonResponse:
         return JsonResponse({"detail": "Invalid JSON"}, status=400)
 
     settings = get_settings()
-    if not settings.openrouter_api_key:
-        return JsonResponse({"detail": "OPENROUTER_API_KEY no configurada."}, status=500)
+    if not llm_api_key(settings):
+        return JsonResponse({"detail": f"API key de {llm_provider_label(settings)} no configurada."}, status=500)
 
     action, chosen_system, user_message = _build_inline_ai_prompt(body)
 
     started = time.perf_counter()
     try:
-        from openai import OpenAI
-        client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=settings.openrouter_api_key,
-        )
+        from knowledge.llm import build_openai_client
+
+        client = build_openai_client(settings, async_=False)
         completion = client.chat.completions.create(
             model=settings.chat_model,
             messages=[
@@ -1861,8 +1864,8 @@ def inline_ai_action_stream_view(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"detail": "Invalid JSON"}, status=400)
 
     settings = get_settings()
-    if not settings.openrouter_api_key:
-        return JsonResponse({"detail": "OPENROUTER_API_KEY no configurada."}, status=500)
+    if not llm_api_key(settings):
+        return JsonResponse({"detail": f"API key de {llm_provider_label(settings)} no configurada."}, status=500)
 
     action, chosen_system, user_message = _build_inline_ai_prompt(body)
 
@@ -1876,11 +1879,9 @@ def inline_ai_action_stream_view(request: HttpRequest) -> HttpResponse:
     async def event_stream():
         started = time.perf_counter()
         try:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(
-                base_url="https://openrouter.ai/api/v1",
-                api_key=settings.openrouter_api_key,
-            )
+            from knowledge.llm import build_openai_client
+
+            client = build_openai_client(settings)
             stream = await client.chat.completions.create(
                 model=settings.chat_model,
                 messages=[
@@ -2308,9 +2309,9 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                     pass
             started = time.perf_counter()
             try:
-                # Check if OPENROUTER_API_KEY is present
-                if not settings.openrouter_api_key:
-                    q.put({"type": "token", "text": "OPENROUTER_API_KEY no está configurada."})
+                # Check the active provider's API key is present
+                if not llm_api_key(settings):
+                    q.put({"type": "token", "text": f"API key de {llm_provider_label(settings)} no está configurada."})
                     q.put({"type": "done"})
                     return
 
