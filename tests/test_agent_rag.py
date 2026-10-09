@@ -859,6 +859,154 @@ def test_document_source_guide_view():
     assert len(data["guide"]["suggested_questions"]) == 2
 
 
+@pytest.mark.django_db(transaction=True)
+def test_searxng_search_parser():
+    """Verify search_searxng correctly queries instance and parses JSON results."""
+    from knowledge.pydantic_agent import search_searxng
+
+    mock_searx_response = json.dumps({
+        "query": "python async",
+        "results": [
+            {
+                "title": "Asyncio in Python",
+                "url": "https://docs.python.org/3/library/asyncio.html",
+                "content": "Asyncio is a library to write concurrent code using the async/await syntax.",
+                "engine": "google",
+            },
+            {
+                "title": "RealPython Async IO",
+                "url": "https://realpython.com/async-io-python/",
+                "content": "A complete walkthrough of Python async and await concepts.",
+                "engine": "bing",
+            }
+        ]
+    }).encode("utf-8")
+
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = mock_searx_response
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        results = search_searxng("python async", max_results=5, instance_url="https://searx.test.org")
+
+    assert len(results) == 2
+    assert results[0]["title"] == "Asyncio in Python"
+    assert results[0]["url"] == "https://docs.python.org/3/library/asyncio.html"
+    assert "Asyncio is a library" in results[0]["snippet"]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_searxng_fallback_to_duckduckgo():
+    """Verify search_web automatically falls back to DuckDuckGo if SearXNG is unavailable."""
+    from knowledge.pydantic_agent import AgentDeps, create_pydantic_rag_agent
+    from ragpoc.config import Settings
+    from ragpoc.retrieval import Retriever
+
+    settings = Settings(web_search_engine="searxng", searxng_url="https://offline.searx.org", web_search_deep_read=False)
+    agent = create_pydantic_rag_agent(settings=settings)
+
+    mock_retriever = MagicMock(spec=Retriever)
+    deps = AgentDeps(retriever=mock_retriever, settings=settings)
+
+    mock_ddg_results = [
+        {"title": "Fallback Result", "url": "https://duckduckgo.com/r1", "snippet": "DuckDuckGo content snippet"}
+    ]
+
+    with patch("knowledge.pydantic_agent.search_searxng", side_effect=RuntimeError("Connection refused")), \
+         patch("knowledge.pydantic_agent.search_duckduckgo", return_value=mock_ddg_results):
+
+        search_tool = agent._function_toolset.tools["search_web"]
+        ctx = MagicMock()
+        ctx.deps = deps
+
+        results = await search_tool.function(ctx, query="test query", max_results=5)
+
+    assert len(results) == 1
+    assert results[0]["title"] == "Fallback Result"
+    # Verify fallback event was recorded in tool summary and label
+    assert any("SearXNG no disponible" in (t.get("summary") or "") for t in deps.executed_tools)
+    assert any("fallback" in (t.get("label") or "") for t in deps.executed_tools)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_web_search_deep_read_enrichment():
+    """Verify deep_read_top_results enriches search items with full sanitized content."""
+    from knowledge.pydantic_agent import deep_read_top_results
+
+    raw_html = """
+    <!DOCTYPE html>
+    <html>
+      <head><title>Test Page</title><style>.hidden{display:none;}</style></head>
+      <body>
+        <nav><a href="/">Home</a></nav>
+        <article>
+          <h1>Guía de Arquitectura RAG</h1>
+          <p>Esta es una explicación sustancial de cómo funciona el pipeline de recuperación y generación.</p>
+        </article>
+        <footer>Copyright 2026</footer>
+      </body>
+    </html>
+    """.encode("utf-8")
+
+    initial_results = [
+        {"title": "RAG Guide", "url": "https://example.com/rag", "snippet": "Brief snippet"},
+        {"title": "Second Page", "url": "https://example.com/page2", "snippet": "Another snippet"},
+    ]
+
+    with patch("knowledge.pydantic_agent.fetch_remote_resource", return_value=(raw_html, "text/html", "doc.html", ".html")):
+        enriched = await deep_read_top_results(initial_results, max_pages=1, max_chars=1000)
+
+    assert "content" in enriched[0]
+    assert "Guía de Arquitectura RAG" in enriched[0]["content"]
+    assert "explicación sustancial" in enriched[0]["content"]
+    # Navbar and footer must be stripped by extract_clean_text_from_html
+    assert "Copyright 2026" not in enriched[0]["content"]
+    # Second page was beyond max_pages=1 so should not have content
+    assert "content" not in enriched[1]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_app_settings_web_search_persistence():
+    """Verify app_settings_view reads and persists web search engine and deep read settings."""
+    from django.test import RequestFactory
+    from knowledge.settings_store import get_effective_settings
+    from knowledge.views import app_settings_view
+
+    factory = RequestFactory()
+
+    post_payload = json.dumps({
+        "web_search_engine": "searxng",
+        "searxng_url": "https://custom.searxng.local",
+        "web_search_deep_read": True,
+    }).encode("utf-8")
+
+    req_post = factory.post("/api/settings", data=post_payload, content_type="application/json")
+    resp_post = app_settings_view(req_post)
+    assert resp_post.status_code == 200
+
+    data_post = json.loads(resp_post.content)
+    assert data_post["web_search_engine"] == "searxng"
+    assert data_post["searxng_url"] == "https://custom.searxng.local"
+    assert data_post["web_search_deep_read"] is True
+
+    # Check effective settings
+    effective = get_effective_settings()
+    assert effective.web_search_engine == "searxng"
+    assert effective.searxng_url == "https://custom.searxng.local"
+    assert effective.web_search_deep_read is True
+
+    # GET request check
+    req_get = factory.get("/api/settings")
+    resp_get = app_settings_view(req_get)
+    assert resp_get.status_code == 200
+    data_get = json.loads(resp_get.content)
+    assert data_get["web_search_engine"] == "searxng"
+    assert data_get["searxng_url"] == "https://custom.searxng.local"
+
+
+
 
 
 

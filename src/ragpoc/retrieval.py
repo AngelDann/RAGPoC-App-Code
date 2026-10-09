@@ -38,7 +38,10 @@ class Retriever:
             raise ValueError("Query cannot be empty.")
         if not 1 <= top_k <= self.max_top_k:
             raise ValueError(f"top_k must be between 1 and {self.max_top_k}.")
-        query_vector = (await self.provider.embed_texts([query]))[0]
+        if hasattr(self.provider, "embed_query"):
+            query_vector = await self.provider.embed_query(query)
+        else:
+            query_vector = (await self.provider.embed_texts([query]))[0]
         sql = """
             SELECT c.*, d.source_path, d.original_filename, d.media_type, v.embedding
             FROM chunks c

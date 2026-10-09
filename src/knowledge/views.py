@@ -124,6 +124,7 @@ def health_view(request: HttpRequest) -> JsonResponse:
         "status": "ok",
         "database": str(settings.database_path),
         "embedding_model": settings.embedding_model,
+        "embedding_provider": settings.embedding_provider,
         "chat_model": settings.chat_model,
     })
 
@@ -219,14 +220,103 @@ def app_settings_view(request: HttpRequest) -> JsonResponse:
 
         api_key = body.get("openrouter_api_key")
         language = body.get("language")
+        web_search_engine = body.get("web_search_engine")
+        searxng_url = body.get("searxng_url")
+        web_search_deep_read = body.get("web_search_deep_read")
+        embedding_provider = body.get("embedding_provider")
+        local_embedding_dtype = body.get("local_embedding_dtype")
+        local_embedding_device = body.get("local_embedding_device")
         set_app_settings(
             api_key=api_key.strip() if isinstance(api_key, str) else None,
             language=language.strip() if isinstance(language, str) else None,
+            web_search_engine=web_search_engine.strip() if isinstance(web_search_engine, str) else None,
+            searxng_url=searxng_url.strip() if isinstance(searxng_url, str) else None,
+            web_search_deep_read=bool(web_search_deep_read) if web_search_deep_read is not None else None,
+            embedding_provider=embedding_provider.strip() if isinstance(embedding_provider, str) else None,
+            local_embedding_dtype=local_embedding_dtype.strip() if isinstance(local_embedding_dtype, str) else None,
+            local_embedding_device=local_embedding_device.strip() if isinstance(local_embedding_device, str) else None,
         )
         reset_rag_service()
         return JsonResponse(get_api_key_status())
 
     return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+
+@csrf_exempt
+def reindex_view(request: HttpRequest) -> JsonResponse:
+    """Clear all indexed vectors and return the source paths for re-ingestion."""
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    from ragpoc.db import reindex_database
+
+    rag = get_rag_service()
+    source_paths = reindex_database(rag.connection)
+    reset_rag_service()
+    return JsonResponse({
+        "status": "reindexed",
+        "document_count": len(source_paths),
+        "source_paths": source_paths,
+    })
+
+
+def model_status_view(request: HttpRequest) -> JsonResponse:
+    """Return the local embedding model download status."""
+    from ragpoc.model_downloader import get_downloader
+
+    settings = get_settings()
+    downloader = get_downloader(settings)
+    status = downloader.get_status()
+    return JsonResponse({
+        "state": status.state,
+        "downloaded_bytes": status.downloaded_bytes,
+        "total_bytes": status.total_bytes,
+        "percent": status.percent,
+        "dtype": status.dtype,
+        "message": status.message,
+        "error": status.error,
+    })
+
+
+@csrf_exempt
+def model_download_view(request: HttpRequest) -> JsonResponse:
+    """Start (or continue) downloading the local embedding model in a background thread."""
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    import threading
+
+    from ragpoc.model_downloader import get_downloader
+
+    try:
+        body = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except Exception:
+        body = {}
+    dtype = body.get("dtype") or None
+
+    settings = get_settings()
+    downloader = get_downloader(settings)
+
+    if downloader.get_status().state == "downloading":
+        return JsonResponse({"state": "downloading", "message": "Download already in progress"})
+
+    def _run():
+        downloader.download(dtype=dtype)
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return JsonResponse({"state": "downloading", "message": "Download started"})
+
+
+@csrf_exempt
+def model_cancel_view(request: HttpRequest) -> JsonResponse:
+    """Cancel an in-progress model download."""
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    from ragpoc.model_downloader import get_downloader
+
+    settings = get_settings()
+    downloader = get_downloader(settings)
+    downloader.cancel()
+    return JsonResponse({"state": "cancelling", "message": "Cancellation requested"})
 
 
 @csrf_exempt

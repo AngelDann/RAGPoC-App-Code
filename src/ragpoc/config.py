@@ -29,12 +29,22 @@ class Settings(BaseSettings):
     ui_username: str = "operator"
     ui_password: str | None = None
     desktop_mode: bool = False
+    embedding_provider: str = "openrouter"  # "openrouter" | "local"
     embedding_model: str = "google/gemini-embedding-2-preview"
+    local_embedding_model: str = "onnx-community/embeddinggemma-2-ONNX"
+    local_embedding_dtype: str = "q8"  # "q4" | "q8" | "fp16" | "fp32"
+    local_embedding_device: str = "auto"  # "auto" | "dml" | "cpu"
+    local_embedding_dim: int | None = 768  # MRL truncation: 768, 512, 256, 128
+    local_embedding_vision_tokens: int = Field(default=140, ge=70, le=1120)
+    local_embedding_cache_dir: Path = Field(default_factory=lambda: BASE_DIR / "data" / "models")
     chat_model: str = "google/gemini-3.7-flash"
     image_model: str = "google/gemini-3.1-flash-image"
     tts_model: str = "google/gemini-3.1-flash-tts-preview"
     tts_voice_a: str = "Kore"
     tts_voice_b: str = "Puck"
+    web_search_engine: str = "duckduckgo"
+    searxng_url: str = ""
+    web_search_deep_read: bool = True
     embedding_dimension: int | None = None
     data_dir: Path = Field(default_factory=lambda: BASE_DIR / "data")
     max_pdf_bytes: int = 524_288_000
@@ -53,7 +63,7 @@ class Settings(BaseSettings):
     def empty_dimension_means_auto(cls, value: object) -> object:
         return None if value == "" else value
 
-    @field_validator("data_dir", "allowed_upload_dir", mode="after")
+    @field_validator("data_dir", "allowed_upload_dir", "local_embedding_cache_dir", mode="after")
     @classmethod
     def anchor_relative_paths(cls, value: Path) -> Path:
         # A relative override (e.g. RAGPOC_DATA_DIR=mydata in .env) should still
@@ -63,6 +73,10 @@ class Settings(BaseSettings):
     @property
     def database_path(self) -> Path:
         return self.data_dir / "ragpoc.db"
+
+    @property
+    def local_model_dir(self) -> Path:
+        return self.local_embedding_cache_dir / "embeddinggemma2-onnx"
 
     @property
     def renders_dir(self) -> Path:
@@ -77,7 +91,7 @@ class Settings(BaseSettings):
         return self.data_dir / "derived" / "artifacts"
 
     def ensure_directories(self) -> None:
-        for path in (self.data_dir, self.allowed_upload_dir, self.renders_dir, self.frames_dir, self.artifacts_dir):
+        for path in (self.data_dir, self.allowed_upload_dir, self.renders_dir, self.frames_dir, self.artifacts_dir, self.local_embedding_cache_dir):
             path.mkdir(parents=True, exist_ok=True)
 
 

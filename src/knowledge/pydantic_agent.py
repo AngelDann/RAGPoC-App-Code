@@ -214,6 +214,119 @@ def fetch_remote_resource(url: str, timeout: int = 20) -> tuple[bytes, str, str,
         return raw_bytes, content_type, filename_hint, ext
 
 
+DEFAULT_SEARXNG_INSTANCES: list[str] = [
+    "https://searx.be",
+    "https://search.ononoki.org",
+    "https://searx.tiekoetter.com",
+    "https://priv.au",
+]
+
+
+def search_searxng(
+    query: str,
+    max_results: int = 10,
+    instance_url: str = "",
+    timeout: int = 6,
+) -> list[dict]:
+    """Query a SearXNG instance for aggregated multi-engine results (Google, Bing, Reddit, etc.)."""
+    instances = [instance_url.strip()] if instance_url and instance_url.strip() else DEFAULT_SEARXNG_INSTANCES
+    last_err = None
+
+    for base_url in instances:
+        cleaned_base = base_url.rstrip("/")
+        if not cleaned_base.startswith("http://") and not cleaned_base.startswith("https://"):
+            cleaned_base = "https://" + cleaned_base
+
+        url = f"{cleaned_base}/search?q={urllib.parse.quote(query)}&format=json&categories=general"
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Accept": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                raw_results = data.get("results", [])
+                if raw_results:
+                    parsed = []
+                    for r in raw_results[:max_results]:
+                        parsed.append({
+                            "title": r.get("title", ""),
+                            "url": r.get("url", ""),
+                            "snippet": r.get("content", ""),
+                            "engine": r.get("engine", "searxng"),
+                        })
+                    return parsed
+        except Exception as e:
+            last_err = e
+            continue
+
+    raise RuntimeError(f"No SearXNG instance responded successfully: {last_err}")
+
+
+def search_duckduckgo(query: str, max_results: int = 10) -> list[dict]:
+    """Query DuckDuckGo for search results."""
+    with DDGS() as ddgs:
+        raw_results = list(ddgs.text(query, max_results=max_results))
+    return [
+        {"title": r.get("title"), "url": r.get("href"), "snippet": r.get("body")}
+        for r in raw_results
+    ]
+
+
+async def deep_read_top_results(
+    results: list[dict],
+    max_pages: int = 3,
+    max_chars: int = 2500,
+    timeout: int = 5,
+) -> list[dict]:
+    """Fetch and extract clean readable text/markdown for top search results in parallel."""
+    to_enrich = results[:max_pages]
+    if not to_enrich:
+        return results
+
+    loop = asyncio.get_event_loop()
+
+    def _fetch_page(item: dict) -> dict:
+        url = item.get("url")
+        if not url or not (url.startswith("http://") or url.startswith("https://")):
+            return item
+        try:
+            raw_bytes, ctype, _, ext = fetch_remote_resource(url, timeout=timeout)
+            if ext == ".pdf" or "pdf" in ctype or raw_bytes.startswith(b"%PDF-"):
+                doc = pymupdf.open(stream=raw_bytes, filetype="pdf")
+                pages_text = []
+                for idx, page in enumerate(doc):
+                    if idx >= 4:
+                        break
+                    txt = page.get_text().strip()
+                    if txt:
+                        pages_text.append(txt)
+                text = "\n\n".join(pages_text)
+            else:
+                html_text = raw_bytes.decode("utf-8", errors="ignore")
+                text = extract_clean_text_from_html(html_text)
+
+            if text:
+                item["content"] = text[:max_chars].strip()
+        except Exception:
+            pass
+        return item
+
+    tasks = [loop.run_in_executor(None, lambda r=item: _fetch_page(r)) for item in to_enrich]
+    try:
+        enriched = await asyncio.gather(*tasks, return_exceptions=True)
+        for idx, res in enumerate(enriched):
+            if isinstance(res, dict):
+                results[idx] = res
+    except Exception:
+        pass
+
+    return results
+
+
 
 ArtifactType = Literal[
     "podcast",
@@ -550,20 +663,49 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
         - query: Consulta o palabras clave a buscar.
         - max_results: Cantidad de resultados deseados (por defecto 10, configurable entre 1 y 25).
         """
-        ctx.deps.record_tool_start("search_web", f"Buscando en la web: '{query[:40]}'…", "globe")
+        settings = getattr(ctx.deps, "settings", None)
+        engine = (getattr(settings, "web_search_engine", "duckduckgo") or "duckduckgo").lower()
+        searxng_url = getattr(settings, "searxng_url", "") or ""
+        deep_read = getattr(settings, "web_search_deep_read", True)
+        if deep_read is None:
+            deep_read = True
+
+        engine_label = "SearXNG (Google+Bing)" if engine == "searxng" else "DuckDuckGo"
+        ctx.deps.record_tool_start("search_web", f"Buscando en {engine_label}: '{query[:40]}'…", "globe")
         try:
             clamped_results = max(1, min(int(max_results), 25))
             loop = asyncio.get_event_loop()
-            def _sync_search():
-                with DDGS() as ddgs:
-                    return list(ddgs.text(query, max_results=clamped_results))
+            results = []
+            used_engine = engine
 
-            raw_results = await loop.run_in_executor(None, _sync_search)
-            results = [
-                {"title": r.get("title"), "url": r.get("href"), "snippet": r.get("body")}
-                for r in raw_results
-            ]
-            ctx.deps.record_tool_end("search_web", f"{len(results)} resultados web encontrados")
+            if engine == "searxng":
+                try:
+                    results = await loop.run_in_executor(
+                        None, lambda: search_searxng(query, max_results=clamped_results, instance_url=searxng_url)
+                    )
+                except Exception as searx_err:
+                    # Conmutación por error (fallback) automática a DuckDuckGo
+                    ctx.deps.record_tool_end("search_web", "SearXNG no disponible, conmutando a DuckDuckGo…", status="warning")
+                    ctx.deps.record_tool_start("search_web", f"Buscando en DuckDuckGo (fallback): '{query[:35]}'…", "globe")
+                    results = await loop.run_in_executor(
+                        None, lambda: search_duckduckgo(query, max_results=clamped_results)
+                    )
+                    used_engine = "duckduckgo (fallback)"
+            else:
+                results = await loop.run_in_executor(
+                    None, lambda: search_duckduckgo(query, max_results=clamped_results)
+                )
+
+            if deep_read and results:
+                read_count = min(3, len(results))
+                ctx.deps.record_tool_end("search_web", f"{len(results)} URLs encontradas. Leyendo contenido de {read_count} páginas…")
+                ctx.deps.record_tool_start("search_web", f"Extrayendo texto de las {read_count} páginas principales…", "book")
+                results = await deep_read_top_results(results, max_pages=read_count)
+                pages_with_content = sum(1 for r in results if r.get("content"))
+                ctx.deps.record_tool_end("search_web", f"{len(results)} resultados web ({pages_with_content} páginas analizadas)")
+            else:
+                ctx.deps.record_tool_end("search_web", f"{len(results)} resultados web encontrados ({used_engine})")
+
             return results
         except Exception as e:
             ctx.deps.record_tool_end("search_web", f"Error en búsqueda web: {str(e)[:30]}", status="error")

@@ -3974,6 +3974,110 @@
           </div>
         </div>
 
+        <!-- Web Search Engine Card -->
+        <div class="craft-card p-3">
+          <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
+            <i class="bi bi-globe2 text-primary"></i> <span data-i18n="settings.search_engine_title">Motor de Búsqueda Web</span>
+          </div>
+          <div class="mb-2">
+            <label class="form-label text-muted mb-1" style="font-size:11px;" data-i18n="settings.search_engine_label">Proveedor de búsqueda</label>
+            <select id="settings-web-search-engine-select" class="form-select form-select-sm border" style="border-radius: var(--radius-sm); background: #ffffff;">
+              <option value="duckduckgo">🦆 DuckDuckGo (Gratuito y Privado)</option>
+              <option value="searxng">🔍 SearXNG (Google + Bing + Reddit Agregados)</option>
+            </select>
+          </div>
+          <div id="settings-searxng-url-container" class="mb-2" style="display:none;">
+            <label class="form-label text-muted mb-1" style="font-size:11px;" data-i18n="settings.searxng_url_label">URL de Instancia SearXNG (opcional)</label>
+            <input type="text" id="settings-searxng-url-input" class="form-control form-control-sm form-control-craft"
+              placeholder="https://searx.be o http://localhost:8888">
+            <div class="text-muted mt-1" style="font-size:10.5px;" data-i18n="settings.searxng_url_hint">
+              Deja vacío para usar instancias públicas automáticas. Si falla, se conmuta automáticamente a DuckDuckGo.
+            </div>
+          </div>
+          <div class="form-check form-switch mt-2">
+            <input class="form-check-input" type="checkbox" id="settings-deep-read-checkbox" checked>
+            <label class="form-check-label small fw-medium text-dark" for="settings-deep-read-checkbox" data-i18n="settings.deep_read_label">
+              Lectura profunda automática (Deep Search)
+            </label>
+          </div>
+          <div class="text-muted mt-1" style="font-size:10.5px;" data-i18n="settings.deep_read_hint">
+            Descarga y limpia en paralelo el contenido de las páginas principales para que el agente cuente con artículos completos.
+          </div>
+        </div>
+
+        <!-- Embedding Provider Card -->
+        <div class="craft-card p-3">
+          <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
+            <i class="bi bi-cpu text-primary"></i> <span data-i18n="settings.embedding_title">Proveedor de Embeddings</span>
+          </div>
+          <div class="mb-2">
+            <label class="form-label text-muted mb-1" style="font-size:11px;" data-i18n="settings.embedding_provider_label">Motor de embeddings</label>
+            <select id="settings-embedding-provider-select" class="form-select form-select-sm border" style="border-radius: var(--radius-sm); background: #ffffff;">
+              <option value="openrouter">☁️ OpenRouter API (Gemini Embedding 2)</option>
+              <option value="local">💻 Local — EmbeddingGemma 2 (ONNX)</option>
+            </select>
+          </div>
+          <div id="settings-local-embedding-options" style="display:none;">
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <label class="form-label text-muted mb-1" style="font-size:11px;">Precisión</label>
+                <select id="settings-local-dtype-select" class="form-select form-select-sm border" style="border-radius: var(--radius-sm); background: #ffffff;">
+                  <option value="q4">q4 — 473 MB (rápido)</option>
+                  <option value="q8" selected>q8 — 850 MB (recomendado)</option>
+                  <option value="fp16">fp16 — 1.5 GB (alta calidad)</option>
+                  <option value="fp32">fp32 — 2.9 GB (máxima)</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label text-muted mb-1" style="font-size:11px;">Dispositivo</label>
+                <select id="settings-local-device-select" class="form-select form-select-sm border" style="border-radius: var(--radius-sm); background: #ffffff;">
+                  <option value="auto" selected>Automático (GPU/CPU)</option>
+                  <option value="dml">GPU (DirectML)</option>
+                  <option value="cpu">Solo CPU</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Model Download Status & Progress -->
+            <div id="model-download-status-box" class="mb-2 p-2 rounded border bg-light">
+              <div class="d-flex justify-content-between align-items-center mb-1" style="font-size:11px;">
+                <span id="model-download-label" class="fw-medium text-dark">
+                  <i class="bi bi-cloud-arrow-down text-primary"></i> Estado del modelo
+                </span>
+                <span id="model-download-percent" class="fw-bold text-primary"></span>
+              </div>
+              <div class="progress mb-1" style="height: 6px; display:none;" id="model-download-progress-bar">
+                <div id="model-download-progress-fill" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%;"></div>
+              </div>
+              <div class="d-flex justify-content-between align-items-center" style="font-size:10px;">
+                <span id="model-download-bytes" class="text-muted"></span>
+                <span id="model-download-actions">
+                  <button class="btn-craft btn-craft-sm" id="btn-download-model" style="display:none;">
+                    <i class="bi bi-cloud-arrow-down"></i> Descargar modelo
+                  </button>
+                  <a href="javascript:void(0)" id="btn-cancel-model-download" class="text-danger text-decoration-none" style="display:none;">
+                    <i class="bi bi-x-circle"></i> Cancelar
+                  </a>
+                </span>
+              </div>
+              <div id="model-download-error" class="text-danger mt-1" style="font-size:10px; display:none;"></div>
+            </div>
+
+            <div class="text-muted mb-2" style="font-size:10.5px;">
+              EmbeddingGemma 2 (740M parámetros, Apache 2.0) genera vectores de 768 dimensiones
+              para texto, imagen, vídeo y audio — todo local, sin conexión.
+            </div>
+            <div class="d-flex justify-content-end">
+              <button class="btn-craft btn-craft-sm" id="btn-reindex-embeddings" title="Reindexar toda la base de conocimiento con el nuevo modelo">
+                <i class="bi bi-arrow-repeat"></i> Reindexar base de conocimiento
+              </button>
+            </div>
+          </div>
+          <div class="text-muted mt-1" style="font-size:11px;" data-i18n="settings.embedding_hint">
+            Cambiar de proveedor requiere reindexar los documentos (las dimensiones de vector son distintas).
+          </div>
+        </div>
+
         <div class="craft-card p-3">
           <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
             <i class="bi bi-arrow-repeat text-dark"></i> Actualizaciones
@@ -5065,6 +5169,12 @@
           key_using_env: 'Usando la key del archivo .env ({masked}). Puedes reemplazarla abajo.',
           key_not_configured: 'No hay ninguna API key configurada todavía.',
           settings_saved_toast: 'Ajustes guardados correctamente.',
+          search_engine_title: 'Motor de Búsqueda Web',
+          search_engine_label: 'Proveedor de búsqueda',
+          searxng_url_label: 'URL de Instancia SearXNG (opcional)',
+          searxng_url_hint: 'Deja vacío para usar instancias públicas automáticas. Si falla, se conmuta automáticamente a DuckDuckGo.',
+          deep_read_label: 'Lectura profunda automática (Deep Search)',
+          deep_read_hint: 'Descarga y limpia en paralelo el contenido de las páginas principales para que el agente cuente con artículos completos.',
         },
         memory_skills: {
           title: 'Memoria Declarativa & Habilidades (Skills)',
@@ -5373,6 +5483,12 @@
           key_using_env: 'Using .env file key ({masked}). You can override it below.',
           key_not_configured: 'No API key configured yet.',
           settings_saved_toast: 'Settings saved successfully.',
+          search_engine_title: 'Web Search Engine',
+          search_engine_label: 'Search Provider',
+          searxng_url_label: 'SearXNG Instance URL (optional)',
+          searxng_url_hint: 'Leave blank to use automatic public instances. Falls back cleanly to DuckDuckGo if unreachable.',
+          deep_read_label: 'Automatic Deep Search (Deep Reading)',
+          deep_read_hint: 'Concurrently downloads and sanitizes full text for top pages so the agent has full articles rather than snippets.',
         },
         memory_skills: {
           title: 'Declarative Memory & Skills',
@@ -9700,6 +9816,44 @@
         } else {
           statusEl.innerHTML = `<i class="bi bi-exclamation-triangle-fill text-warning"></i> ${t('settings.status_none')}`;
         }
+
+        let engineSelect = $('#settings-web-search-engine-select');
+        let searxngContainer = $('#settings-searxng-url-container');
+        let searxngInput = $('#settings-searxng-url-input');
+        let deepReadCheckbox = $('#settings-deep-read-checkbox');
+        if (engineSelect) {
+          engineSelect.value = status.web_search_engine || 'duckduckgo';
+          if (searxngContainer) {
+            searxngContainer.style.display = engineSelect.value === 'searxng' ? 'block' : 'none';
+          }
+        }
+        if (searxngInput) {
+          searxngInput.value = status.searxng_url || '';
+        }
+        if (deepReadCheckbox) {
+          deepReadCheckbox.checked = status.web_search_deep_read !== false;
+        }
+
+        // Embedding provider settings
+        let embProviderSelect = $('#settings-embedding-provider-select');
+        let localOptions = $('#settings-local-embedding-options');
+        let localDtypeSelect = $('#settings-local-dtype-select');
+        let localDeviceSelect = $('#settings-local-device-select');
+        if (embProviderSelect) {
+          embProviderSelect.value = status.embedding_provider || 'openrouter';
+          if (localOptions) {
+            localOptions.style.display = embProviderSelect.value === 'local' ? 'block' : 'none';
+          }
+          if (embProviderSelect.value === 'local') {
+            loadModelDownloadStatus();
+          }
+        }
+        if (localDtypeSelect && status.local_embedding_dtype) {
+          localDtypeSelect.value = status.local_embedding_dtype;
+        }
+        if (localDeviceSelect && status.local_embedding_device) {
+          localDeviceSelect.value = status.local_embedding_device;
+        }
       } catch (e) {
         statusEl.textContent = t('common.error') + ': ' + e.message;
       }
@@ -9712,11 +9866,148 @@
       };
     }
 
+    if ($('#settings-web-search-engine-select')) {
+      $('#settings-web-search-engine-select').onchange = (e) => {
+        let searxngContainer = $('#settings-searxng-url-container');
+        if (searxngContainer) {
+          searxngContainer.style.display = e.target.value === 'searxng' ? 'block' : 'none';
+        }
+      };
+    }
+
+    if ($('#settings-embedding-provider-select')) {
+      $('#settings-embedding-provider-select').onchange = (e) => {
+        let localOptions = $('#settings-local-embedding-options');
+        if (localOptions) {
+          localOptions.style.display = e.target.value === 'local' ? 'block' : 'none';
+          if (e.target.value === 'local') loadModelDownloadStatus();
+        }
+      };
+    }
+
+    // --- Model download management ---
+    let modelDownloadPollTimer = null;
+
+    function formatBytes(n) {
+      if (n < 1024) return n + ' B';
+      if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+      if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+      return (n / 1073741824).toFixed(2) + ' GB';
+    }
+
+    async function loadModelDownloadStatus() {
+      try {
+        let s = await api('/api/model/status');
+        updateModelDownloadUI(s);
+      } catch (e) { /* silent */ }
+    }
+
+    function updateModelDownloadUI(s) {
+      let label = $('#model-download-label');
+      let pct = $('#model-download-percent');
+      let bar = $('#model-download-progress-bar');
+      let fill = $('#model-download-progress-fill');
+      let bytes = $('#model-download-bytes');
+      let dlBtn = $('#btn-download-model');
+      let cancelBtn = $('#btn-cancel-model-download');
+      let errBox = $('#model-download-error');
+
+      if (!label) return;
+
+      errBox.style.display = s.error ? 'block' : 'none';
+      errBox.textContent = s.error || '';
+
+      if (s.state === 'ready') {
+        label.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i> Modelo descargado';
+        pct.textContent = formatBytes(s.downloaded_bytes);
+        bar.style.display = 'none';
+        bytes.textContent = 'Listo para usar (' + formatBytes(s.downloaded_bytes) + ')';
+        dlBtn.style.display = 'none';
+        cancelBtn.style.display = 'none';
+      } else if (s.state === 'downloading') {
+        label.innerHTML = '<i class="bi bi-cloud-arrow-down text-primary"></i> Descargando…';
+        pct.textContent = s.percent.toFixed(1) + '%';
+        bar.style.display = 'block';
+        fill.style.width = s.percent + '%';
+        bytes.textContent = formatBytes(s.downloaded_bytes) + ' / ' + formatBytes(s.total_bytes);
+        dlBtn.style.display = 'none';
+        cancelBtn.style.display = 'inline';
+      } else {
+        label.innerHTML = '<i class="bi bi-cloud-arrow-down text-primary"></i> Modelo no descargado';
+        pct.textContent = '';
+        bar.style.display = 'none';
+        bytes.textContent = 'Total: ' + formatBytes(s.total_bytes);
+        dlBtn.style.display = 'inline-flex';
+        cancelBtn.style.display = 'none';
+      }
+    }
+
+    function startModelDownloadPolling() {
+      if (modelDownloadPollTimer) clearInterval(modelDownloadPollTimer);
+      modelDownloadPollTimer = setInterval(async () => {
+        try {
+          let s = await api('/api/model/status');
+          updateModelDownloadUI(s);
+          if (s.state !== 'downloading') {
+            clearInterval(modelDownloadPollTimer);
+            modelDownloadPollTimer = null;
+          }
+        } catch (e) { /* silent */ }
+      }, 1500);
+    }
+
+    if ($('#btn-download-model')) {
+      $('#btn-download-model').onclick = async () => {
+        let dtypeSelect = $('#settings-local-dtype-select');
+        let dtype = dtypeSelect ? dtypeSelect.value : 'q8';
+        try {
+          await api('/api/model/download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dtype })
+          });
+          startModelDownloadPolling();
+          updateModelDownloadUI({ state: 'downloading', percent: 0, downloaded_bytes: 0, total_bytes: 0, error: '' });
+        } catch (e) {
+          showToast('Error al iniciar descarga: ' + e.message, 'error');
+        }
+      };
+    }
+
+    if ($('#btn-cancel-model-download')) {
+      $('#btn-cancel-model-download').onclick = async () => {
+        try {
+          await api('/api/model/cancel', { method: 'POST' });
+        } catch (e) { /* silent */ }
+      };
+    }
+
+    if ($('#btn-reindex-embeddings')) {
+      $('#btn-reindex-embeddings').onclick = async () => {
+        if (!confirm('¿Reindexar toda la base de conocimiento?\n\nSe eliminarán todos los vectores actuales y los documentos se volverán a procesar con el modelo seleccionado. Esta operación puede tardar varios minutos.')) return;
+        let btn = $('#btn-reindex-embeddings');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Reindexando…';
+        try {
+          let result = await api('/api/reindex', { method: 'POST' });
+          showToast(`Reindexado completado. ${result.document_count} documentos listos para re-ingesta.`, 'success');
+        } catch (e) {
+          showToast('Error al reindexar: ' + e.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Reindexar base de conocimiento';
+        }
+      };
+    }
+
     $('#btn-save-settings-key').onclick = async () => {
       let input = $('#settings-api-key-input');
       let key = input.value.trim();
       let langSelect = $('#settings-language-select');
       let lang = langSelect ? langSelect.value : null;
+      let engineSelect = $('#settings-web-search-engine-select');
+      let searxngInput = $('#settings-searxng-url-input');
+      let deepReadCheckbox = $('#settings-deep-read-checkbox');
 
       let payload = {};
       if (key) {
@@ -9725,6 +10016,28 @@
       if (lang) {
         payload.language = lang === 'auto' ? '' : lang;
         setLanguage(lang, false);
+      }
+      if (engineSelect) {
+        payload.web_search_engine = engineSelect.value;
+      }
+      if (searxngInput) {
+        payload.searxng_url = searxngInput.value.trim();
+      }
+      if (deepReadCheckbox) {
+        payload.web_search_deep_read = deepReadCheckbox.checked;
+      }
+
+      let embProviderSelect = $('#settings-embedding-provider-select');
+      let localDtypeSelect = $('#settings-local-dtype-select');
+      let localDeviceSelect = $('#settings-local-device-select');
+      if (embProviderSelect) {
+        payload.embedding_provider = embProviderSelect.value;
+      }
+      if (localDtypeSelect && embProviderSelect && embProviderSelect.value === 'local') {
+        payload.local_embedding_dtype = localDtypeSelect.value;
+      }
+      if (localDeviceSelect && embProviderSelect && embProviderSelect.value === 'local') {
+        payload.local_embedding_device = localDeviceSelect.value;
       }
 
       try {
@@ -9735,6 +10048,25 @@
         });
         input.value = '';
         await loadSettingsStatus();
+
+        // On-demand: if switching to local and model isn't downloaded, prompt to download
+        if (embProviderSelect && embProviderSelect.value === 'local') {
+          try {
+            let ms = await api('/api/model/status');
+            if (ms.state !== 'ready' && ms.state !== 'downloading') {
+              if (confirm('El modelo de embeddings local no está descargado.\n\n¿Descargarlo ahora? (' + formatBytes(ms.total_bytes) + ')')) {
+                await api('/api/model/download', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ dtype: localDtypeSelect ? localDtypeSelect.value : 'q8' })
+                });
+                startModelDownloadPolling();
+                updateModelDownloadUI({ state: 'downloading', percent: 0, downloaded_bytes: 0, total_bytes: ms.total_bytes, error: '' });
+              }
+            }
+          } catch (e2) { /* silent */ }
+        }
+
         showToast(t('settings.saved_success'), 'success');
       } catch (e) {
         showToast(t('common.error') + ': ' + e.message, 'error');

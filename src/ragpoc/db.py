@@ -132,3 +132,40 @@ def persist_dimension(connection: sqlite3.Connection, dimension: int) -> None:
 def configured_dimension(connection: sqlite3.Connection) -> int | None:
     row = connection.execute("SELECT value FROM schema_metadata WHERE key = 'embedding_dimension'").fetchone()
     return int(row["value"]) if row else None
+
+
+def reindex_database(
+    connection: sqlite3.Connection, new_dimension: int | None = None
+) -> list[str]:
+    """Clear all indexed content and optionally set a new vector dimension.
+
+    Returns the list of ``source_path`` values for every document that was
+    removed so the caller can re-ingest them.  Workspaces, notebooks and pages
+    are preserved; only documents, chunks and vectors are dropped.
+    """
+    rows = connection.execute(
+        "SELECT source_path FROM documents ORDER BY created_at"
+    ).fetchall()
+    source_paths = [row["source_path"] for row in rows]
+
+    connection.execute("DELETE FROM chunks_fts")
+    has_vectors = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='chunk_vectors'"
+    ).fetchone()
+    if has_vectors:
+        connection.execute("DELETE FROM chunk_vectors")
+    connection.execute("DELETE FROM chunks")
+    connection.execute("DELETE FROM documents")
+
+    connection.execute("DELETE FROM schema_metadata WHERE key = 'embedding_dimension'")
+    if new_dimension:
+        connection.execute(
+            "INSERT INTO schema_metadata(key, value) VALUES ('embedding_dimension', ?)",
+            (str(new_dimension),),
+        )
+        connection.execute(
+            f"CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vectors USING vec0(chunk_id TEXT PRIMARY KEY, embedding float[{new_dimension}])"
+        )
+
+    connection.commit()
+    return source_paths

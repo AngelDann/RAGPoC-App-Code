@@ -51,6 +51,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+Name: "downloadmodel"; Description: "Descargar modelo de embeddings local (EmbeddingGemma 2, ~850 MB)"; GroupDescription: "Modelo de embeddings local:"; Flags: unchecked
 
 [Files]
 ; Everything PyInstaller produced for the onedir build -- RAGPoC.exe plus _internal\. Not
@@ -65,4 +66,5 @@ Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--download-embedding-model"; Description: "Descargando modelo de embeddings local…"; Flags: runascurrentuser shellexec; Tasks: downloadmodel
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent

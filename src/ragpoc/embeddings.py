@@ -6,7 +6,7 @@ import random
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 import httpx
 
@@ -29,8 +29,11 @@ AUDIO_MIME_TYPES = {
 }
 
 
+@runtime_checkable
 class EmbeddingProvider(Protocol):
     async def embed_texts(self, texts: list[str]) -> list[list[float]]: ...
+
+    async def embed_query(self, query: str) -> list[float]: ...
 
     async def embed_image(self, path: Path) -> list[float]: ...
 
@@ -114,6 +117,9 @@ class OpenRouterEmbeddingProvider:
             {"model": self.settings.embedding_model, "input": texts}, kind="text", count=len(texts)
         )
 
+    async def embed_query(self, query: str) -> list[float]:
+        return (await self.embed_texts([query]))[0]
+
     async def embed_image(self, path: Path) -> list[float]:
         encoded = base64.b64encode(path.read_bytes()).decode("ascii")
         mime = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
@@ -145,6 +151,9 @@ class FakeEmbeddingProvider:
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return [self._vector(item.encode()) for item in texts]
 
+    async def embed_query(self, query: str) -> list[float]:
+        return (await self.embed_texts([query]))[0]
+
     async def embed_image(self, path: Path) -> list[float]:
         return self._vector(path.read_bytes())
 
@@ -163,4 +172,12 @@ class FakeEmbeddingProvider:
 
 
 def get_provider(settings: Settings, usage_hook: UsageHook | None = None) -> EmbeddingProvider:
+    if settings.embedding_provider == "local":
+        from ragpoc.embeddings_local import LocalEmbeddingProvider
+
+        return LocalEmbeddingProvider(settings)
+    if settings.embedding_provider not in ("openrouter", ""):
+        raise ValueError(
+            f"Unknown embedding_provider {settings.embedding_provider!r}; expected 'openrouter' or 'local'"
+        )
     return OpenRouterEmbeddingProvider(settings, usage_hook=usage_hook)

@@ -629,6 +629,35 @@ def main():
 
 
 if __name__ == "__main__":
+    if "--download-embedding-model" in sys.argv:
+        # CLI mode: download the local embedding model and exit.
+        # Used by installer.iss and manual setups.  No GUI, no server.
+        try:
+            from ragpoc.config import get_settings
+            from ragpoc.model_downloader import get_downloader
+
+            settings = get_settings()
+            dtype = None
+            for arg in sys.argv[1:]:
+                if arg.startswith("--dtype="):
+                    dtype = arg.split("=", 1)[1]
+            print(f"Downloading EmbeddingGemma 2 (dtype={dtype or settings.local_embedding_dtype})…")
+            downloader = get_downloader(settings)
+            downloader.add_progress_listener(
+                lambda e: print(f"  [{e['percent']:.1f}%] {e['message']}", end="\r")
+            )
+            status = downloader.download(dtype=dtype)
+            print()
+            if status.state == "ready":
+                print(f"Model ready at {downloader.model_dir}")
+                sys.exit(0)
+            else:
+                print(f"Download failed: {status.error}")
+                sys.exit(1)
+        except Exception:
+            traceback.print_exc()
+            sys.exit(1)
+
     try:
         main()
         status = 0

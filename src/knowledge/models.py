@@ -188,6 +188,12 @@ class AppConfig(models.Model):
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
     openrouter_api_key = models.CharField(max_length=200, blank=True, default="")
     language = models.CharField(max_length=10, default="es")
+    web_search_engine = models.CharField(max_length=30, default="duckduckgo")
+    searxng_url = models.CharField(max_length=500, blank=True, default="")
+    web_search_deep_read = models.BooleanField(default=True)
+    embedding_provider = models.CharField(max_length=20, blank=True, default="")
+    local_embedding_dtype = models.CharField(max_length=10, blank=True, default="")
+    local_embedding_device = models.CharField(max_length=10, blank=True, default="")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
