@@ -16,7 +16,10 @@ async def _embedding_usage_hook(payload: dict) -> None:
     from knowledge.settings_store import get_effective_settings
     from knowledge.usage import record_usage
 
-    provider = get_effective_settings().embedding_provider or "openrouter"
+    # Called from async context: read the effective settings through sync_to_async so the
+    # Django ORM lookup works (a bare call raises SynchronousOnlyOperation and silently
+    # falls back to env-only settings, mislabeling the provider).
+    provider = (await sync_to_async(get_effective_settings)()).embedding_provider or "openrouter"
     await sync_to_async(record_usage)(
         category="embedding",
         action=f"embed_{payload.get('kind', 'text')}",

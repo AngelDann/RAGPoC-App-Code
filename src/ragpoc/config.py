@@ -22,7 +22,15 @@ def _anchor(path: Path) -> Path:
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(BASE_DIR / ".env"), env_file_encoding="utf-8", env_prefix="RAGPOC_", extra="ignore"
+        env_file=str(BASE_DIR / ".env"),
+        env_file_encoding="utf-8",
+        env_prefix="RAGPOC_",
+        extra="ignore",
+        # API keys carry a validation_alias so they can be supplied as env vars
+        # without the RAGPOC_ prefix. Without populate_by_name the field name is
+        # rejected as an input key, so programmatic construction (tests, presets,
+        # the settings overlay) silently dropped the credential.
+        populate_by_name=True,
     )
 
     openrouter_api_key: str | None = Field(default=None, validation_alias="OPENROUTER_API_KEY")
@@ -39,6 +47,25 @@ class Settings(BaseSettings):
     local_embedding_dim: int | None = 768  # MRL truncation: 768, 512, 256, 128
     local_embedding_vision_tokens: int = Field(default=140, ge=70, le=1120)
     local_embedding_cache_dir: Path = Field(default_factory=lambda: BASE_DIR / "data" / "models")
+
+    # --- local chat LLM (ONNX Runtime GenAI) ---
+    # "openrouter" | "google" | "local" is selected via llm_provider; these tune
+    # the local path only.
+    local_chat_model: str = "qwen3-vl-2b"
+    local_chat_dtype: str = "q4f16"  # informational: the GenAI trees are int4
+    local_chat_device: str = "auto"  # "auto" | "dml" | "cpu"
+    # Hard cap on the prompt window. The exported genai_config advertises 262144
+    # with past_present_share_buffer, which would pre-allocate a KV cache far
+    # past the memory budget; this value is what actually gets applied.
+    local_chat_context_length: int = Field(default=2048, ge=512, le=32768)
+    local_chat_max_new_tokens: int = Field(default=512, ge=32, le=8192)
+    local_chat_temperature: float = Field(default=0.2, ge=0.0, le=2.0)
+    local_chat_top_p: float = Field(default=0.9, ge=0.0, le=1.0)
+    local_chat_top_k: int = Field(default=40, ge=0, le=200)
+    agent_max_tool_rounds: int = Field(default=3, ge=0, le=12)
+    memory_budget_mb: int = Field(default=3072, ge=512, le=32768)
+    local_chat_cache_dir: Path = Field(default_factory=lambda: BASE_DIR / "data" / "models")
+
     chat_model: str = "google/gemini-3.7-flash"
     image_model: str = "google/gemini-3.1-flash-image"
     tts_model: str = "google/gemini-3.1-flash-tts-preview"
@@ -65,7 +92,13 @@ class Settings(BaseSettings):
     def empty_dimension_means_auto(cls, value: object) -> object:
         return None if value == "" else value
 
-    @field_validator("data_dir", "allowed_upload_dir", "local_embedding_cache_dir", mode="after")
+    @field_validator(
+        "data_dir",
+        "allowed_upload_dir",
+        "local_embedding_cache_dir",
+        "local_chat_cache_dir",
+        mode="after",
+    )
     @classmethod
     def anchor_relative_paths(cls, value: Path) -> Path:
         # A relative override (e.g. RAGPOC_DATA_DIR=mydata in .env) should still
@@ -79,6 +112,10 @@ class Settings(BaseSettings):
     @property
     def local_model_dir(self) -> Path:
         return self.local_embedding_cache_dir / "embeddinggemma2-onnx"
+
+    @property
+    def local_chat_model_dir(self) -> Path:
+        return self.local_chat_cache_dir / self.local_chat_model
 
     @property
     def renders_dir(self) -> Path:

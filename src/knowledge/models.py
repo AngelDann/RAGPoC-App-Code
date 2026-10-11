@@ -198,6 +198,11 @@ class AppConfig(models.Model):
     embedding_provider = models.CharField(max_length=20, blank=True, default="")
     local_embedding_dtype = models.CharField(max_length=10, blank=True, default="")
     local_embedding_device = models.CharField(max_length=10, blank=True, default="")
+    # Local chat LLM (ONNX Runtime GenAI). The provider is selected through
+    # llm_provider="local"; these tune which model runs and how much memory the
+    # context window is allowed to reserve.
+    local_chat_model = models.CharField(max_length=50, blank=True, default="")
+    local_chat_context_length = models.PositiveIntegerField(blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

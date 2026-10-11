@@ -212,7 +212,10 @@ class LocalEmbeddingProvider:
     def _load_tokenizer(model_dir: Path):
         from transformers import AutoTokenizer
 
-        return AutoTokenizer.from_pretrained(str(model_dir))
+        # `extra_special_tokens={}` overrides the repo's legacy list-form config key: recent
+        # transformers (>=4.57) assumes a dict there and crashes on the shipped list. The
+        # special tokens themselves live in tokenizer.json's added_tokens and still resolve.
+        return AutoTokenizer.from_pretrained(str(model_dir), extra_special_tokens={})
 
     @staticmethod
     def _load_image_processor(model_dir: Path):

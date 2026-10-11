@@ -148,6 +148,10 @@ class GoogleEmbeddingProvider:
 
     Text goes through Google's OpenAI-compatible endpoint; image/video/audio uses the native
     `:embedContent` endpoint (the OpenAI-compatible layer accepts text input only).
+
+    Auth differs per endpoint: the OpenAI-compatible layer only accepts `Authorization: Bearer`
+    (a bare `x-goog-api-key` there answers a misleading 404), while the native endpoint takes
+    `x-goog-api-key`.
     """
 
     embeddings_endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/embeddings"
@@ -163,16 +167,23 @@ class GoogleEmbeddingProvider:
         self._semaphore = asyncio.Semaphore(settings.embedding_concurrency)
         self.usage_hook = usage_hook
 
-    def _headers(self) -> dict:
+    def _model_name(self) -> str:
+        model = self.settings.embedding_model or ""
+        return model[len("google/"):] if model.startswith("google/") else model
+
+    def _bearer_headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.settings.google_api_key}"}
+
+    def _native_headers(self) -> dict:
         return {"x-goog-api-key": self.settings.google_api_key}
 
-    async def _post_json(self, url: str, payload: dict) -> dict:
+    async def _post_json(self, url: str, payload: dict, *, headers: dict) -> dict:
         own_client = self.client is None
         client = self.client or new_async_client(timeout=90)
         try:
             for attempt in range(4):
                 async with self._semaphore:
-                    response = await client.post(url, headers=self._headers(), json=payload)
+                    response = await client.post(url, headers=headers, json=payload)
                 if response.status_code in {429, 500, 502, 503, 529} and attempt < 3:
                     delay = float(response.headers.get("Retry-After", 2**attempt)) + random.random()
                     await asyncio.sleep(delay)
@@ -220,7 +231,7 @@ class GoogleEmbeddingProvider:
             pass
 
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        return await self._embed_openai({"model": self.settings.embedding_model, "input": texts}, kind="text", count=len(texts))
+        return await self._embed_openai({"model": self._model_name(), "input": texts}, kind="text", count=len(texts))
 
     async def embed_query(self, query: str) -> list[float]:
         return (await self.embed_texts([query]))[0]
@@ -231,7 +242,7 @@ class GoogleEmbeddingProvider:
             payload = {**payload, "dimensions": self.settings.embedding_dimension}
         started = time.perf_counter()
         try:
-            body = await self._post_json(self.embeddings_endpoint, payload)
+            body = await self._post_json(self.embeddings_endpoint, payload, headers=self._bearer_headers())
         except EmbeddingError as error:
             await self._report_usage(kind, count, started, status="error", error_message=str(error)[:500])
             raise
@@ -249,10 +260,10 @@ class GoogleEmbeddingProvider:
         payload: dict = {"content": {"parts": [{"inline_data": {"mime_type": mime, "data": encoded}}]}}
         if self.settings.embedding_dimension:
             payload["outputDimensionality"] = self.settings.embedding_dimension
-        url = self.embed_content_endpoint.format(model=self.settings.embedding_model)
+        url = self.embed_content_endpoint.format(model=self._model_name())
         started = time.perf_counter()
         try:
-            body = await self._post_json(url, payload)
+            body = await self._post_json(url, payload, headers=self._native_headers())
         except EmbeddingError as error:
             await self._report_usage(kind, 1, started, status="error", error_message=str(error)[:500])
             raise

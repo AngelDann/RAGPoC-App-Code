@@ -23,4 +23,4 @@ python-pptx>=1.0.0,<2
 # Only needed when RAGPOC_EMBEDDING_PROVIDER=local.
 onnxruntime-directml>=1.20,<2; platform_system == "Windows"
 onnxruntime>=1.20,<2; platform_system != "Windows"
-transformers>=4.55,<5
+transformers>=5.19,<6

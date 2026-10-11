@@ -2795,6 +2795,125 @@
       animation: dialogFade 0.18s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
+    /* --- Ajustes: layout de confort (better-ui) ---
+       Radios concentricos: radio_tarjeta = radio_interior + padding.
+       Aqui: 20px = 6px + 14px. El desajuste entre niveles es la causa mas
+       comun de que una interfaz se sienta "mal" sin saber por que. */
+    .craft-dialog-settings {
+      max-width: 880px;
+    }
+
+    .craft-dialog-settings .settings-body {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+      gap: 14px;
+      /* start, not stretch: the provider card is much taller than its
+         neighbours, and stretching them to match leaves a large void in the
+         short cards and adds scrolling for nothing. */
+      align-items: start;
+      align-content: start;
+    }
+
+    .craft-dialog-settings .settings-body > .craft-card {
+      border-radius: var(--radius-xl);
+      /* Padding comes from Bootstrap's .p-3 (16px), which is what the nested
+         radius below subtracts from. Do not override it here. */
+      /* Elevation lives in the shadow; the border only keeps the edge warm. */
+      box-shadow: 0 1px 2px rgba(28, 27, 24, 0.04), 0 6px 16px rgba(28, 27, 24, 0.05);
+      border-color: var(--border-warm);
+      transition: box-shadow 0.18s ease-out, transform 0.18s ease-out, border-color 0.18s ease-out;
+    }
+
+    .craft-dialog-settings .settings-body > .craft-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 2px 4px rgba(28, 27, 24, 0.05), 0 12px 28px rgba(28, 27, 24, 0.08);
+      border-color: #d1ccc0;
+    }
+
+    /* Nested boxes and controls sit one level in. The radius is computed, not
+       picked: card radius minus the padding that separates them. Bootstrap's
+       .p-3 applies 16px with !important, so that is the value to subtract. */
+    .craft-dialog-settings .settings-body .rounded,
+    .craft-dialog-settings .settings-body .form-select,
+    .craft-dialog-settings .settings-body .form-control {
+      border-radius: calc(var(--radius-xl) - 16px);
+    }
+
+    .craft-dialog-settings .settings-body .progress,
+    .craft-dialog-settings .settings-body .progress-bar {
+      border-radius: var(--radius-full);
+    }
+
+    /* Optical alignment: the title row holds a fixed icon column so titles line
+       up regardless of each glyph's own advance width. Targets the existing
+       header markup rather than requiring a new class. */
+    .craft-dialog-settings .settings-body > .craft-card > .d-flex.align-items-center:first-child {
+      gap: 9px;
+      min-height: 22px;
+    }
+
+    .craft-dialog-settings .settings-body > .craft-card > .d-flex.align-items-center:first-child > i {
+      width: 18px;
+      text-align: center;
+      font-size: 13px;
+      line-height: 1;
+      transform: translateY(-0.5px);
+      flex: 0 0 18px;
+    }
+
+    /* Staged entrance: sequence communicates grouping, so cards arrive in
+       order at ~70ms apart. Unstaggered would read as one flat block. */
+    .modal-backdrop-custom.active .craft-dialog-settings .settings-body > .craft-card {
+      animation: settingsCardIn 0.26s cubic-bezier(0.2, 0, 0, 1) both;
+    }
+
+    .modal-backdrop-custom.active .craft-dialog-settings .settings-body > .craft-card:nth-child(1) { animation-delay: 0ms; }
+    .modal-backdrop-custom.active .craft-dialog-settings .settings-body > .craft-card:nth-child(2) { animation-delay: 70ms; }
+    .modal-backdrop-custom.active .craft-dialog-settings .settings-body > .craft-card:nth-child(3) { animation-delay: 140ms; }
+    .modal-backdrop-custom.active .craft-dialog-settings .settings-body > .craft-card:nth-child(4) { animation-delay: 210ms; }
+    .modal-backdrop-custom.active .craft-dialog-settings .settings-body > .craft-card:nth-child(5) { animation-delay: 280ms; }
+    .modal-backdrop-custom.active .craft-dialog-settings .settings-body > .craft-card:nth-child(6) { animation-delay: 350ms; }
+    .modal-backdrop-custom.active .craft-dialog-settings .settings-body > .craft-card:nth-child(n+7) { animation-delay: 420ms; }
+
+    @keyframes settingsCardIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Comfort for a long form: a taller dialog eats less scrolling, and the
+       body keeps a visible bottom edge instead of clipping mid-card. */
+    .craft-dialog-settings .settings-body {
+      padding: 18px;
+      max-height: calc(85vh - 68px);
+    }
+
+    @media (max-width: 720px) {
+      .craft-dialog-settings {
+        max-width: 100%;
+      }
+
+      .craft-dialog-settings .settings-body {
+        grid-template-columns: 1fr;
+        padding: 14px;
+        gap: 12px;
+      }
+
+      /* On one column the stagger would just feel like latency. */
+      .modal-backdrop-custom.active .craft-dialog-settings .settings-body > .craft-card {
+        animation: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .modal-backdrop-custom.active .craft-dialog-settings .settings-body > .craft-card {
+        animation: none;
+      }
+
+      .craft-dialog-settings .settings-body > .craft-card {
+        transition: none;
+      }
+    }
+
     @keyframes dialogFade {
       from {
         opacity: 0;
@@ -3914,7 +4033,7 @@
 
   <!-- Settings / BYOK Modal -->
   <div class="modal-backdrop-custom" id="settings-modal-backdrop">
-    <div class="craft-dialog" style="max-width: 560px;">
+    <div class="craft-dialog craft-dialog-settings">
       <div class="d-flex justify-content-between align-items-center p-3 px-4 border-bottom"
         style="background: var(--sidebar-bg);">
         <div class="d-flex align-items-center gap-2">
@@ -3931,14 +4050,14 @@
         </button>
       </div>
 
-      <div class="p-4 d-flex flex-column gap-3 overflow-auto">
+      <div class="settings-body overflow-auto">
         <!-- Language Selector Card -->
         <div class="craft-card p-3">
           <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
             <i class="bi bi-translate text-primary"></i> <span data-i18n="settings.language_label">Idioma de la aplicación</span>
           </div>
           <div class="d-flex gap-2">
-            <select id="settings-language-select" class="form-select form-select-sm border" style="border-radius: var(--radius-sm); background: #ffffff;">
+            <select id="settings-language-select" class="form-select form-select-sm border" style="background: #ffffff;">
               <option value="es">🇪🇸 Español</option>
               <option value="en">🇬🇧 English</option>
               <option value="auto">🌐 Automático / Auto-detect</option>
@@ -3955,9 +4074,10 @@
           </div>
           <div class="mb-2">
             <label class="form-label text-muted mb-1" style="font-size:11px;" data-i18n="settings.llm_provider_label">Proveedor</label>
-            <select id="settings-llm-provider-select" class="form-select form-select-sm border" style="border-radius: var(--radius-sm); background: #ffffff;">
+            <select id="settings-llm-provider-select" class="form-select form-select-sm border" style="background: #ffffff;">
               <option value="openrouter">☁️ OpenRouter</option>
               <option value="google">☁️ Google AI Studio</option>
+              <option value="local">💻 Local (sin API, en tu equipo)</option>
             </select>
             <div class="text-muted mt-1" style="font-size:10.5px;" data-i18n="settings.llm_provider_hint">
               Aplica al agente de chat, artefactos y acciones de IA. Las dos API keys se guardan por separado para que puedas cambiar de proveedor sin reescribirlas.
@@ -4019,7 +4139,7 @@
           </div>
           <div class="mb-2">
             <label class="form-label text-muted mb-1" style="font-size:11px;" data-i18n="settings.search_engine_label">Proveedor de búsqueda</label>
-            <select id="settings-web-search-engine-select" class="form-select form-select-sm border" style="border-radius: var(--radius-sm); background: #ffffff;">
+            <select id="settings-web-search-engine-select" class="form-select form-select-sm border" style="background: #ffffff;">
               <option value="duckduckgo">🦆 DuckDuckGo (Gratuito y Privado)</option>
               <option value="searxng">🔍 SearXNG (Google + Bing + Reddit Agregados)</option>
             </select>
@@ -4050,7 +4170,7 @@
           </div>
           <div class="mb-2">
             <label class="form-label text-muted mb-1" style="font-size:11px;" data-i18n="settings.embedding_provider_label">Motor de embeddings</label>
-            <select id="settings-embedding-provider-select" class="form-select form-select-sm border" style="border-radius: var(--radius-sm); background: #ffffff;">
+            <select id="settings-embedding-provider-select" class="form-select form-select-sm border" style="background: #ffffff;">
               <option value="cloud">☁️ En la nube (proveedor elegido arriba)</option>
               <option value="local">💻 Local — EmbeddingGemma 2 (ONNX)</option>
             </select>
@@ -4070,7 +4190,7 @@
             <div class="row g-2 mb-2">
               <div class="col-6">
                 <label class="form-label text-muted mb-1" style="font-size:11px;">Precisión</label>
-                <select id="settings-local-dtype-select" class="form-select form-select-sm border" style="border-radius: var(--radius-sm); background: #ffffff;">
+                <select id="settings-local-dtype-select" class="form-select form-select-sm border" style="background: #ffffff;">
                   <option value="q4">q4 — 473 MB (rápido)</option>
                   <option value="q8" selected>q8 — 850 MB (recomendado)</option>
                   <option value="fp16">fp16 — 1.5 GB (alta calidad)</option>
@@ -4079,7 +4199,7 @@
               </div>
               <div class="col-6">
                 <label class="form-label text-muted mb-1" style="font-size:11px;">Dispositivo</label>
-                <select id="settings-local-device-select" class="form-select form-select-sm border" style="border-radius: var(--radius-sm); background: #ffffff;">
+                <select id="settings-local-device-select" class="form-select form-select-sm border" style="background: #ffffff;">
                   <option value="auto" selected>Automático (GPU/CPU)</option>
                   <option value="dml">GPU (DirectML)</option>
                   <option value="cpu">Solo CPU</option>
@@ -4124,6 +4244,66 @@
           </div>
           <div class="text-muted mt-1" style="font-size:11px;" data-i18n="settings.embedding_hint">
             Cambiar de proveedor requiere reindexar los documentos (las dimensiones de vector son distintas).
+          </div>
+        </div>
+
+        <!-- Local Agent Card -->
+        <div class="craft-card p-3" id="settings-local-agent-card">
+          <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
+            <i class="bi bi-hdd-network text-primary"></i>
+            <span data-i18n="settings.local_agent_title">Modelo local (sin API)</span>
+            <span class="badge bg-light text-secondary border ms-auto" id="local-agent-ready-badge" style="font-size:10px;">-</span>
+          </div>
+          <div class="text-muted mb-2" style="font-size:10.5px;" data-i18n="settings.local_agent_hint">
+            Ejecuta el agente en tu equipo sin enviar nada a la nube. Necesita el modelo descargado.
+          </div>
+          <div class="mb-2">
+            <label class="form-label text-muted mb-1" style="font-size:11px;">Modelo</label>
+            <select id="settings-local-chat-model-select" class="form-select form-select-sm border" style="background: #ffffff;">
+              <option value="qwen3-vl-2b">Qwen3-VL 2B - texto, imagen y video (1.4 GB)</option>
+              <option value="qwen3-0.6b">Qwen3 0.6B - solo texto, muy ligero (0.5 GB)</option>
+            </select>
+            <div class="text-muted mt-1" style="font-size:10.5px;" id="local-chat-model-desc"></div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label text-muted mb-1" style="font-size:11px;">Ventana de contexto</label>
+            <select id="settings-local-chat-context-select" class="form-select form-select-sm border" style="background: #ffffff;">
+              <option value="1024">1024 tokens - menor uso de memoria</option>
+              <option value="2048" selected>2048 tokens - recomendado</option>
+              <option value="4096">4096 tokens - mas historial</option>
+            </select>
+            <div class="text-muted mt-1" style="font-size:10.5px;">
+              Controla el KV cache. A mas ventana, mas RAM durante la generacion.
+            </div>
+          </div>
+
+          <div id="local-agent-status-box" class="mb-2 p-2 rounded border bg-light">
+            <div class="d-flex justify-content-between align-items-center mb-1" style="font-size:11px;">
+              <span class="fw-medium text-dark"><i class="bi bi-gauge text-primary"></i> Memoria</span>
+              <span id="local-agent-memory" class="fw-bold text-primary">-</span>
+            </div>
+            <div id="local-agent-memory-note" class="text-muted" style="font-size:10px;">-</div>
+            <div class="d-flex justify-content-between align-items-center mt-1" style="font-size:10px;">
+              <span id="local-chat-download-bytes" class="text-muted"></span>
+              <span id="local-chat-download-actions">
+                <button class="btn-craft btn-craft-sm" id="btn-download-chat-model" style="display:none;">
+                  <i class="bi bi-cloud-arrow-down"></i> Descargar modelo
+                </button>
+                <a href="javascript:void(0)" id="btn-cancel-chat-model-download" class="text-danger text-decoration-none" style="display:none;">
+                  <i class="bi bi-x-circle"></i> Cancelar
+                </a>
+              </span>
+            </div>
+            <div class="progress mt-1" style="height: 6px; display:none;" id="local-chat-progress-bar">
+              <div id="local-chat-progress-fill" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%;"></div>
+            </div>
+            <div id="local-chat-download-error" class="text-danger mt-1" style="font-size:10px; display:none;"></div>
+          </div>
+
+          <div class="d-flex justify-content-end">
+            <button class="btn-craft btn-craft-sm" id="btn-save-local-agent">
+              <i class="bi bi-save"></i> Guardar ajustes locales
+            </button>
           </div>
         </div>
 
@@ -5203,6 +5383,8 @@
           language_hint: 'Aplica a la interfaz de usuario, el asistente de chat y la generación de artefactos.',
           llm_provider_title: 'Proveedor de IA',
           llm_provider_label: 'Proveedor',
+          local_agent_title: 'Modelo local (sin API)',
+          local_agent_hint: 'Ejecuta el agente en tu equipo sin enviar nada a la nube. Necesita el modelo descargado.',
           llm_provider_hint: 'Aplica al agente de chat, artefactos y acciones de IA. Las dos API keys se guardan por separado para que puedas cambiar de proveedor sin reescribirlas.',
           api_key_title: 'OpenRouter API Key',
           google_key_title: 'Google AI Studio API Key',
@@ -5527,6 +5709,8 @@
           language_hint: 'Applies to the UI, chat assistant, and artifact generation.',
           llm_provider_title: 'AI Provider',
           llm_provider_label: 'Provider',
+          local_agent_title: 'Local model (no API)',
+          local_agent_hint: 'Runs the agent on your machine without sending anything to the cloud. Requires the downloaded model.',
           llm_provider_hint: 'Applies to the chat agent, artifacts and AI actions. Both API keys are stored separately so you can switch provider without retyping them.',
           api_key_title: 'OpenRouter API Key',
           google_key_title: 'Google AI Studio API Key',
@@ -14139,7 +14323,177 @@
     initWorkspace();
     setupDragAndDrop();
     setupPasteHandler();
-  </script>
+  
+    // ---- Local agent (ONNX Runtime GenAI) settings ----
+    (function () {
+      const $ = (sel) => document.querySelector(sel);
+      let chatDownloadTimer = null;
+
+      async function api(url, opts) {
+        const res = await fetch(url, opts);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      }
+
+      function fmtMB(bytes) {
+        if (!bytes) return '0 MB';
+        return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+      }
+
+      async function refreshLocalAgentStatus() {
+        const badge = $('#local-agent-ready-badge');
+        const mem = $('#local-agent-memory');
+        const note = $('#local-agent-memory-note');
+        try {
+          const s = await api('/api/agent/status');
+          if (badge) {
+            const ready = s.model_installed && s.would_fit;
+            badge.textContent = ready ? 'Listo' : (s.model_installed ? 'Sin margen de RAM' : 'Modelo no descargado');
+            badge.className = 'badge ms-auto border ' + (ready ? 'bg-success text-white' : 'bg-light text-secondary');
+            badge.style.fontSize = '10px';
+          }
+          if (mem) {
+            mem.textContent = 'libre ' + Math.round(s.memory.headroom_mb) + ' MB / ' + Math.round(s.memory.hard_limit_mb) + ' MB';
+          }
+          if (note) {
+            note.textContent = 'Carga estimada: ' + s.estimate_mb + ' MB - ' + (s.would_fit ? 'cabe en el presupuesto' : s.budget_note);
+          }
+          const desc = $('#local-chat-model-desc');
+          if (desc && s.manifest) desc.textContent = s.manifest.description;
+          return s;
+        } catch (e) {
+          if (badge) { badge.textContent = 'sin conexion'; }
+          return null;
+        }
+      }
+
+      function renderChatDownload(st) {
+        const bar = $('#local-chat-progress-bar');
+        const fill = $('#local-chat-progress-fill');
+        const bytes = $('#local-chat-download-bytes');
+        const dl = $('#btn-download-chat-model');
+        const cancel = $('#btn-cancel-chat-model-download');
+        const err = $('#local-chat-download-error');
+        if (!bar) return;
+        const downloading = st.state === 'downloading';
+        bar.style.display = downloading ? 'block' : 'none';
+        if (fill) fill.style.width = (st.percent || 0) + '%';
+        if (bytes) bytes.textContent = st.total_bytes ? (fmtMB(st.downloaded_bytes) + ' / ' + fmtMB(st.total_bytes)) : '';
+        if (dl) dl.style.display = (st.state === 'not_downloaded' || st.state === 'error') ? 'inline-block' : 'none';
+        if (cancel) cancel.style.display = downloading ? 'inline-block' : 'none';
+        if (err) {
+          err.style.display = st.error ? 'block' : 'none';
+          err.textContent = st.error || '';
+        }
+      }
+
+      async function pollChatDownload() {
+        try {
+          const st = await api('/api/chat-model/status');
+          renderChatDownload(st);
+          if (st.state === 'downloading') {
+            chatDownloadTimer = setTimeout(pollChatDownload, 1200);
+          } else {
+            chatDownloadTimer = null;
+                refreshLocalAgentStatus();
+          }
+        } catch (e) {
+          chatDownloadTimer = null;
+        }
+      }
+
+      async function initLocalChatCard() {
+        await refreshLocalAgentStatus();
+        try {
+          const st = await api('/api/chat-model/status');
+          renderChatDownload(st);
+          if (st.state === 'downloading' && !chatDownloadTimer) pollChatDownload();
+        } catch (e) { /* ignore */ }
+      }
+
+      const dlBtn = $('#btn-download-chat-model');
+      if (dlBtn) {
+        dlBtn.onclick = async () => {
+          const sel = $('#settings-local-chat-model-select');
+          try {
+            await api('/api/chat-model/download', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model: sel ? sel.value : '' })
+            });
+            if (!chatDownloadTimer) pollChatDownload();
+          } catch (e) {
+            const err = $('#local-chat-download-error');
+            if (err) { err.style.display = 'block'; err.textContent = e.message; }
+          }
+        };
+      }
+
+      const cancelBtn = $('#btn-cancel-chat-model-download');
+      if (cancelBtn) {
+        cancelBtn.onclick = async () => {
+          const sel = $('#settings-local-chat-model-select');
+          try {
+            await api('/api/chat-model/cancel', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model: sel ? sel.value : '' })
+            });
+          } catch (e) { /* ignore */ }
+        };
+      }
+
+      const saveBtn = $('#btn-save-local-agent');
+      if (saveBtn) {
+        saveBtn.onclick = async () => {
+          const sel = $('#settings-local-chat-model-select');
+          const ctx = $('#settings-local-chat-context-select');
+          const payload = {
+            llm_provider: 'local',
+            local_chat_model: sel ? sel.value : 'qwen3-vl-2b',
+            local_chat_context_length: ctx ? parseInt(ctx.value, 10) : 2048
+          };
+          try {
+            const res = await fetch('/api/settings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            await refreshLocalAgentStatus();
+            const st = await api('/api/chat-model/status');
+            renderChatDownload(st);
+            if (st.state !== 'ready' && st.state !== 'downloading') {
+              if (confirm('El modelo local aun no esta descargado.\n\nDescargarlo ahora? (' + fmtMB(st.total_bytes) + ')')) {
+                await api('/api/chat-model/download', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ model: payload.local_chat_model })
+                });
+                if (!chatDownloadTimer) pollChatDownload();
+              }
+            }
+          } catch (e) {
+            const err = $('#local-chat-download-error');
+            if (err) { err.style.display = 'block'; err.textContent = e.message; }
+          }
+        };
+      }
+
+      // Populate the card once the settings endpoint has been used by the page.
+      const originalLoad = window.loadSettingsStatus;
+      if (typeof originalLoad === 'function') {
+        window.loadSettingsStatus = async function () {
+          const out = await originalLoad.apply(this, arguments);
+          await initLocalChatCard();
+          return out;
+        };
+      } else {
+        document.addEventListener('DOMContentLoaded', initLocalChatCard);
+        setTimeout(initLocalChatCard, 800);
+      }
+    })();
+</script>
 </body>
 
 </html>

@@ -56,7 +56,7 @@ def test_embed_texts_posts_to_openai_compatible_endpoint(tmp_path):
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
-        captured["auth"] = request.headers.get("x-goog-api-key")
+        captured["auth"] = request.headers.get("authorization")
         captured["body"] = json.loads(request.content)
         return httpx.Response(
             200,
@@ -74,11 +74,25 @@ def test_embed_texts_posts_to_openai_compatible_endpoint(tmp_path):
     vectors = asyncio.run(provider.embed_texts(["a", "b"]))
 
     assert captured["url"].endswith("/v1beta/openai/embeddings")
-    assert captured["auth"] == "k-123"
-    assert captured["body"]["model"] == settings.embedding_model
+    # The OpenAI-compatible layer only accepts Bearer auth (x-goog-api-key 404s there).
+    assert captured["auth"] == "Bearer k-123"
+    assert captured["body"]["model"] == "gemini-embedding-2-preview"
     assert captured["body"]["input"] == ["a", "b"]
     # Response items come back sorted by index: 0 first even if listed second.
     assert vectors == [[1.0, 0.0], [0.0, 1.0]]
+
+
+def test_embed_texts_strips_openrouter_vendor_prefix(tmp_path):
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": [{"index": 0, "embedding": [1.0]}]})
+
+    settings = make_settings(tmp_path, embedding_model="google/gemini-embedding-2-preview")
+    provider = GoogleEmbeddingProvider(settings, client=_mock_client(handler))
+    asyncio.run(provider.embed_texts(["x"]))
+    assert captured["body"]["model"] == "gemini-embedding-2-preview"
 
 
 def test_embed_query_returns_single_vector(tmp_path):
@@ -159,7 +173,7 @@ def test_embed_image_uses_embed_content_with_inline_data(tmp_path):
     provider = GoogleEmbeddingProvider(settings, client=_mock_client(handler))
     vector = asyncio.run(provider.embed_image(image))
 
-    assert f"/v1beta/models/{settings.embedding_model}:embedContent" in captured["url"]
+    assert "/v1beta/models/gemini-embedding-2-preview:embedContent" in captured["url"]
     assert captured["auth"] == "k-9"
     part = captured["body"]["content"]["parts"][0]["inline_data"]
     assert part["mime_type"] == "image/png"

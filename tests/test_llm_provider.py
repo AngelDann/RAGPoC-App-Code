@@ -107,12 +107,17 @@ def test_build_chat_model_openrouter_uses_openrouter_model(tmp_path):
     assert model.model_name == settings.chat_model
 
 
-def test_build_chat_model_google_uses_openai_compatible_model(tmp_path):
-    from pydantic_ai.models.openai import OpenAIChatModel
+def test_build_chat_model_google_uses_native_google_model(tmp_path):
+    from pydantic_ai.models.google import GoogleModel
 
     settings = make_settings(tmp_path, llm_provider="google")
     model = build_chat_model(settings)
-    assert isinstance(model, OpenAIChatModel)
-    assert not type(model).__name__.startswith("OpenRouter")
-    assert model.model_name == settings.chat_model
-    assert "generativelanguage.googleapis.com" in str(model.provider.base_url)
+    assert isinstance(model, GoogleModel)
+    assert model.model_name == "gemini-3.7-flash"
+
+
+def test_google_model_name_strips_vendor_prefix(tmp_path):
+    from knowledge.llm import google_model_name
+
+    assert google_model_name("google/gemini-3.7-flash") == "gemini-3.7-flash"
+    assert google_model_name("gemini-3.7-flash") == "gemini-3.7-flash"

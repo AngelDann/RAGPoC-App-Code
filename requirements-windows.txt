@@ -160,3 +160,12 @@ wcwidth==0.8.2
 websockets==16.1.1
 wrapt==2.3.0
 zipp==4.1.0
+
+# Local embeddings (EmbeddingGemma 2 ONNX) — requeridas por ragpoc/embeddings_local.py
+# y ragpoc/model_downloader.py; sin estas, la opción de embeddings locales no funciona.
+# transformers >=5 es obligatorio: el código usa la familia Gemma4/EmbeddingGemma2
+# (transformers.models.gemma4), inexistente en la serie 4.x.
+numpy==2.5.3
+onnxruntime-directml==1.24.4
+huggingface_hub==2.2.0
+transformers==5.19.0

@@ -41,6 +41,10 @@ def get_effective_settings() -> Settings:
             updates["local_embedding_dtype"] = config.local_embedding_dtype
         if config.local_embedding_device:
             updates["local_embedding_device"] = config.local_embedding_device
+        if config.local_chat_model:
+            updates["local_chat_model"] = config.local_chat_model
+        if config.local_chat_context_length:
+            updates["local_chat_context_length"] = config.local_chat_context_length
         if updates:
             settings = settings.model_copy(update=updates)
     return settings
@@ -78,6 +82,8 @@ def get_api_key_status() -> dict:
     local_embedding_dtype = config.local_embedding_dtype if config and config.local_embedding_dtype else ""
     local_embedding_device = config.local_embedding_device if config and config.local_embedding_device else ""
     llm_provider = (config.llm_provider if config and config.llm_provider else "").strip().lower()
+    local_chat_model = config.local_chat_model if config and config.local_chat_model else ""
+    local_chat_context_length = config.local_chat_context_length if config else None
 
     env_settings = get_env_settings()
     effective_provider = embedding_provider or env_settings.embedding_provider
@@ -108,6 +114,8 @@ def get_api_key_status() -> dict:
         "embedding_provider": effective_provider,
         "local_embedding_dtype": local_embedding_dtype or env_settings.local_embedding_dtype,
         "local_embedding_device": local_embedding_device or env_settings.local_embedding_device,
+        "local_chat_model": local_chat_model or env_settings.local_chat_model,
+        "local_chat_context_length": local_chat_context_length or env_settings.local_chat_context_length,
     }
 
 
@@ -127,6 +135,8 @@ def set_app_settings(
     embedding_provider: str | None = None,
     local_embedding_dtype: str | None = None,
     local_embedding_device: str | None = None,
+    local_chat_model: str | None = None,
+    local_chat_context_length: int | None = None,
     google_api_key: str | None = None,
     llm_provider: str | None = None,
     chat_model: str | None = None,
@@ -158,6 +168,10 @@ def set_app_settings(
         config.local_embedding_dtype = local_embedding_dtype.strip().lower()
     if local_embedding_device is not None:
         config.local_embedding_device = local_embedding_device.strip().lower()
+    if local_chat_model is not None:
+        config.local_chat_model = local_chat_model.strip()
+    if local_chat_context_length is not None:
+        config.local_chat_context_length = int(local_chat_context_length)
     config.save()
 
 

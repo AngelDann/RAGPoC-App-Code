@@ -231,6 +231,8 @@ def app_settings_view(request: HttpRequest) -> JsonResponse:
         embedding_provider = body.get("embedding_provider")
         local_embedding_dtype = body.get("local_embedding_dtype")
         local_embedding_device = body.get("local_embedding_device")
+        local_chat_model = body.get("local_chat_model")
+        local_chat_context_length = body.get("local_chat_context_length")
         set_app_settings(
             api_key=api_key.strip() if isinstance(api_key, str) else None,
             google_api_key=google_api_key.strip() if isinstance(google_api_key, str) else None,
@@ -244,6 +246,8 @@ def app_settings_view(request: HttpRequest) -> JsonResponse:
             embedding_provider=embedding_provider.strip() if isinstance(embedding_provider, str) else None,
             local_embedding_dtype=local_embedding_dtype.strip() if isinstance(local_embedding_dtype, str) else None,
             local_embedding_device=local_embedding_device.strip() if isinstance(local_embedding_device, str) else None,
+            local_chat_model=local_chat_model.strip() if isinstance(local_chat_model, str) else None,
+            local_chat_context_length=_as_int(local_chat_context_length),
         )
         reset_rag_service()
         return JsonResponse(get_api_key_status())
@@ -326,6 +330,146 @@ def model_cancel_view(request: HttpRequest) -> JsonResponse:
     downloader = get_downloader(settings)
     downloader.cancel()
     return JsonResponse({"state": "cancelling", "message": "Cancellation requested"})
+
+
+def _as_int(value, default: int | None = None) -> int | None:
+    """Coerce a request value to int, tolerating strings and blanks."""
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _chat_downloaders():
+    """Downloaders keyed by model key, one per configured chat model."""
+    from ragpoc.chat_models import CHAT_MODELS, ChatModelDownloader
+
+    settings = get_settings()
+    return {
+        key: ChatModelDownloader(settings, key) for key in CHAT_MODELS
+    }
+
+
+@csrf_exempt
+def chat_models_list_view(request: HttpRequest) -> JsonResponse:
+    """List installable chat models with their download state and footprint."""
+    if request.method != "GET":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    from ragpoc.chat_models import list_chat_models
+
+    settings = get_settings()
+    active = settings.local_chat_model
+    entries = []
+    for entry in list_chat_models():
+        downloader = _chat_downloaders()[entry["key"]]
+        entries.append(
+            {
+                **entry,
+                "installed": downloader.is_installed(),
+                "active": entry["key"] == active,
+                "path": str(downloader.install_dir),
+            }
+        )
+    return JsonResponse({"models": entries, "active_model": active})
+
+
+@csrf_exempt
+def chat_model_status_view(request: HttpRequest) -> JsonResponse:
+    """Download status for one chat model."""
+    model_key = request.GET.get("model") or get_settings().local_chat_model
+    try:
+        downloader = _chat_downloaders()[model_key]
+    except KeyError:
+        return JsonResponse({"detail": f"unknown chat model {model_key!r}"}, status=404)
+    return JsonResponse(downloader.get_status().to_dict())
+
+
+@csrf_exempt
+def chat_model_download_view(request: HttpRequest) -> JsonResponse:
+    """Start downloading a chat model in the background."""
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    try:
+        body = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except Exception:
+        body = {}
+    model_key = body.get("model") or get_settings().local_chat_model
+    try:
+        downloader = _chat_downloaders()[model_key]
+    except KeyError:
+        return JsonResponse({"detail": f"unknown chat model {model_key!r}"}, status=404)
+    if downloader.get_status().state == "downloading":
+        return JsonResponse({"state": "downloading", "message": "Download already in progress"})
+    downloader.download()
+    return JsonResponse({"state": "downloading", "message": "Download started"})
+
+
+@csrf_exempt
+def chat_model_cancel_view(request: HttpRequest) -> JsonResponse:
+    """Cancel an in-progress chat model download."""
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    try:
+        body = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except Exception:
+        body = {}
+    model_key = body.get("model") or get_settings().local_chat_model
+    try:
+        downloader = _chat_downloaders()[model_key]
+    except KeyError:
+        return JsonResponse({"detail": f"unknown chat model {model_key!r}"}, status=404)
+    downloader.cancel()
+    return JsonResponse({"state": "cancelling", "message": "Cancellation requested"})
+
+
+@csrf_exempt
+def agent_status_view(request: HttpRequest) -> JsonResponse:
+    """Readiness of the local agent: installed models, memory budget, provider.
+
+    The UI uses this to decide whether "Local" can be selected and to show the
+    user the memory headroom before they commit to loading a model.
+    """
+    if request.method != "GET":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    from ragpoc.budget import MemoryBudget
+    from ragpoc.chat_models import CHAT_MODELS
+
+    settings = get_settings()
+    budget = MemoryBudget(hard_limit_bytes=settings.memory_budget_mb * 1024 * 1024)
+    model_key = settings.local_chat_model
+    manifest = CHAT_MODELS.get(model_key)
+    downloader = _chat_downloaders().get(model_key)
+
+    installed = bool(downloader and downloader.is_installed())
+    estimate = budget.estimate("qwen3-vl-2b-q4f16", context_tokens=settings.local_chat_context_length)
+    decision = budget.check(
+        "qwen3-vl-2b-q4f16", context_tokens=settings.local_chat_context_length, with_vision=True
+    )
+
+    return JsonResponse({
+        "llm_provider": settings.llm_provider,
+        "model_key": model_key,
+        "model_installed": installed,
+        "manifest": (
+            {
+                "key": manifest.key,
+                "display_name": manifest.display_name,
+                "description": manifest.description,
+                "size_mb": round(manifest.size_bytes / (1024 * 1024), 1),
+                "modalities": list(manifest.modalities),
+            }
+            if manifest
+            else None
+        ),
+        "context_length": settings.local_chat_context_length,
+        "max_new_tokens": settings.local_chat_max_new_tokens,
+        "memory": budget.report(),
+        "estimate_mb": round(estimate / (1024 * 1024), 1),
+        "would_fit": decision.allowed,
+        "budget_note": decision.reason,
+    })
 
 
 @csrf_exempt
