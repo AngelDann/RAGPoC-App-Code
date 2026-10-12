@@ -61,7 +61,14 @@ def test_console_has_local_agent_card(console_html):
 
 
 def test_console_provider_select_offers_local(console_html):
-    assert 'value="local"' in console_html
+    """The mode toggle is how a user switches cloud <-> local; it must offer both."""
+    assert "settings-ai-mode-toggle" in console_html
+    assert "settings-mode-cloud" in console_html
+    assert "settings-mode-local" in console_html
+    # Cloud-only fields (keys, chat model) and the local summary live in their own
+    # containers so the toggle can swap them without a reload.
+    assert "settings-cloud-fields" in console_html
+    assert "settings-local-fields" in console_html
     assert "settings-llm-provider-select" in console_html
 
 

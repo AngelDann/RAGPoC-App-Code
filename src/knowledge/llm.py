@@ -70,6 +70,42 @@ def llm_provider_label(settings: Settings) -> str:
     return "Google AI Studio" if provider == PROVIDER_GOOGLE else "OpenRouter"
 
 
+def friendly_llm_error(exc: Exception, settings: Settings) -> str:
+    """Turn a model-call exception into something the user can act on.
+
+    The chat stream used to render ``str(exc)`` verbatim as the assistant's
+    answer, which for the most common failure -- no route to the cloud endpoint
+    -- was openai's bare ``"Connection error."``: no provider named, no hint
+    about what to do. That is how a user ends up believing local mode is broken
+    while the app is silently still on the cloud provider. Keep the technical
+    detail visible, but say who failed and how to recover.
+    """
+    detail = (str(exc) or exc.__class__.__name__).strip()
+    try:
+        local = is_local_provider(settings)
+        label = llm_provider_label(settings)
+    except Exception:
+        local, label = False, "el proveedor de IA"
+
+    connection_like = (
+        detail in {"Connection error.", "Connection error"}
+        or "APIConnectionError" in type(exc).__name__
+        or "connection" in detail.lower()
+    )
+    if connection_like and not local:
+        return (
+            f"No se pudo conectar con {label} ({detail}). "
+            "Comprueba tu conexión a internet. Para usar la aplicación sin conexión, "
+            "cambia a Modo Local en Ajustes (necesita el modelo descargado)."
+        )
+    if local:
+        return (
+            f"Error del modelo local ({detail}). "
+            "Revisa Ajustes → Modelo local: el modelo debe estar descargado y con margen de RAM."
+        )
+    return f"Error de {label}: {detail}"
+
+
 def require_api_key(settings: Settings) -> str:
     if is_local_provider(settings):
         # The local runtime needs no credential; the model is a file on disk.

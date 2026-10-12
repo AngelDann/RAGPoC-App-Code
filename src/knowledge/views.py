@@ -33,7 +33,7 @@ from knowledge.models import (
     Workspace,
     calculate_content_hash,
 )
-from knowledge.llm import llm_api_key, llm_provider_label
+from knowledge.llm import friendly_llm_error, llm_api_key, llm_provider_label
 from knowledge.services import get_rag_service, reset_rag_service
 from knowledge.settings_store import (
     get_api_key_status,
@@ -2071,7 +2071,7 @@ def inline_ai_action_stream_view(request: HttpRequest) -> HttpResponse:
                 status="error",
                 error_message=str(e),
             )
-            yield f"data: {json.dumps({'type': 'error', 'message': f'Error en generación de IA: {str(e)}'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': friendly_llm_error(e, settings)}, ensure_ascii=False)}\n\n"
 
     response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
@@ -2660,7 +2660,9 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                     error_message=str(exc),
                     metadata={"scope": scope, "thread_id": thread.id},
                 ))
-                q.put({"type": "error", "message": str(exc)})
+                # Not str(exc) verbatim: openai's "Connection error." reached the
+                # chat as the assistant's whole answer and told the user nothing.
+                q.put({"type": "error", "message": friendly_llm_error(exc, settings)})
             finally:
                 q.put(None)  # Sentinel to end stream
                 loop.close()

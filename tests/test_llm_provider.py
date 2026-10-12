@@ -2,8 +2,6 @@ from pathlib import Path
 
 import pytest
 
-from ragpoc.config import Settings
-
 from knowledge.llm import (
     GOOGLE_BASE_URL,
     OPENROUTER_BASE_URL,
@@ -16,6 +14,7 @@ from knowledge.llm import (
     llm_provider_label,
     require_api_key,
 )
+from ragpoc.config import Settings
 
 
 def make_settings(tmp_path: Path, **overrides) -> Settings:
@@ -121,3 +120,42 @@ def test_google_model_name_strips_vendor_prefix(tmp_path):
 
     assert google_model_name("google/gemini-3.7-flash") == "gemini-3.7-flash"
     assert google_model_name("gemini-3.7-flash") == "gemini-3.7-flash"
+
+
+# --- friendly error rendering ---
+
+
+def test_friendly_error_suggests_local_mode_when_the_cloud_is_unreachable(tmp_path):
+    """Regression: the chat rendered openai's bare "Connection error." as the answer."""
+    from knowledge.llm import friendly_llm_error
+
+    settings = make_settings(tmp_path, llm_provider="openrouter")
+    message = friendly_llm_error(Exception("Connection error."), settings)
+    assert "OpenRouter" in message
+    assert "Modo Local" in message
+    assert "Connection error." in message  # the technical detail stays reachable
+
+
+def test_friendly_error_names_the_active_cloud_provider(tmp_path):
+    from knowledge.llm import friendly_llm_error
+
+    settings = make_settings(tmp_path, llm_provider="google")
+    message = friendly_llm_error(Exception("Connection error."), settings)
+    assert "Google AI Studio" in message
+
+
+def test_friendly_error_keeps_unknown_errors_readable(tmp_path):
+    from knowledge.llm import friendly_llm_error
+
+    settings = make_settings(tmp_path, llm_provider="openrouter")
+    message = friendly_llm_error(Exception("boom"), settings)
+    assert "boom" in message
+
+
+def test_friendly_error_for_the_local_model_points_at_the_model_settings(tmp_path):
+    from knowledge.llm import friendly_llm_error
+
+    settings = make_settings(tmp_path, llm_provider="local")
+    message = friendly_llm_error(Exception("model directory not found"), settings)
+    assert "local" in message.lower()
+    assert "model directory not found" in message

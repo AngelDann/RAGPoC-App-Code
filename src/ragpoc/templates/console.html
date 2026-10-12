@@ -2844,6 +2844,55 @@
       border-radius: var(--radius-full);
     }
 
+    /* Modo de IA: nube/local es la decisión primaria de la tarjeta de
+       proveedor, no un campo más, así que se presenta como un segmented
+       control en lugar de un select. Radios calculados como el resto de
+       elementos anidados; el movimiento se limita a color/sombra. */
+    .ai-mode-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      padding: 5px;
+      background: var(--sidebar-bg);
+      border: 1px solid var(--border-warm);
+      border-radius: calc(var(--radius-xl) - 16px);
+    }
+
+    .ai-mode-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 9px 10px;
+      border: 1px solid transparent;
+      border-radius: calc(var(--radius-xl) - 20px);
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.18s ease-out, color 0.18s ease-out,
+        border-color 0.18s ease-out, box-shadow 0.18s ease-out;
+    }
+
+    .ai-mode-btn:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    .ai-mode-btn.active {
+      background: var(--card-bg);
+      color: var(--text-main);
+      border-color: var(--border-warm);
+      box-shadow: var(--craft-shadow-sm);
+    }
+
+    .ai-mode-btn:focus-visible {
+      outline: 2px solid var(--accent-craft);
+      outline-offset: 2px;
+    }
+
     /* Optical alignment: the title row holds a fixed icon column so titles line
        up regardless of each glyph's own advance width. Targets the existing
        header markup rather than requiring a new class. */
@@ -4072,12 +4121,26 @@
           <div class="fw-bold small text-dark mb-2 d-flex align-items-center gap-2">
             <i class="bi bi-robot text-dark"></i> <span data-i18n="settings.llm_provider_title">Proveedor de IA</span>
           </div>
+          <!-- Decisión primaria de esta tarjeta: dónde se ejecuta la IA. Todo lo
+               demás (proveedor nube, claves, modelo) cuelga de este interruptor. -->
+          <div class="ai-mode-toggle" id="settings-ai-mode-toggle" role="group" aria-label="Modo de IA">
+            <button type="button" class="ai-mode-btn" id="settings-mode-cloud" data-mode="cloud" aria-pressed="false">
+              <i class="bi bi-cloud"></i> <span data-i18n="settings.mode_cloud">Modo Nube</span>
+            </button>
+            <button type="button" class="ai-mode-btn" id="settings-mode-local" data-mode="local" aria-pressed="false">
+              <i class="bi bi-pc-display"></i> <span data-i18n="settings.mode_local">Modo Local</span>
+            </button>
+          </div>
+          <div class="text-muted mt-1" style="font-size:10.5px;" data-i18n="settings.mode_hint">
+            Cambia dónde se ejecutan el chat y la aplicación: en la nube (OpenRouter o Google AI Studio) o en tu equipo, sin API key y sin enviar datos fuera.
+          </div>
+
+          <div id="settings-cloud-fields">
           <div class="mb-2">
             <label class="form-label text-muted mb-1" style="font-size:11px;" data-i18n="settings.llm_provider_label">Proveedor</label>
             <select id="settings-llm-provider-select" class="form-select form-select-sm border" style="background: #ffffff;">
               <option value="openrouter">☁️ OpenRouter</option>
               <option value="google">☁️ Google AI Studio</option>
-              <option value="local">💻 Local (sin API, en tu equipo)</option>
             </select>
             <div class="text-muted mt-1" style="font-size:10.5px;" data-i18n="settings.llm_provider_hint">
               Aplica al agente de chat, artefactos y acciones de IA. Las dos API keys se guardan por separado para que puedas cambiar de proveedor sin reescribirlas.
@@ -4129,6 +4192,16 @@
             <button class="btn-craft" id="btn-clear-settings-key">
               <i class="bi bi-trash3"></i> <span data-i18n="settings.clear_key_btn">Quitar y usar .env</span>
             </button>
+          </div>
+          </div>
+
+          <div id="settings-local-fields" style="display:none;">
+            <div class="p-2 rounded border bg-light small text-dark" data-i18n="settings.local_mode_desc">
+              El chat, las acciones de IA y los artefactos se ejecutan en tu equipo con ONNX Runtime GenAI: sin API key, sin conexión y sin enviar tus datos fuera del equipo.
+            </div>
+            <div class="text-muted mt-2" style="font-size:10.5px;" data-i18n="settings.local_mode_hint">
+              Elige y descarga el modelo en la tarjeta «Modelo local (sin API)» de más abajo. Su badge te dice si está descargado y si cabe en la RAM antes de usarlo.
+            </div>
           </div>
         </div>
 
@@ -5386,6 +5459,12 @@
           local_agent_title: 'Modelo local (sin API)',
           local_agent_hint: 'Ejecuta el agente en tu equipo sin enviar nada a la nube. Necesita el modelo descargado.',
           llm_provider_hint: 'Aplica al agente de chat, artefactos y acciones de IA. Las dos API keys se guardan por separado para que puedas cambiar de proveedor sin reescribirlas.',
+          mode_cloud: 'Modo Nube',
+          mode_local: 'Modo Local',
+          mode_hint: 'Cambia dónde se ejecutan el chat y la aplicación: en la nube (OpenRouter o Google AI Studio) o en tu equipo, sin API key y sin enviar datos fuera.',
+          local_mode_desc: 'El chat, las acciones de IA y los artefactos se ejecutan en tu equipo con ONNX Runtime GenAI: sin API key, sin conexión y sin enviar tus datos fuera del equipo.',
+          local_mode_hint: 'Elige y descarga el modelo en la tarjeta «Modelo local (sin API)» de más abajo. Su badge te dice si está descargado y si cabe en la RAM antes de usarlo.',
+          mode_sync_embeddings: 'Para que todo funcione igual, conviene cambiar también el motor de embeddings (tarjeta «Proveedor de Embeddings»). Cambiarlo exige reindexar la base de conocimiento.\n\n¿Cambiar el motor de embeddings también?',
           api_key_title: 'OpenRouter API Key',
           google_key_title: 'Google AI Studio API Key',
           google_key_hint: 'Se guarda en tu base de datos local y tiene prioridad sobre la variable de entorno GOOGLE_API_KEY. Consíguela en aistudio.google.com/apikey.',
@@ -5712,6 +5791,12 @@
           local_agent_title: 'Local model (no API)',
           local_agent_hint: 'Runs the agent on your machine without sending anything to the cloud. Requires the downloaded model.',
           llm_provider_hint: 'Applies to the chat agent, artifacts and AI actions. Both API keys are stored separately so you can switch provider without retyping them.',
+          mode_cloud: 'Cloud mode',
+          mode_local: 'Local mode',
+          mode_hint: 'Switches where the chat and the app run: in the cloud (OpenRouter or Google AI Studio) or on your machine, with no API key and no data leaving it.',
+          local_mode_desc: 'Chat, AI actions and artifacts run on your machine with ONNX Runtime GenAI: no API key, no connection, and your data never leaves your computer.',
+          local_mode_hint: 'Pick and download the model in the "Local model (no API)" card below. Its badge tells you whether it is downloaded and fits in RAM before you use it.',
+          mode_sync_embeddings: 'For everything to work the same way, the embedding engine should change too ("Embedding provider" card). Changing it requires reindexing the knowledge base.\n\nChange the embedding engine too?',
           api_key_title: 'OpenRouter API Key',
           google_key_title: 'Google AI Studio API Key',
           google_key_hint: 'Stored in your local database and takes priority over the GOOGLE_API_KEY environment variable. Get it at aistudio.google.com/apikey.',
@@ -10077,6 +10162,63 @@
       if (embInput) embInput.value = preset.embedding_model;
     }
 
+    // --- Modo de IA (nube / local) ---
+    // El toggle aplica al instante, como un interruptor de verdad: cambiar de
+    // motor no es un formulario más que guardar, y el usuario que elige "Local"
+    // espera que la app deje de hablar con la nube ya (p. ej. sin conexión).
+    let aiMode = 'cloud';
+
+    function currentAiMode() {
+      return aiMode;
+    }
+
+    function cloudProviderValue() {
+      let sel = $('#settings-llm-provider-select');
+      return sel && sel.value ? sel.value : 'openrouter';
+    }
+
+    function setAiMode(mode) {
+      aiMode = mode === 'local' ? 'local' : 'cloud';
+      let cloudFields = $('#settings-cloud-fields');
+      let localFields = $('#settings-local-fields');
+      if (cloudFields) cloudFields.style.display = aiMode === 'cloud' ? 'block' : 'none';
+      if (localFields) localFields.style.display = aiMode === 'local' ? 'block' : 'none';
+      ['#settings-mode-cloud', '#settings-mode-local'].forEach((sel) => {
+        let btn = $(sel);
+        if (!btn) return;
+        let active = btn.dataset.mode === aiMode;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    async function onAiModeButton(mode) {
+      setAiMode(mode);
+      // "Modo" significa que toda la app funcione igual, así que se propone
+      // también el motor de embeddings coherente — pero solo con confirmación:
+      // cambiar de motor invalida los vectores indexados y exige reindexar.
+      let payload = { llm_provider: mode === 'local' ? 'local' : cloudProviderValue() };
+      let embSel = $('#settings-embedding-provider-select');
+      let wanted = mode === 'local' ? 'local' : 'cloud';
+      if (embSel && embSel.value !== wanted) {
+        if (confirm(t('settings.mode_sync_embeddings'))) {
+          embSel.value = wanted;
+          embSel.dispatchEvent(new Event('change'));
+          payload.embedding_provider = wanted === 'local' ? 'local' : cloudProviderValue();
+        }
+      }
+      try {
+        await api('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        showToast(t('settings.saved_success'), 'success');
+      } catch (e) {
+        showToast(t('common.error') + ': ' + e.message, 'error');
+      }
+    }
+
     function renderKeyStatus(el, keyStatus) {
       if (!el) return;
       if (!keyStatus || keyStatus.source === 'none') {
@@ -10104,9 +10246,14 @@
         }
 
         let llmProviderSelect = $('#settings-llm-provider-select');
+        // El select solo expresa la nube; "local" vive en el toggle de modo y
+        // no es un valor válido para este select.
+        let cloudProvider = (status.llm_provider && status.llm_provider !== 'local')
+          ? status.llm_provider : 'openrouter';
         if (llmProviderSelect) {
-          llmProviderSelect.value = status.llm_provider || 'openrouter';
+          llmProviderSelect.value = cloudProvider;
         }
+        setAiMode(status.llm_provider === 'local' ? 'local' : 'cloud');
         renderKeyStatus(statusEl, status.openrouter_key);
         renderKeyStatus($('#settings-google-key-status'), status.google_key);
         let chatInput = $('#settings-chat-model-input');
@@ -10185,6 +10332,13 @@
         applyLlmProviderPreset(e.target.value);
       };
     }
+
+    ['#settings-mode-cloud', '#settings-mode-local'].forEach((sel) => {
+      let btn = $(sel);
+      if (btn) {
+        btn.onclick = () => onAiModeButton(btn.dataset.mode);
+      }
+    });
 
     if ($('#settings-embedding-provider-select')) {
       $('#settings-embedding-provider-select').onchange = (e) => {
@@ -10345,9 +10499,9 @@
       if (googleKey) {
         payload.google_api_key = googleKey;
       }
-      if (llmProviderSelect) {
-        payload.llm_provider = llmProviderSelect.value;
-      }
+      // El toggle de modo manda: en modo local, el select solo expresa qué nube
+      // se usaría al volver a modo nube.
+      payload.llm_provider = currentAiMode() === 'local' ? 'local' : cloudProviderValue();
       if (chatModelInput && chatModelInput.value.trim()) {
         payload.chat_model = chatModelInput.value.trim();
       }
