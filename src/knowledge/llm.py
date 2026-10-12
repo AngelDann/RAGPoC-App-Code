@@ -87,6 +87,11 @@ def friendly_llm_error(exc: Exception, settings: Settings) -> str:
     except Exception:
         local, label = False, "el proveedor de IA"
 
+    if isinstance(exc, LLMConfigError):
+        # Already written for the user ("Configura tu API key…", "esta acción
+        # necesita Modo Nube…"): re-wrapping would bury the instruction.
+        return detail
+
     connection_like = (
         detail in {"Connection error.", "Connection error"}
         or "APIConnectionError" in type(exc).__name__
@@ -126,6 +131,15 @@ def build_openai_client(settings: Settings, *, timeout: float = 120.0, async_: b
     A missing key keeps the historical deferred behavior (placeholder credential, failure
     surfaces at request time); callers that want an early friendly error use `require_api_key`.
     """
+    if is_local_provider(settings):
+        # There is no endpoint behind Modo Local: the model is a file on disk and
+        # runs through ragpoc.local_llm. Reaching this client in local mode is a
+        # routing bug, and the old behavior -- a dummy key against an empty base
+        # URL -- surfaced as a baffling "Connection error." in the UI.
+        raise LLMConfigError(
+            "Esta acción no está disponible en Modo Local: usa Modo Nube en Ajustes → "
+            "Proveedor de IA, o ejecuta la acción con el modelo local desde el chat."
+        )
     api_key = llm_api_key(settings) or "sk-dummy"
     base_url = llm_base_url(settings)
     if async_:
@@ -193,6 +207,48 @@ def build_chat_model(settings: Settings, client=None):
 # One engine per process: loading the ONNX session costs ~13 s and ~1.8 GB, so
 # rebuilding it per request would be both slow and a memory leak.
 _LOCAL_ENGINES: dict[str, Any] = {}
+
+
+def active_model_name(settings: Settings) -> str:
+    """Model id to log and display: the local checkpoint in local mode, the cloud id otherwise."""
+    return settings.local_chat_model if is_local_provider(settings) else settings.chat_model
+
+
+def _local_messages(system: str, user: str):
+    from ragpoc.local_llm import ChatMessage
+
+    messages = []
+    if system:
+        messages.append(ChatMessage(role="system", content=system))
+    messages.append(ChatMessage(role="user", content=user))
+    return messages
+
+
+def local_completion(settings: Settings, system: str, user: str, *, temperature: float = 0.2, max_new_tokens: int = 1024):
+    """Single-turn completion on the local engine (no tools, no network).
+
+    The inline AI actions and text artifacts are plain system+user completions;
+    this is their Modo Local path, so the app works the same in both modes.
+    """
+    engine = _shared_local_engine(settings)
+    engine.load()
+    return engine.generate(_local_messages(system, user), max_new_tokens=max_new_tokens, temperature=temperature)
+
+
+def local_completion_stream(settings: Settings, system: str, user: str, *, temperature: float = 0.2, max_new_tokens: int = 1024):
+    """Streaming variant of local_completion: yields text pieces as generated."""
+    engine = _shared_local_engine(settings)
+    engine.load()
+    return engine.generate_stream(_local_messages(system, user), max_new_tokens=max_new_tokens, temperature=temperature)
+
+
+def local_last_metrics(settings: Settings):
+    """GenerationMetrics of the last generate_stream() on the shared engine.
+
+    ``generate_stream`` leaves them on the engine (``generate`` reads them the
+    same way), so streaming callers can log token counts after the fact.
+    """
+    return getattr(_shared_local_engine(settings), "_last_metrics", None)
 
 
 def _shared_local_engine(settings: Settings):

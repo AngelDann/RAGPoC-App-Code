@@ -345,7 +345,7 @@ from ddgs import DDGS
 from pydantic_ai import Agent, BinaryContent, RunContext
 from pydantic_ai.messages import ToolReturn
 
-from knowledge.llm import build_chat_model, build_openai_client
+from knowledge.llm import build_chat_model, build_openai_client, is_local_provider
 from knowledge.settings_store import get_effective_settings as get_settings
 from ragpoc.config import Settings
 from ragpoc.embeddings import AUDIO_MIME_TYPES
@@ -565,7 +565,9 @@ def create_pydantic_rag_agent(settings: Settings | None = None, language: str | 
     settings = settings or get_settings()
     active_lang = language or get_current_language()
 
-    client = build_openai_client(settings)
+    # Modo Local has no endpoint behind it: build_openai_client refuses local on
+    # purpose, and the adapter that runs the ONNX engine ignores this client.
+    client = None if is_local_provider(settings) else build_openai_client(settings)
     model = build_chat_model(settings, client=client)
 
     agent: Agent[AgentDeps, str] = Agent(

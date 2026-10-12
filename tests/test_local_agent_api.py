@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from base64 import b64encode
@@ -169,6 +170,73 @@ def test_model_status_stays_downloading_while_the_thread_runs(client, monkeypatc
     body = client.get("/api/model/status").json()
     assert body["state"] == "downloading"
     release.set()
+
+
+# --- modo local sin API key ---
+
+
+def test_inline_ai_action_runs_in_local_mode_without_an_api_key(client, monkeypatch):
+    """Regression: local mode answered "API key de Local (sin API) no configurada."."""
+    from types import SimpleNamespace
+
+    from knowledge import llm as llm_mod
+
+    assert _post(client, "/api/settings", {"llm_provider": "local"}).status_code == 200
+
+    class StubEngine:
+        def load(self):
+            pass
+
+        def generate(self, messages, **kwargs):
+            return SimpleNamespace(text="borrador local", metrics=SimpleNamespace())
+
+    monkeypatch.setattr(llm_mod, "_shared_local_engine", lambda settings: StubEngine())
+    response = _post(client, "/api/ai/inline-action", {"action": "ask", "prompt": "di hola"})
+    assert response.status_code == 200, response.content
+    body = response.json()
+    assert body["status"] == "success"
+    assert body["content"] == "borrador local"
+    assert "API key" not in json.dumps(body)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chat_stream_runs_in_local_mode_without_an_api_key(client, monkeypatch):
+    """The chat itself: local mode must not stop at an API-key guard."""
+    from pydantic_ai.models.test import TestModel
+
+    from knowledge import views
+    from knowledge.services import get_rag_service as real_get_rag_service
+    from ragpoc.embeddings import FakeEmbeddingProvider
+
+    assert _post(client, "/api/settings", {"llm_provider": "local"}).status_code == 200
+
+    import knowledge.settings_store as settings_store
+
+    rag_service = real_get_rag_service(settings_store.get_env_settings(), FakeEmbeddingProvider())
+    monkeypatch.setattr(views, "get_rag_service", lambda: rag_service)
+    # The agent is built for real around a TestModel: what is under test is that
+    # the request gets past the credential guard and into the model.
+    monkeypatch.setattr(
+        "knowledge.pydantic_agent.build_chat_model", lambda settings, client=None: TestModel()
+    )
+
+    response = _post(client, "/chat/stream", {"question": "Hola", "scope": "workspace"})
+    assert response.status_code == 200, response.content
+
+    stream = response.streaming_content
+    if hasattr(stream, "__aiter__"):
+        # The view streams through an async iterator; the sync test client hands
+        # it over as-is.
+        async def _collect():
+            return [chunk async for chunk in stream]
+
+        chunks = asyncio.run(_collect())
+    else:
+        chunks = list(stream)
+    events = b"".join(chunks).decode("utf-8")
+    assert "API key" not in events
+    assert '"type": "token"' in events
+    assert '"type": "done"' in events
 
 
 # --- agent status ---

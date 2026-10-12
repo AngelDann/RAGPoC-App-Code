@@ -33,7 +33,16 @@ from knowledge.models import (
     Workspace,
     calculate_content_hash,
 )
-from knowledge.llm import friendly_llm_error, llm_api_key, llm_provider_label
+from knowledge.llm import (
+    LLMConfigError,
+    active_model_name,
+    friendly_llm_error,
+    is_local_provider,
+    local_completion,
+    local_completion_stream,
+    local_last_metrics,
+    require_api_key,
+)
 from knowledge.services import get_rag_service, reset_rag_service
 from knowledge.settings_store import (
     get_api_key_status,
@@ -1555,6 +1564,45 @@ def generate_artifact_view(request: HttpRequest) -> JsonResponse:
 
     started = time.perf_counter()
     try:
+        if is_local_provider(settings):
+            result = local_completion(settings, chosen_system, user_prompt, temperature=0.2)
+            result_content = result.text
+            metrics = result.metrics
+            record_usage(
+                category="artifact",
+                action=f"artifact:{artifact_type}",
+                model=active_model_name(settings),
+                input_tokens=getattr(metrics, "prompt_tokens", 0) or 0,
+                output_tokens=getattr(metrics, "output_tokens", 0) or 0,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+                metadata={"notebook_id": notebook.id, "artifact_type": artifact_type},
+            )
+
+            # Save to NotebookArtifact gallery automatically
+            artifact_title = get_artifact_title(artifact_type, notebook.name, language=language)
+            metadata = {"render_mode": "mermaid"} if artifact_type == "mindmap" else {}
+            saved_artifact = NotebookArtifact.objects.create(
+                notebook=notebook,
+                artifact_type=artifact_type,
+                title=artifact_title,
+                content=result_content,
+                metadata_json=metadata,
+            )
+
+            return JsonResponse({
+                "status": "success",
+                "artifact": {
+                    "id": saved_artifact.id,
+                    "notebook_id": notebook.id,
+                    "notebook_name": notebook.name,
+                    "artifact_type": saved_artifact.artifact_type,
+                    "title": saved_artifact.title,
+                    "content": saved_artifact.content,
+                    "metadata_json": saved_artifact.metadata_json,
+                    "created_at": saved_artifact.created_at.isoformat(),
+                }
+            })
+
         from knowledge.llm import build_openai_client
 
         client = build_openai_client(settings, async_=False)
@@ -1955,13 +2003,33 @@ def inline_ai_action_view(request: HttpRequest) -> JsonResponse:
         return JsonResponse({"detail": "Invalid JSON"}, status=400)
 
     settings = get_settings()
-    if not llm_api_key(settings):
-        return JsonResponse({"detail": f"API key de {llm_provider_label(settings)} no configurada."}, status=500)
+    try:
+        require_api_key(settings)
+    except LLMConfigError as exc:
+        return JsonResponse({"detail": str(exc)}, status=500)
 
     action, chosen_system, user_message = _build_inline_ai_prompt(body)
 
     started = time.perf_counter()
     try:
+        if is_local_provider(settings):
+            result = local_completion(settings, chosen_system, user_message, temperature=0.3)
+            generated_text = result.text
+            metrics = result.metrics
+            record_usage(
+                category="inline_ai",
+                action=f"inline_ai:{action}",
+                model=active_model_name(settings),
+                input_tokens=getattr(metrics, "prompt_tokens", 0) or 0,
+                output_tokens=getattr(metrics, "output_tokens", 0) or 0,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+            )
+            return JsonResponse({
+                "status": "success",
+                "action": action,
+                "content": generated_text,
+            })
+
         from knowledge.llm import build_openai_client
 
         client = build_openai_client(settings, async_=False)
@@ -2012,8 +2080,10 @@ def inline_ai_action_stream_view(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"detail": "Invalid JSON"}, status=400)
 
     settings = get_settings()
-    if not llm_api_key(settings):
-        return JsonResponse({"detail": f"API key de {llm_provider_label(settings)} no configurada."}, status=500)
+    try:
+        require_api_key(settings)
+    except LLMConfigError as exc:
+        return JsonResponse({"detail": str(exc)}, status=500)
 
     action, chosen_system, user_message = _build_inline_ai_prompt(body)
 
@@ -2027,6 +2097,28 @@ def inline_ai_action_stream_view(request: HttpRequest) -> HttpResponse:
     async def event_stream():
         started = time.perf_counter()
         try:
+            if is_local_provider(settings):
+                # Pieces come from the ONNX engine. next() runs in a worker thread
+                # so the CPU-bound generation does not stall the event loop (this
+                # is an async iterator precisely to stream as it happens).
+                gen = local_completion_stream(settings, chosen_system, user_message, temperature=0.3)
+                while True:
+                    piece = await asyncio.to_thread(next, gen, None)
+                    if piece is None:
+                        break
+                    yield f"data: {json.dumps({'type': 'token', 'text': piece}, ensure_ascii=False)}\n\n"
+                metrics = local_last_metrics(settings)
+                await sync_to_async(record_usage)(
+                    category="inline_ai",
+                    action=f"inline_ai:{action}",
+                    model=active_model_name(settings),
+                    input_tokens=getattr(metrics, "prompt_tokens", 0) or 0,
+                    output_tokens=getattr(metrics, "output_tokens", 0) or 0,
+                    duration_ms=int((time.perf_counter() - started) * 1000),
+                )
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
             from knowledge.llm import build_openai_client
 
             client = build_openai_client(settings)
@@ -2457,9 +2549,15 @@ def chat_stream_view(request: HttpRequest) -> HttpResponse:
                     pass
             started = time.perf_counter()
             try:
-                # Check the active provider's API key is present
-                if not llm_api_key(settings):
-                    q.put({"type": "token", "text": f"API key de {llm_provider_label(settings)} no está configurada."})
+                # Local mode runs on files on disk and needs no credential at all;
+                # require_api_key only raises when the active *cloud* provider is
+                # missing its key (the old llm_api_key() guard rejected local too,
+                # which is how local chat answered "API key de Local (sin API) no
+                # está configurada." without ever touching the model).
+                try:
+                    require_api_key(settings)
+                except LLMConfigError as exc:
+                    q.put({"type": "token", "text": str(exc)})
                     q.put({"type": "done"})
                     return
 

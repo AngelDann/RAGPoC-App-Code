@@ -73,6 +73,55 @@ def test_require_api_key_google_missing(tmp_path):
         require_api_key(settings)
 
 
+def test_require_api_key_local_needs_no_key(tmp_path):
+    """Regression: the chat refused to run local with "API key de Local (sin API)".
+
+    Local mode has no credential by design; the guards in views.py called
+    llm_api_key() (None for local) instead of require_api_key(), which knows
+    local needs none.
+    """
+    settings = make_settings(
+        tmp_path, llm_provider="local", openrouter_api_key=None, google_api_key=None
+    )
+    assert require_api_key(settings) == ""
+
+
+def test_friendly_error_passes_config_errors_through(tmp_path):
+    """LLMConfigError messages are already user-facing: don't re-wrap them."""
+    from knowledge.llm import friendly_llm_error
+
+    settings = make_settings(tmp_path, llm_provider="local")
+    message = friendly_llm_error(LLMConfigError("Esta acción necesita Modo Nube."), settings)
+    assert message == "Esta acción necesita Modo Nube."
+
+
+# --- local completions (inline actions and artifacts run without tools) ---
+
+
+def test_local_completion_uses_the_shared_engine(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from knowledge import llm as llm_mod
+
+    calls: dict = {}
+
+    class StubEngine:
+        def load(self):
+            calls["loaded"] = True
+
+        def generate(self, messages, **kwargs):
+            calls["messages"] = messages
+            calls["kwargs"] = kwargs
+            return SimpleNamespace(text="hola", metrics=SimpleNamespace())
+
+    monkeypatch.setattr(llm_mod, "_shared_local_engine", lambda settings: StubEngine())
+    settings = make_settings(tmp_path, llm_provider="local")
+    result = llm_mod.local_completion(settings, "sistema", "di hola")
+    assert result.text == "hola"
+    assert calls["loaded"] is True
+    assert [m.role for m in calls["messages"]] == ["system", "user"]
+
+
 # --- clients ---
 
 def test_build_openai_client_targets_google(tmp_path):
@@ -93,6 +142,13 @@ def test_build_openai_client_sync(tmp_path):
     settings = make_settings(tmp_path, llm_provider="google")
     client = build_openai_client(settings, async_=False)
     assert "generativelanguage.googleapis.com" in str(client.base_url)
+
+
+def test_build_openai_client_refuses_local_mode(tmp_path):
+    """The raw OpenAI client is a cloud-only door; local must not sneak through it."""
+    settings = make_settings(tmp_path, llm_provider="local")
+    with pytest.raises(LLMConfigError, match="Modo Nube"):
+        build_openai_client(settings, async_=False)
 
 
 # --- pydantic-ai models ---
