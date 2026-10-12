@@ -1,4 +1,5 @@
 import json
+import time
 from base64 import b64encode
 
 import pytest
@@ -19,6 +20,11 @@ def isolate_env_settings(tmp_path, monkeypatch):
         _env_file=None,
         data_dir=tmp_path / "data",
         allowed_upload_dir=tmp_path / "data",
+        # Model caches too: without these the download endpoints read (and wrote)
+        # the developer's real data/models, and "already installed" short-circuits
+        # made the download-path tests pass or fail depending on the machine.
+        local_chat_cache_dir=tmp_path / "models",
+        local_embedding_cache_dir=tmp_path / "models",
         ui_password="test-password",
     )
     import knowledge.settings_store as settings_store
@@ -93,6 +99,76 @@ def test_chat_model_cancel_rejects_get(client):
 def test_chat_model_cancel_unknown_model_is_404(client):
     response = _post(client, "/api/chat-model/cancel", {"model": "nope"})
     assert response.status_code == 404
+
+
+def test_chat_model_cancel_reaches_the_running_download(client, monkeypatch):
+    """Regression: cancel hit a throwaway downloader, never the running thread."""
+    import threading
+
+    from ragpoc.chat_models import ChatModelDownloader
+
+    started, release = threading.Event(), threading.Event()
+
+    def slow_download(self):
+        started.set()
+        release.wait(timeout=5)
+
+    monkeypatch.setattr(ChatModelDownloader, "_download_files", slow_download)
+    assert _post(client, "/api/chat-model/download", {"model": "qwen3-0.6b"}).status_code == 200
+    assert started.wait(timeout=5)
+
+    assert _post(client, "/api/chat-model/cancel", {"model": "qwen3-0.6b"}).status_code == 200
+    release.set()
+
+    deadline = time.monotonic() + 5
+    body = {}
+    while time.monotonic() < deadline:
+        body = client.get("/api/chat-model/status", {"model": "qwen3-0.6b"}).json()
+        if body.get("message") == "cancelled":
+            break
+        time.sleep(0.05)
+    assert body["message"] == "cancelled"
+
+
+def test_chat_model_status_stays_downloading_while_the_thread_runs(client, monkeypatch):
+    """Regression: the poll saw ``not_downloaded`` mid-download and the UI quit."""
+    import threading
+
+    from ragpoc.chat_models import ChatModelDownloader
+
+    started, release = threading.Event(), threading.Event()
+
+    def slow_download(self):
+        started.set()
+        release.wait(timeout=5)
+        self._set(state="error", error="stop")
+
+    monkeypatch.setattr(ChatModelDownloader, "_download_files", slow_download)
+    assert _post(client, "/api/chat-model/download", {"model": "qwen3-0.6b"}).status_code == 200
+    assert started.wait(timeout=5)
+    body = client.get("/api/chat-model/status", {"model": "qwen3-0.6b"}).json()
+    assert body["state"] == "downloading"
+    release.set()
+
+
+def test_model_status_stays_downloading_while_the_thread_runs(client, monkeypatch):
+    """Same regression for the embedding model box polled via /api/model/status."""
+    import threading
+
+    from ragpoc.model_downloader import ModelDownloader
+
+    started, release = threading.Event(), threading.Event()
+
+    def slow_download(self, dtype):
+        started.set()
+        release.wait(timeout=5)
+
+    monkeypatch.setattr(ModelDownloader, "_download_files", slow_download)
+    assert _post(client, "/api/model/download", {"dtype": "q8"}).status_code == 200
+    assert started.wait(timeout=5)
+    body = client.get("/api/model/status").json()
+    assert body["state"] == "downloading"
+    release.set()
 
 
 # --- agent status ---

@@ -1,6 +1,7 @@
+import threading
 from pathlib import Path
 
-from ragpoc.chat_models import CHAT_MODELS, ChatModelDownloader
+from ragpoc.chat_models import CHAT_MODELS, ChatModelDownloader, get_chat_downloader
 from ragpoc.config import Settings
 
 
@@ -108,3 +109,54 @@ def test_cancel_and_reset_are_safe(tmp_path):
     assert downloader.is_cancelled is True
     downloader.reset_cancel()
     assert downloader.is_cancelled is False
+
+
+def test_get_chat_downloader_returns_a_shared_instance(tmp_path):
+    """Regression: views built a fresh downloader per request.
+
+    The download thread ran on instance A while ``/api/chat-model/status``
+    polled instance B, whose status was always ``not_downloaded`` -- the
+    progress bar vanished and the UI said "Modelo no descargado" while the
+    model was still downloading. Cancel was equally lost.
+    """
+    settings = make_settings(tmp_path)
+    assert get_chat_downloader(settings, "qwen3-vl-2b") is get_chat_downloader(settings, "qwen3-vl-2b")
+
+
+def test_download_state_is_visible_from_another_call(tmp_path):
+    settings = make_settings(tmp_path)
+    downloader = get_chat_downloader(settings, "qwen3-0.6b")
+    downloader._set(state="downloading", downloaded_bytes=10, total_bytes=100)
+    status = get_chat_downloader(settings, "qwen3-0.6b").get_status()
+    assert status.state == "downloading"
+    assert status.downloaded_bytes == 10
+
+
+def test_cancel_reaches_the_downloading_instance(tmp_path):
+    settings = make_settings(tmp_path)
+    downloader = get_chat_downloader(settings, "qwen3-vl-2b")
+    get_chat_downloader(settings, "qwen3-vl-2b").cancel()
+    assert downloader.is_cancelled is True
+    downloader.reset_cancel()
+
+
+def test_a_new_download_clears_a_stale_cancel(tmp_path):
+    """A cancelled download must not poison every later attempt."""
+    downloader = ChatModelDownloader(make_settings(tmp_path), "qwen3-vl-2b")
+    downloader.cancel()
+    started = threading.Event()
+    release = threading.Event()
+    original = downloader._download_files
+
+    def fake_download():
+        started.set()
+        release.wait(timeout=5)
+
+    downloader._download_files = fake_download
+    thread = threading.Thread(target=downloader.download_blocking, daemon=True)
+    thread.start()
+    assert started.wait(timeout=5)
+    release.set()
+    thread.join(timeout=5)
+    downloader._download_files = original
+    assert downloader.get_status().message != "cancelled"

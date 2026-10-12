@@ -34,6 +34,25 @@ def test_process_rss_bytes_is_positive():
     assert process_rss_bytes() > 0
 
 
+def test_memory_metrics_degrade_without_psutil(monkeypatch):
+    """The packaged app ships without psutil; metrics must not raise there.
+
+    A missing psutil used to surface as ModuleNotFoundError: a 500 on
+    /api/agent/status and a local agent whose RAM budget always raised.
+    """
+    from ragpoc import metrics
+
+    monkeypatch.setattr(metrics, "_psutil", lambda: None)
+    assert metrics.process_rss_bytes() > 0
+    assert metrics.process_vms_bytes() >= 0
+    assert metrics.system_available_bytes() > 0
+    snap = metrics.snapshot_memory()
+    assert snap.rss_bytes > 0
+    with metrics.PeakMemoryTracker(interval=0.01) as tracker:
+        pass
+    assert tracker.peak_mb > 0
+
+
 def test_snapshot_memory_reports_mb():
     snap = snapshot_memory()
     assert snap.rss_mb > 0

@@ -169,3 +169,18 @@ numpy==2.5.3
 onnxruntime-directml==1.24.4
 huggingface_hub==2.2.0
 transformers==5.19.0
+
+# Proceso de memoria (ragpoc/metrics.py, ragpoc/budget.py): da el RSS real con el que
+# se decide si un modelo cabe en el presupuesto de RAM. Sin el, /api/agent/status
+# devolvia 500 en la app empaquetada. ragpoc/metrics.py degrada a contadores ctypes si
+# falta, pero la app empaquetada lo lleva para medir tambien los procesos hijos.
+psutil==7.2.2
+
+# Motor de inferencia del agente local (ragpoc/local_llm.py, ragpoc/whisper_transcribe.py):
+# sin el, el modelo se descarga pero no se puede cargar (LocalLlmError en _import_genai).
+# NO se instala desde este archivo: su metadata exige onnxruntime>=1.26, lo que haria que
+# pip instalase onnxruntime encima de onnxruntime-directml==1.24.4 (ambos escriben en
+# site-packages/onnxruntime y el DirectML se rompe). Se instala sin dependencias en
+# release.yml:
+#     pip install --no-deps onnxruntime-genai==0.14.1
+# La serie 0.14.x es la que casa con onnxruntime-directml 1.24.x; 0.15+ exige ORT API 26.

@@ -10247,6 +10247,15 @@
         bytes.textContent = formatBytes(s.downloaded_bytes) + ' / ' + formatBytes(s.total_bytes);
         dlBtn.style.display = 'none';
         cancelBtn.style.display = 'inline';
+      } else if (s.state === 'error') {
+        // A failed download must not render as one that was never started: the
+        // error box below carries the real reason (network, disk, layout...).
+        label.innerHTML = '<i class="bi bi-exclamation-triangle text-danger"></i> Error al descargar';
+        pct.textContent = '';
+        bar.style.display = 'none';
+        bytes.textContent = 'Total: ' + formatBytes(s.total_bytes);
+        dlBtn.style.display = 'inline-flex';
+        cancelBtn.style.display = 'none';
       } else {
         label.innerHTML = '<i class="bi bi-cloud-arrow-down text-primary"></i> Modelo no descargado';
         pct.textContent = '';

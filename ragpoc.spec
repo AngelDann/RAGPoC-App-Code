@@ -47,6 +47,38 @@ from PyInstaller.utils.hooks import copy_metadata
 for _pkg in ('genai_prices', 'pydantic_ai_slim', 'mcp'):
     datas += copy_metadata(_pkg)
 
+# The local-model stack is imported lazily (inside functions) by
+# ragpoc.model_downloader, ragpoc.chat_models, ragpoc.embeddings_local and
+# ragpoc.local_llm. modulegraph does follow those imports today, but the whole
+# local agent feature is one missed import away from a packaged app that can
+# show a download button and then fail to download, so the stack is listed
+# explicitly as well. onnxruntime-genai additionally needs collect_all: it
+# loads onnxruntime-genai.dll from its own package directory at runtime, and
+# only collect_all pulls that DLL in as a binary/data. It is optional (installed
+# with --no-deps in release.yml -- see requirements-windows.txt), so a build
+# environment without it still builds.
+_binaries = []
+for _pkg in ('onnxruntime_genai',):
+    try:
+        from PyInstaller.utils.hooks import collect_all
+        _pkg_binaries, _pkg_datas, _pkg_hidden = collect_all(_pkg)
+        _binaries += _pkg_binaries
+        datas += _pkg_datas
+    except Exception:
+        _pkg_hidden = []
+_ml_hiddenimports = [
+    'huggingface_hub',
+    'numpy',
+    'onnxruntime',
+    'transformers',
+    'safetensors',
+    'tqdm',
+    'fsspec',
+    'requests',
+    'psutil',
+    'onnxruntime_genai',
+] + list(_pkg_hidden)
+
 # Collect every submodule of our own packages: Django resolves middleware,
 # apps, management commands, etc. by dotted string (settings.py, app
 # registry), which PyInstaller's static import scan can't trace — an
@@ -96,12 +128,12 @@ hiddenimports = own_packages + [
     'docx',
     'openpyxl',
     'pptx',
-]
+] + _ml_hiddenimports
 
 a = Analysis(
     ['desktop_launcher.py'],
     pathex=[str(ROOT), str(ROOT / 'src')],
-    binaries=[],
+    binaries=_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

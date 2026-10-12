@@ -189,6 +189,9 @@ class ChatModelDownloader:
         self._emit(**kwargs)
 
     def download_blocking(self) -> ChatModelStatus:
+        # A cancel is scoped to one attempt: a previous cancellation must not
+        # silently abort every later download of the same model.
+        self.reset_cancel()
         if self.is_installed():
             self._set(state="ready", downloaded_bytes=self.manifest.size_bytes, message="already installed")
             return self.get_status()
@@ -200,7 +203,7 @@ class ChatModelDownloader:
         if self.is_cancelled:
             self._set(state="not_downloaded", message="cancelled")
             return self.get_status()
-        # Never report ready on trust: an allow_patterns that matches nothing
+        # Never report ready on trust: a subtree that matches nothing
         # downloads zero bytes and would otherwise look like success.
         if not self.is_installed():
             missing = [name for name in self.manifest.required if not (self.install_dir / name).exists()]
@@ -214,28 +217,63 @@ class ChatModelDownloader:
         return self.get_status()
 
     def download(self) -> ChatModelStatus:
+        # Publish "downloading" before the thread starts so the first status
+        # poll after POST /api/chat-model/download never reads stale.
+        self._set(state="downloading", message=f"downloading {self.manifest.repo_id}")
         thread = threading.Thread(target=self.download_blocking, name="chat-model-download", daemon=True)
         thread.start()
         return self.get_status()
 
     def _download_files(self) -> None:
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import HfApi, hf_hub_download
 
         self._set(state="downloading", message=f"downloading {self.manifest.repo_id}")
-        patterns = [f"{self.manifest.subdir}/*"] if self.manifest.subdir else None
-        snapshot_download(
-            repo_id=self.manifest.repo_id,
-            local_dir=str(self.model_dir),
-            allow_patterns=patterns,
-            max_workers=4,
-        )
+        prefix = f"{self.manifest.subdir}/" if self.manifest.subdir else ""
+        files = [
+            path
+            for path in HfApi().list_repo_files(repo_id=self.manifest.repo_id)
+            if path.startswith(prefix) and not path.endswith("/")
+        ]
+        if not files:
+            # Surfaced as a proper error by download_blocking's verification.
+            return
+
+        # File by file rather than one snapshot_download() call: the progress
+        # bar can only move when bytes are accounted for incrementally, and
+        # cancellation needs a place to take effect between files.
+        for rel_path in files:
+            if self.is_cancelled:
+                return
+            hf_hub_download(
+                repo_id=self.manifest.repo_id,
+                filename=rel_path,
+                local_dir=str(self.model_dir),
+            )
+            done = sum(p.stat().st_size for p in self.model_dir.rglob("*") if p.is_file())
+            self._set(downloaded_bytes=done)
         if self.is_cancelled:
             return
         self._set(downloaded_bytes=self.manifest.size_bytes)
 
 
+_downloaders: dict[tuple[str, str], ChatModelDownloader] = {}
+
+
 def get_chat_downloader(settings: Settings, model_key: str | None = None) -> ChatModelDownloader:
-    return ChatModelDownloader(settings, model_key or settings.local_chat_model)
+    """The one downloader per (cache dir, model).
+
+    Must be shared across requests: the download runs on a background thread
+    attached to one instance, so if every request built its own downloader the
+    status endpoint would report ``not_downloaded`` for a model that is being
+    downloaded right now (and cancel would never reach the running thread).
+    That is exactly what made the packaged app look like downloads failed the
+    moment they started.
+    """
+    key = model_key or settings.local_chat_model
+    cache_key = (str(settings.local_chat_cache_dir), key)
+    if cache_key not in _downloaders:
+        _downloaders[cache_key] = ChatModelDownloader(settings, key)
+    return _downloaders[cache_key]
 
 
 def list_chat_models() -> list[dict]:

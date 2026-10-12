@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ragpoc.config import Settings
@@ -79,18 +79,41 @@ class ModelDownloader:
     # -- status --
 
     def get_status(self) -> ModelStatus:
-        model_dir = self.model_dir
-        dtype = self.settings.local_embedding_dtype
+        """Current status: live while a download runs, disk-truth otherwise.
+
+        Rebuilding the status from disk alone was a silent lie that made the
+        packaged app look broken: while a download is in flight the required
+        files are not complete yet, so a disk scan reads ``not_downloaded`` and
+        the console's 1.5s poll hides the progress bar and reports
+        "Modelo no descargado" while the download keeps running in the
+        background. The in-memory status is the only place that knows about an
+        in-flight or failed download, so it wins for those two states; every
+        other state is still reconciled against what is actually on disk (a
+        model downloaded by a previous run must read as ``ready``).
+        """
+        with self._lock:
+            if self._status.state in {"downloading", "error"}:
+                # Copy: callers (and JsonResponse serializers) must not be able
+                # to corrupt the downloader's own bookkeeping.
+                return replace(self._status)
+        return self._scan_disk()
+
+    def _required_files(self, dtype: str) -> list[str]:
         suffix = _DTYPE_SUFFIX.get(dtype, "_quantized")
-
-        if not model_dir.exists():
-            return ModelStatus(state="not_downloaded", dtype=dtype, total_bytes=_DTYPE_SIZES.get(dtype, 0))
-
         required = list(_BASE_FILES)
         for comp in _COMPONENTS:
             required.append(f"onnx/{comp}{suffix}.onnx")
             required.append(f"onnx/{comp}{suffix}.onnx_data")
+        return required
 
+    def _scan_disk(self) -> ModelStatus:
+        model_dir = self.model_dir
+        dtype = self.settings.local_embedding_dtype
+
+        if not model_dir.exists():
+            return ModelStatus(state="not_downloaded", dtype=dtype, total_bytes=_DTYPE_SIZES.get(dtype, 0))
+
+        required = self._required_files(dtype)
         downloaded = 0
         all_present = True
         for fname in required:
@@ -163,7 +186,22 @@ class ModelDownloader:
             if self._cancel_flag:
                 self._emit_progress(state="not_downloaded", message="Download cancelled")
             else:
-                self._emit_progress(state="error", error=str(exc)[:500])
+                self._emit_progress(state="error", error=str(exc)[:500], message="download failed")
+            return self.get_status()
+
+        if self._cancel_flag:
+            self._emit_progress(state="not_downloaded", message="Download cancelled")
+            return self.get_status()
+
+        # Never report ready on trust: a dtype suffix that matches nothing
+        # downloads zero bytes and would otherwise look like success.
+        missing = [name for name in self._required_files(dtype) if not (self.model_dir / name).exists()]
+        if missing:
+            self._emit_progress(
+                state="error",
+                message="download completed but files are missing",
+                error=f"missing {missing} under {self.model_dir}",
+            )
             return self.get_status()
 
         self._emit_progress(state="ready", message="Model ready")

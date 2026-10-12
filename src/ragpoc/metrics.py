@@ -7,20 +7,135 @@ and comparable across runs.
 
 from __future__ import annotations
 
+import os
+import sys
 import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 
 # Windows working-set figures are reported in bytes; keep one unit everywhere.
 MB = 1024 * 1024
 
 
 def _psutil():
-    import psutil
+    """psutil when installed, ``None`` otherwise.
 
+    psutil is an optional dependency and is absent from the packaged app
+    (and from any environment installed from requirements.txt), where its
+    absence used to surface as a hard ``ModuleNotFoundError`` -- a 500 on
+    /api/agent/status, and a local agent whose RAM budget always raised.
+    Memory accounting must degrade, never crash: the ctypes fallbacks below
+    read the same OS counters for the current process.
+    """
+    try:
+        import psutil
+    except Exception:
+        return None
     return psutil
+
+
+def _windows_process_memory() -> tuple[int, int]:
+    """(RSS, VMS) for this process via GetProcessMemoryInfo; no psutil needed.
+
+    The prototypes have to be declared: GetCurrentProcess() returns a HANDLE,
+    and calling it through ctypes without a restype truncates the pseudo-handle
+    to 32 bits, which makes GetProcessMemoryInfo fail silently and report 0.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("PageFaultCount", wintypes.DWORD),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    psapi.GetProcessMemoryInfo.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+        wintypes.DWORD,
+    ]
+    psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+
+    counters = PROCESS_MEMORY_COUNTERS()
+    counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+    if not psapi.GetProcessMemoryInfo(kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb):
+        raise OSError(f"GetProcessMemoryInfo failed: {ctypes.get_last_error()}")
+    return int(counters.WorkingSetSize), int(counters.PagefileUsage)
+
+
+def _posix_process_memory() -> tuple[int, int]:
+    """(RSS, VMS) from /proc on Linux, peak RSS from getrusage elsewhere."""
+    try:
+        statm = Path("/proc/self/statm").read_text().split()
+        page = os.sysconf("SC_PAGE_SIZE")
+        return int(statm[1]) * page, int(statm[2]) * page
+    except Exception:
+        import resource
+
+        peak = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        # ru_maxrss is KiB on Linux and bytes on macOS.
+        return (peak if sys.platform == "darwin" else peak * 1024), 0
+
+
+def _fallback_process_memory() -> tuple[int, int]:
+    return _windows_process_memory() if os.name == "nt" else _posix_process_memory()
+
+
+def _process_memory() -> tuple[int, int]:
+    """(RSS, VMS) for this process: psutil when available, OS counters otherwise."""
+    psutil = _psutil()
+    if psutil is None:
+        return _fallback_process_memory()
+    info = psutil.Process().memory_info()
+    return info.rss, info.vms
+
+
+def _fallback_available_bytes() -> int:
+    """Physical memory available to new processes, without psutil."""
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", wintypes.DWORD),
+                ("dwMemoryLoad", wintypes.DWORD),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.GlobalMemoryStatusEx.argtypes = [ctypes.POINTER(MEMORYSTATUSEX)]
+        kernel32.GlobalMemoryStatusEx.restype = wintypes.BOOL
+        stat = MEMORYSTATUSEX()
+        stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+        if not kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+            raise OSError(f"GlobalMemoryStatusEx failed: {ctypes.get_last_error()}")
+        return int(stat.ullAvailPhys)
+    try:
+        return int(Path("/proc/meminfo").read_text().split("MemAvailable:")[1].split()[0]) * 1024
+    except Exception:
+        return 0
 
 
 def process_rss_bytes(include_children: bool = True) -> int:
@@ -28,8 +143,12 @@ def process_rss_bytes(include_children: bool = True) -> int:
 
     ffmpeg is spawned as a child during video ingestion, and uvicorn may hold
     worker children, so a whole-tree RSS is the number the user actually feels.
+    Children are only counted when psutil is installed; without it the current
+    process alone is still a usable budget input.
     """
     psutil = _psutil()
+    if psutil is None:
+        return _process_memory()[0]
     proc = psutil.Process()
     total = proc.memory_info().rss
     if include_children:
@@ -42,11 +161,14 @@ def process_rss_bytes(include_children: bool = True) -> int:
 
 
 def process_vms_bytes() -> int:
-    return _psutil().Process().memory_info().vms
+    return _process_memory()[1]
 
 
 def system_available_bytes() -> int:
-    return _psutil().virtual_memory().available
+    psutil = _psutil()
+    if psutil is None:
+        return _fallback_available_bytes()
+    return psutil.virtual_memory().available
 
 
 @dataclass(frozen=True)
@@ -62,12 +184,11 @@ class MemorySnapshot:
 
 
 def snapshot_memory() -> MemorySnapshot:
-    psutil = _psutil()
-    info = psutil.Process().memory_info()
+    rss_bytes, vms_bytes = _process_memory()
     return MemorySnapshot(
-        rss_bytes=info.rss,
-        vms_bytes=info.vms,
-        system_available_bytes=psutil.virtual_memory().available,
+        rss_bytes=rss_bytes,
+        vms_bytes=vms_bytes,
+        system_available_bytes=system_available_bytes(),
         timestamp=time.perf_counter(),
     )
 

@@ -37,6 +37,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-windows.txt
+          # onnxruntime-genai is the local agent's inference engine (ragpoc/local_llm.py);
+          # without it the packaged app can download a model but never load it. Installed
+          # with --no-deps on purpose: its metadata demands onnxruntime>=1.26, which would
+          # make pip lay plain `onnxruntime` over `onnxruntime-directml` 1.24.4 (both write
+          # into site-packages/onnxruntime) and break DirectML. See requirements-windows.txt.
+          pip install --no-deps onnxruntime-genai==0.14.1
 
       - name: Build EXE (onedir)
         run: pyinstaller ragpoc.spec --clean --noconfirm

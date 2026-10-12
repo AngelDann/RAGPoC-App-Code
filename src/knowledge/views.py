@@ -343,12 +343,16 @@ def _as_int(value, default: int | None = None) -> int | None:
 
 
 def _chat_downloaders():
-    """Downloaders keyed by model key, one per configured chat model."""
-    from ragpoc.chat_models import CHAT_MODELS, ChatModelDownloader
+    """Downloaders keyed by model key, one per configured chat model.
+
+    Cached per (cache dir, model) so the status, download and cancel endpoints
+    all talk to the same instance the download thread is running on.
+    """
+    from ragpoc.chat_models import CHAT_MODELS, get_chat_downloader
 
     settings = get_settings()
     return {
-        key: ChatModelDownloader(settings, key) for key in CHAT_MODELS
+        key: get_chat_downloader(settings, key) for key in CHAT_MODELS
     }
 
 

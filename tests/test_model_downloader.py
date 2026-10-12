@@ -92,3 +92,40 @@ def test_model_downloader_no_mark_file(tmp_path):
     settings = make_settings(tmp_path)
     downloader = get_downloader(settings)
     assert downloader.model_dir == settings.local_model_dir
+
+
+def test_get_status_reports_in_flight_download(tmp_path):
+    """Regression: the UI polled a running download and read ``not_downloaded``.
+
+    ``get_status()`` used to rebuild the status from disk alone, so the 1.5s
+    poll in console.html saw "not_downloaded" the moment the download started
+    (files are not complete yet), hid the progress bar and told the user
+    "Modelo no descargado" while the download kept running in the background.
+    """
+    settings = make_settings(tmp_path)
+    downloader = get_downloader(settings)
+    downloader._emit_progress(state="downloading", downloaded_bytes=50, total_bytes=100)
+    status = downloader.get_status()
+    assert status.state == "downloading"
+    assert status.downloaded_bytes == 50
+    assert status.total_bytes == 100
+
+
+def test_get_status_surfaces_the_last_error(tmp_path):
+    """A failed download must reach the UI instead of reading as never started."""
+    settings = make_settings(tmp_path)
+    downloader = get_downloader(settings)
+    downloader._emit_progress(state="error", error="boom")
+    status = downloader.get_status()
+    assert status.state == "error"
+    assert "boom" in status.error
+
+
+def test_get_status_returns_a_copy_of_the_live_status(tmp_path):
+    """Callers must not be able to corrupt the downloader's own bookkeeping."""
+    settings = make_settings(tmp_path)
+    downloader = get_downloader(settings)
+    downloader._emit_progress(state="downloading", downloaded_bytes=5, total_bytes=10)
+    status = downloader.get_status()
+    status.downloaded_bytes = 999
+    assert downloader.get_status().downloaded_bytes == 5
