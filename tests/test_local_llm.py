@@ -10,6 +10,7 @@ from ragpoc.local_llm import (
     LocalLlmNotLoaded,
     MediaInput,
     close_thinking,
+    fit_prompt_tokens,
     read_context_length,
     resolve_model_path,
     split_thinking,
@@ -147,6 +148,92 @@ def test_read_context_length(tmp_path: Path):
 def test_read_context_length_survives_bad_json(tmp_path: Path):
     (tmp_path / "genai_config.json").write_text("{not json", encoding="utf-8")
     assert read_context_length(tmp_path) is None
+
+
+# --- prompt fitting ---
+
+
+def test_fit_prompt_tokens_passes_short_prompts_through():
+    assert fit_prompt_tokens([1, 2, 3], 8) == [1, 2, 3]
+
+
+def test_fit_prompt_tokens_keeps_head_and_tail_when_too_long():
+    """Regression: "input_ids size (5345) ... exceeds max length (2048)".
+
+    The agent prompt (system + tools + RAG context + question) routinely
+    overflows a small context window; the engine must cut it rather than kill
+    the answer -- head is the system prompt, tail is the live question.
+    """
+    tokens = list(range(100))
+    fitted = fit_prompt_tokens(tokens, 30)
+    assert len(fitted) == 30
+    assert fitted[:10] == tokens[:10]  # head preserved
+    assert fitted[-20:] == tokens[-20:]  # tail preserved
+    assert 40 not in fitted  # middle dropped
+
+
+def test_fit_prompt_tokens_edge_budgets():
+    assert fit_prompt_tokens([1, 2, 3], 0) == []
+    assert len(fit_prompt_tokens([1, 2, 3], 1)) == 1
+    assert fit_prompt_tokens([], 5) == []
+
+
+def test_generate_stream_clamps_the_prompt_to_the_window(tmp_path, monkeypatch):
+    """The generator must never see more tokens than max_length allows."""
+    engine = LocalLlmEngine(tmp_path, context_length=16, max_new_tokens=4)
+    engine.model = object()  # mark as loaded without touching onnxruntime
+
+    class StubParams:
+        def set_search_options(self, **kwargs):
+            return None
+
+    class StubStream:
+        def decode(self, token_id):
+            return "x"
+
+    class StubTokenizer:
+        def encode(self, text):
+            return list(range(len(text)))
+
+        def create_stream(self):
+            return StubStream()
+
+        def apply_chat_template(self, payload, **kwargs):
+            return "r" * 40  # a rendered prompt long enough to overflow
+
+    class StubGenerator:
+        def __init__(self):
+            self.count = 0
+
+        def is_done(self):
+            return self.count >= 2
+
+        def generate_next_token(self):
+            self.count += 1
+
+        def get_next_tokens(self):
+            return [0]
+
+    engine.tokenizer = StubTokenizer()
+    captured = {}
+
+    def fake_make_generator(og, params, prompt, media):
+        captured["tokens"] = prompt
+        return StubGenerator()
+
+    monkeypatch.setattr(engine, "_make_generator", fake_make_generator)
+    monkeypatch.setattr(
+        "ragpoc.local_llm._import_genai",
+        lambda: type("OG", (), {"GeneratorParams": lambda *args, **kwargs: StubParams()}),
+    )
+
+    pieces = list(
+        engine.generate_stream([ChatMessage(role="user", content="x" * 40)], max_new_tokens=4)
+    )
+    assert pieces  # it generated
+    assert isinstance(captured["tokens"], list)
+    # window (16) minus the room reserved for the answer (4)
+    assert len(captured["tokens"]) == 12
 
 
 # --- engine guards ---

@@ -231,6 +231,25 @@ def read_context_length(model_dir: Path) -> int | None:
     return config.get("model", {}).get("context_length")
 
 
+def fit_prompt_tokens(tokens: list[int], budget: int) -> list[int]:
+    """Shrink a tokenized prompt to the model's input budget.
+
+    The agent prompt (system + tool contract + RAG context + the live question)
+    routinely overflows a small context window, and the model just refuses:
+    ``input_ids size (5345) + current sequence length (0) exceeds max length
+    (2048)`` killed the whole answer. The engine fits the prompt instead: the
+    head holds identity and instructions, the tail holds the question being
+    asked right now, and the middle (older context) is what goes.
+    """
+    if budget <= 0:
+        return []
+    if len(tokens) <= budget:
+        return list(tokens)
+    head = max(1, budget // 3)
+    tail = budget - head
+    return list(tokens[:head]) + (list(tokens[-tail:]) if tail else [])
+
+
 class LocalLlmEngine:
     """Loaded ONNX GenAI model with lazy tokenizer and multimodal processor."""
 
@@ -435,7 +454,20 @@ class LocalLlmEngine:
         prompt = self.format_chat(messages, tools)
         media = [m for msg in messages for m in msg.media]
         params = self._make_params(og, max_new_tokens, temperature, top_p, top_k)
-        generator = self._make_generator(og, params, prompt, media)
+        if media:
+            # The multimodal processor owns tokenization for image/audio inputs;
+            # clamping there would desync the visual tokens, so only the pure
+            # text path fits itself to the window.
+            generator = self._make_generator(og, params, prompt, media)
+            prompt_tokens = self.count_tokens(_flatten_text(messages))
+        else:
+            # max_length is the whole window: reserve the answer's room first,
+            # then fit the prompt to what is left.
+            tokens = fit_prompt_tokens(
+                self._encode_prompt(prompt), max(1, self.context_length - max_new_tokens)
+            )
+            generator = self._make_generator(og, params, tokens, media)
+            prompt_tokens = len(tokens)
 
         started = time.perf_counter()
         first_token_at: float | None = None
@@ -455,7 +487,6 @@ class LocalLlmEngine:
             if output_tokens >= max_new_tokens:
                 break
         elapsed = time.perf_counter() - started
-        prompt_tokens = self.count_tokens(_flatten_text(messages))
         self._last_metrics = GenerationMetrics(
             prompt_tokens=prompt_tokens,
             output_tokens=output_tokens,
@@ -615,6 +646,7 @@ __all__ = [
     "LocalLlmError",
     "LocalLlmNotLoaded",
     "LocalLlmBudgetExceeded",
+    "fit_prompt_tokens",
     "MediaInput",
     "engine_from_settings",
     "read_context_length",

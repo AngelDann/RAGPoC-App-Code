@@ -103,6 +103,13 @@ def friendly_llm_error(exc: Exception, settings: Settings) -> str:
             "Comprueba tu conexión a internet. Para usar la aplicación sin conexión, "
             "cambia a Modo Local en Ajustes (necesita el modelo descargado)."
         )
+    if local and "exceeds max length" in detail:
+        # The prompt outgrew the context window; the window is the knob.
+        return (
+            f"El mensaje es demasiado largo para la ventana de contexto ({detail}). "
+            "Súbelo en Ajustes → Modelo local → Ventana de contexto (prueba con 4096) "
+            "o adjunta menos contenido a la conversación."
+        )
     if local:
         return (
             f"Error del modelo local ({detail}). "

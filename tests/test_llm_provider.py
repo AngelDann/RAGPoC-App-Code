@@ -215,3 +215,14 @@ def test_friendly_error_for_the_local_model_points_at_the_model_settings(tmp_pat
     message = friendly_llm_error(Exception("model directory not found"), settings)
     assert "local" in message.lower()
     assert "model directory not found" in message
+
+
+def test_friendly_error_for_context_overflow_suggests_a_bigger_window(tmp_path):
+    from knowledge.llm import friendly_llm_error
+
+    settings = make_settings(tmp_path, llm_provider="local")
+    message = friendly_llm_error(
+        Exception("input_ids size (5345) + current sequence length (0) exceeds max length (2048)"),
+        settings,
+    )
+    assert "Ventana de contexto" in message
